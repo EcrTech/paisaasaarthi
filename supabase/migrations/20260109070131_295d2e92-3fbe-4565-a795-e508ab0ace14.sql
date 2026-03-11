@@ -44,10 +44,10 @@ ALTER TABLE contacts DROP COLUMN IF EXISTS customer_id_new;
 ALTER TABLE loan_applications DROP COLUMN IF EXISTS loan_id_new;
 
 -- Step 7: Reset sequences to continue after the highest number
-SELECT setval('customer_id_seq', 
-  COALESCE((SELECT COUNT(*) FROM contacts WHERE customer_id IS NOT NULL), 0)
+SELECT setval('customer_id_seq',
+  GREATEST(COALESCE((SELECT COUNT(*) FROM contacts WHERE customer_id IS NOT NULL), 0), 1)
 );
 
-SELECT setval('loan_id_seq', 
-  COALESCE((SELECT COUNT(*) FROM loan_applications WHERE loan_id IS NOT NULL), 0)
+SELECT setval('loan_id_seq',
+  GREATEST(COALESCE((SELECT COUNT(*) FROM loan_applications WHERE loan_id IS NOT NULL), 0), 1)
 );
