@@ -40,7 +40,7 @@ export default function BankAccountVerificationDialog({
     remarks: existingVerification?.remarks || "",
   });
 
-  // Fetch primary applicant's bank details
+  // Fetch primary applicant's bank details (handle duplicates)
   const { data: primaryApplicant } = useQuery({
     queryKey: ["primary-applicant-bank", applicationId],
     queryFn: async () => {
@@ -49,25 +49,60 @@ export default function BankAccountVerificationDialog({
         .select("bank_account_number, bank_ifsc_code, bank_name, bank_account_holder_name, bank_branch")
         .eq("loan_application_id", applicationId)
         .eq("applicant_type", "primary")
-        .maybeSingle();
-      return data;
+        .order("bank_account_number", { ascending: false, nullsFirst: false })
+        .limit(1);
+      return data?.[0] || null;
     },
     enabled: open,
   });
 
-  // Auto-populate from applicant data when available
+  // Fetch bank statement OCR data from uploaded document
+  const { data: bankStatementOcr } = useQuery({
+    queryKey: ["bank-statement-ocr", applicationId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("loan_documents")
+        .select("ocr_data")
+        .eq("loan_application_id", applicationId)
+        .eq("document_type", "bank_statement")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.ocr_data as Record<string, any> | null;
+    },
+    enabled: !!applicationId,
+  });
+
+  // Auto-populate from applicant data, then overlay with OCR data
   useEffect(() => {
-    if (primaryApplicant && !existingVerification) {
+    if (existingVerification) return;
+    // Use the dedicated query result, or fall back to the applicant prop
+    const source = primaryApplicant || applicant;
+    if (source && (source.bank_account_number || source.bank_ifsc_code)) {
       setFormData(prev => ({
         ...prev,
-        account_number: primaryApplicant.bank_account_number || prev.account_number,
-        ifsc_code: primaryApplicant.bank_ifsc_code || prev.ifsc_code,
-        account_holder_name: primaryApplicant.bank_account_holder_name || prev.account_holder_name,
-        bank_name: primaryApplicant.bank_name || prev.bank_name,
-        branch_name: primaryApplicant.bank_branch || prev.branch_name,
+        account_number: source.bank_account_number || prev.account_number,
+        ifsc_code: source.bank_ifsc_code || prev.ifsc_code,
+        account_holder_name: source.bank_account_holder_name || prev.account_holder_name,
+        bank_name: source.bank_name || prev.bank_name,
+        branch_name: source.bank_branch || prev.branch_name,
       }));
     }
-  }, [primaryApplicant, existingVerification]);
+  }, [primaryApplicant, applicant, existingVerification]);
+
+  // Pre-fill from bank statement OCR data
+  useEffect(() => {
+    if (bankStatementOcr && !existingVerification) {
+      setFormData(prev => ({
+        ...prev,
+        account_number: prev.account_number || bankStatementOcr.account_number || "",
+        ifsc_code: prev.ifsc_code || bankStatementOcr.ifsc_code || "",
+        account_holder_name: prev.account_holder_name || bankStatementOcr.account_holder_name || "",
+        bank_name: prev.bank_name || bankStatementOcr.bank_name || "",
+        branch_name: prev.branch_name || bankStatementOcr.branch_name || "",
+      }));
+    }
+  }, [bankStatementOcr, existingVerification]);
 
   // Verify Bank Account via VerifiedU API
   const verifyMutation = useMutation({

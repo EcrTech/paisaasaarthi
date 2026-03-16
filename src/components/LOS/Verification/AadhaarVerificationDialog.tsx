@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ExternalLink, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle, Send, MessageCircle, Mail, Copy, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 
 interface AadhaarVerificationDialogProps {
   open: boolean;
@@ -31,6 +32,28 @@ export default function AadhaarVerificationDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Fetch Aadhaar OCR data from uploaded documents
+  const { data: aadhaarOcr } = useQuery({
+    queryKey: ["aadhaar-doc-ocr", applicationId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("loan_documents")
+        .select("document_type, ocr_data")
+        .eq("loan_application_id", applicationId)
+        .in("document_type", ["aadhaar_front", "aadhaar_back", "aadhaar_card"])
+        .order("created_at", { ascending: false });
+      if (!data || data.length === 0) return null;
+      const front = data.find(d => d.document_type === "aadhaar_front" || d.document_type === "aadhaar_card");
+      const back = data.find(d => d.document_type === "aadhaar_back");
+      return {
+        ...(back?.ocr_data as Record<string, any> || {}),
+        ...(front?.ocr_data as Record<string, any> || {}),
+        address: (back?.ocr_data as Record<string, any>)?.address || (front?.ocr_data as Record<string, any>)?.address || "",
+      };
+    },
+    enabled: !!applicationId,
+  });
+
   const [formData, setFormData] = useState({
     aadhaar_last4: existingVerification?.request_data?.aadhaar_last4 || "",
     verified_address: existingVerification?.response_data?.verified_address || "",
@@ -41,27 +64,45 @@ export default function AadhaarVerificationDialog({
     name: existingVerification?.response_data?.name || "",
   });
 
-  const [digilockerUrl, setDigilockerUrl] = useState<string | null>(null);
-
-  // Get the base URL for callbacks
-  const getBaseUrl = () => {
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
+  // Pre-fill from OCR data if no existing verification
+  useEffect(() => {
+    if (aadhaarOcr && !existingVerification) {
+      const aadhaarNum = aadhaarOcr.aadhaar_number?.replace(/\s/g, '') || "";
+      setFormData(prev => ({
+        ...prev,
+        aadhaar_last4: prev.aadhaar_last4 || (aadhaarNum ? aadhaarNum.slice(-4) : ""),
+        name: prev.name || aadhaarOcr.name || "",
+        verified_address: prev.verified_address || aadhaarOcr.address || "",
+      }));
     }
-    return '';
-  };
+  }, [aadhaarOcr, existingVerification]);
+
+  const [digilockerUrl, setDigilockerUrl] = useState<string | null>(null);
+  const [uniqueRequestNumber, setUniqueRequestNumber] = useState<string | null>(
+    existingVerification?.request_data?.unique_request_number || null
+  );
+  const [whatsappSent, setWhatsappSent] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [verificationComplete, setVerificationComplete] = useState(
+    existingVerification?.status === "success"
+  );
+
+  const applicantPhone = applicant?.mobile_number || applicant?.phone || applicant?.mobile || "";
+  const applicantEmail = applicant?.email || "";
+  const applicantName = `${applicant?.first_name || ""} ${applicant?.last_name || ""}`.trim() || "Customer";
 
   // Initiate Aadhaar verification via VerifiedU DigiLocker
   const initiateMutation = useMutation({
     mutationFn: async () => {
-      const baseUrl = getBaseUrl();
-      
       const { data, error } = await supabase.functions.invoke('verifiedu-aadhaar-initiate', {
         body: {
           applicationId,
           orgId,
-          successUrl: `${baseUrl}/digilocker/success`,
-          failureUrl: `${baseUrl}/digilocker/failure`,
+          successUrl: `${window.location.origin}/digilocker/success`,
+          failureUrl: `${window.location.origin}/digilocker/failure`,
         },
       });
 
@@ -70,20 +111,14 @@ export default function AadhaarVerificationDialog({
       return data;
     },
     onSuccess: (data) => {
-      if (data.is_mock) {
-        toast({
-          title: "Mock Mode",
-          description: "VerifiedU credentials not configured. Redirecting to mock success page.",
-        });
-        // In mock mode, redirect directly to success page
-        window.location.href = data.data.url;
-      } else {
-        setDigilockerUrl(data.data.url);
-        toast({
-          title: "DigiLocker Ready",
-          description: "Click the button to open DigiLocker and verify your Aadhaar",
-        });
-      }
+      const url = data.data.url;
+      const reqNumber = data.data.unique_request_number;
+      setDigilockerUrl(url);
+      setUniqueRequestNumber(reqNumber);
+      toast({
+        title: "DigiLocker Verification Initiated",
+        description: "Now send the verification link to the customer via WhatsApp and Email.",
+      });
     },
     onError: (error: any) => {
       toast({
@@ -94,6 +129,166 @@ export default function AadhaarVerificationDialog({
     },
   });
 
+  // Send verification link via WhatsApp
+  const sendWhatsApp = async () => {
+    if (!digilockerUrl || !applicantPhone) return;
+    setSendingWhatsapp(true);
+    try {
+      const message = `Hi ${applicantName},\n\nPlease complete your Aadhaar verification for your loan application by clicking the link below:\n\n${digilockerUrl}\n\nThis link will take you to DigiLocker where you can securely verify your Aadhaar.\n\nTeam Paisaa Saarthi`;
+
+      const { data, error } = await supabase.functions.invoke('send-whatsapp-message', {
+        body: {
+          phoneNumber: applicantPhone,
+          message,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Failed to send WhatsApp message");
+
+      setWhatsappSent(true);
+      toast({ title: "WhatsApp sent", description: "Verification link sent to customer via WhatsApp" });
+    } catch (err: any) {
+      console.error("WhatsApp send error:", err);
+      toast({
+        variant: "destructive",
+        title: "WhatsApp Failed",
+        description: err.message || "Failed to send WhatsApp. You can copy the link and send manually.",
+      });
+    } finally {
+      setSendingWhatsapp(false);
+    }
+  };
+
+  // Send verification link via Email
+  const sendEmail = async () => {
+    if (!digilockerUrl || !applicantEmail) return;
+    setSendingEmail(true);
+    try {
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #0d9488; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">Aadhaar Verification</h1>
+          </div>
+          <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+            <p>Hi ${applicantName},</p>
+            <p>Please complete your Aadhaar verification for your loan application by clicking the button below:</p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${digilockerUrl}" style="background: #0d9488; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                Verify Aadhaar via DigiLocker
+              </a>
+            </div>
+            <p style="color: #6b7280; font-size: 14px;">This link will take you to DigiLocker where you can securely authorize access to your Aadhaar data.</p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+            <p style="color: #9ca3af; font-size: 12px;">If the button doesn't work, copy and paste this link into your browser:<br/>${digilockerUrl}</p>
+            <p style="color: #6b7280; font-size: 14px;">Team Paisaa Saarthi</p>
+          </div>
+        </div>
+      `;
+
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: applicantEmail,
+          subject: "Complete Your Aadhaar Verification - Paisaa Saarthi",
+          html,
+        },
+      });
+
+      if (error) throw error;
+
+      setEmailSent(true);
+      toast({ title: "Email sent", description: "Verification link sent to customer via Email" });
+    } catch (err: any) {
+      console.error("Email send error:", err);
+      toast({
+        variant: "destructive",
+        title: "Email Failed",
+        description: err.message || "Failed to send email. You can copy the link and send manually.",
+      });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  // Send both WhatsApp and Email
+  const sendBoth = async () => {
+    if (applicantPhone) sendWhatsApp();
+    if (applicantEmail) sendEmail();
+  };
+
+  // Check verification status via VerifiedU
+  const checkStatus = async () => {
+    if (!uniqueRequestNumber) {
+      toast({ variant: "destructive", title: "No request number available" });
+      return;
+    }
+    setCheckingStatus(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('verifiedu-aadhaar-details', {
+        body: {
+          uniqueRequestNumber,
+          applicationId,
+          orgId,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.data?.is_valid) {
+        // Verification complete - update form with response data
+        const aadhaarData = data.data;
+        const address = aadhaarData.addresses?.[0]?.combined || "";
+        const aadhaarUid = aadhaarData.aadhaar_uid || "";
+        const last4 = aadhaarUid.slice(-4);
+
+        setFormData(prev => ({
+          ...prev,
+          name: aadhaarData.name || prev.name,
+          verified_address: address || prev.verified_address,
+          aadhaar_last4: last4 || prev.aadhaar_last4,
+          aadhaar_status: "valid",
+          status: "success",
+          address_match_result: "exact",
+        }));
+        setVerificationComplete(true);
+
+        toast({ title: "Aadhaar Verified!", description: `Customer ${aadhaarData.name} verified successfully via DigiLocker` });
+
+        // Invalidate queries to refresh the verification status in the dashboard
+        queryClient.invalidateQueries({ queryKey: ["loan-verifications", applicationId] });
+      } else if (data?.success && data?.data && !data?.data?.is_valid) {
+        toast({
+          variant: "destructive",
+          title: "Verification Failed",
+          description: "Aadhaar verification returned invalid. Customer may need to retry.",
+        });
+        setFormData(prev => ({ ...prev, status: "failed", aadhaar_status: "invalid" }));
+      } else {
+        toast({
+          title: "Verification Pending",
+          description: "Customer has not completed the DigiLocker verification yet. Please try again later.",
+        });
+      }
+    } catch (err: any) {
+      console.error("Status check error:", err);
+      toast({
+        variant: "destructive",
+        title: "Status Check Failed",
+        description: err.message || "Failed to check verification status. The customer may not have completed verification yet.",
+      });
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  // Copy link to clipboard
+  const copyLink = () => {
+    if (digilockerUrl) {
+      navigator.clipboard.writeText(digilockerUrl);
+      toast({ title: "Link copied to clipboard" });
+    }
+  };
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const verificationData = {
@@ -102,7 +297,10 @@ export default function AadhaarVerificationDialog({
         verification_type: "aadhaar",
         verification_source: "verifiedu",
         status: formData.status,
-        request_data: { aadhaar_last4: formData.aadhaar_last4 },
+        request_data: {
+          aadhaar_last4: formData.aadhaar_last4,
+          unique_request_number: uniqueRequestNumber,
+        },
         response_data: {
           verified_address: formData.verified_address,
           address_match_result: formData.address_match_result,
@@ -140,11 +338,8 @@ export default function AadhaarVerificationDialog({
     },
   });
 
-  const openDigilocker = () => {
-    if (digilockerUrl) {
-      window.open(digilockerUrl, '_blank');
-    }
-  };
+  // Determine if we're in "already initiated" state (e.g. existing in_progress verification)
+  const isAlreadyInitiated = !!uniqueRequestNumber && !digilockerUrl && existingVerification?.status === "in_progress";
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -152,21 +347,40 @@ export default function AadhaarVerificationDialog({
         <DialogHeader>
           <DialogTitle>Aadhaar Verification</DialogTitle>
           <DialogDescription>
-            Verify Aadhaar via VerifiedU DigiLocker integration
+            Send DigiLocker verification link to the customer via WhatsApp & Email
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* DigiLocker Verification Flow */}
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Aadhaar verification uses DigiLocker. The applicant will be redirected to DigiLocker to authorize access to their Aadhaar data.
-            </AlertDescription>
-          </Alert>
+          {/* Customer Info */}
+          <div className="p-3 bg-muted rounded-md">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Customer Details</p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="text-muted-foreground">Name: </span>
+                <span className="font-medium">{applicantName}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Phone: </span>
+                <span className="font-medium">{applicantPhone || "N/A"}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-muted-foreground">Email: </span>
+                <span className="font-medium">{applicantEmail || "N/A"}</span>
+              </div>
+            </div>
+          </div>
 
-          <div className="space-y-3">
-            {!digilockerUrl ? (
+          {/* Step 1: Initiate Verification */}
+          {!digilockerUrl && !isAlreadyInitiated && !verificationComplete && (
+            <>
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Click below to generate a DigiLocker verification link. The link will be sent to the customer via WhatsApp and Email.
+                </AlertDescription>
+              </Alert>
+
               <Button
                 onClick={() => initiateMutation.mutate()}
                 disabled={initiateMutation.isPending}
@@ -174,31 +388,131 @@ export default function AadhaarVerificationDialog({
                 className="w-full"
               >
                 {initiateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Initiate DigiLocker Verification
+                <Send className="mr-2 h-4 w-4" />
+                Generate Verification Link
               </Button>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-md">
-                  <CheckCircle className="h-4 w-4 text-primary" />
-                  <span className="text-sm">DigiLocker verification initiated</span>
+            </>
+          )}
+
+          {/* Step 2: Send link to customer */}
+          {(digilockerUrl || isAlreadyInitiated) && !verificationComplete && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-md">
+                <CheckCircle className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">DigiLocker verification link generated</span>
+              </div>
+
+              {/* Link display with copy */}
+              {digilockerUrl && (
+                <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                  <Input
+                    value={digilockerUrl}
+                    readOnly
+                    className="text-xs h-8 font-mono"
+                  />
+                  <Button variant="outline" size="sm" onClick={copyLink} className="shrink-0">
+                    <Copy className="h-3 w-3" />
+                  </Button>
                 </div>
+              )}
+
+              {/* Send buttons */}
+              <div className="grid grid-cols-2 gap-2">
                 <Button
-                  onClick={openDigilocker}
+                  onClick={sendWhatsApp}
+                  disabled={sendingWhatsapp || !applicantPhone || whatsappSent}
+                  variant={whatsappSent ? "outline" : "default"}
+                  className={whatsappSent ? "border-green-500 text-green-600" : "bg-green-600 hover:bg-green-700"}
+                >
+                  {sendingWhatsapp ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : whatsappSent ? (
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                  ) : (
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                  )}
+                  {whatsappSent ? "WhatsApp Sent" : "Send via WhatsApp"}
+                </Button>
+
+                <Button
+                  onClick={sendEmail}
+                  disabled={sendingEmail || !applicantEmail || emailSent}
+                  variant={emailSent ? "outline" : "default"}
+                  className={emailSent ? "border-blue-500 text-blue-600" : "bg-blue-600 hover:bg-blue-700"}
+                >
+                  {sendingEmail ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : emailSent ? (
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Mail className="mr-2 h-4 w-4" />
+                  )}
+                  {emailSent ? "Email Sent" : "Send via Email"}
+                </Button>
+              </div>
+
+              {!whatsappSent && !emailSent && digilockerUrl && (
+                <Button
+                  onClick={sendBoth}
+                  disabled={sendingWhatsapp || sendingEmail}
                   variant="default"
                   className="w-full"
                 >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Open DigiLocker to Complete Verification
+                  <Send className="mr-2 h-4 w-4" />
+                  Send via Both WhatsApp & Email
                 </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  After completing verification in DigiLocker, the data will be automatically fetched.
-                </p>
-              </div>
-            )}
-          </div>
+              )}
 
+              {!applicantPhone && (
+                <p className="text-xs text-destructive">Phone number not available. Copy the link and send manually.</p>
+              )}
+              {!applicantEmail && (
+                <p className="text-xs text-destructive">Email not available. Copy the link and send manually.</p>
+              )}
+
+              {/* Check Status */}
+              <div className="border-t pt-4">
+                <p className="text-sm text-muted-foreground mb-2">
+                  After the customer completes verification via DigiLocker, click below to fetch the results.
+                </p>
+                <Button
+                  onClick={checkStatus}
+                  disabled={checkingStatus}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {checkingStatus ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  {checkingStatus ? "Checking..." : "Check Verification Status"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Verification Complete Indicator */}
+          {verificationComplete && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                <span className="font-medium text-green-800">Aadhaar Verified Successfully</span>
+              </div>
+              {formData.name && (
+                <p className="text-sm text-green-700">Name: {formData.name}</p>
+              )}
+              {formData.verified_address && (
+                <p className="text-sm text-green-700 mt-1">Address: {formData.verified_address}</p>
+              )}
+            </div>
+          )}
+
+          {/* Manual Entry / Results Section */}
           <div className="border-t pt-4">
-            <h4 className="text-sm font-medium mb-2">Manual Entry (Optional)</h4>
+            <h4 className="text-sm font-medium mb-3">
+              {verificationComplete ? "Verified Details" : "Manual Entry (Optional)"}
+            </h4>
           </div>
 
           <div>
