@@ -9,9 +9,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
-import { User, FileText, CheckCircle, Eye, Loader2, Video, MessageSquare, Mail, Phone } from "lucide-react";
+import { User, FileText, CheckCircle, Eye, Loader2, Video, CreditCard, MessageSquare, Mail, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+import CreditBureauDialog from "@/components/LOS/Verification/CreditBureauDialog";
 import { VideoKYCRetryButton } from "@/components/LOS/Verification/VideoKYCRetryButton";
 import { VideoKYCViewDialog } from "@/components/LOS/Verification/VideoKYCViewDialog";
 import { WhatsAppChatDialog } from "@/components/LOS/Relationships/WhatsAppChatDialog";
@@ -250,6 +251,7 @@ export function ApplicantProfileCard({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerImage, setViewerImage] = useState<{ url: string; name: string; isPdf: boolean } | null>(null);
   
+  const [cibilDialogOpen, setCibilDialogOpen] = useState(false);
   const [showRetryLinkDialog, setShowRetryLinkDialog] = useState(false);
   const [videoKYCViewOpen, setVideoKYCViewOpen] = useState(false);
   const [videoKYCRecordingUrl, setVideoKYCRecordingUrl] = useState<string | null>(null);
@@ -336,6 +338,7 @@ export function ApplicantProfileCard({
 
   const keyDocs = [panDoc, aadhaarDoc].filter(Boolean) as Document[];
   const videoKycVerification = getVerification('video_kyc');
+  const cibilVerification = getVerification('credit_bureau');
 
   // Handle Video KYC card click - show view dialog if completed, otherwise show retry link dialog
   const handleVideoKYCClick = async () => {
@@ -517,7 +520,7 @@ export function ApplicantProfileCard({
                   )}
 
                   {/* Video KYC - View Recording or Generate Retry Link */}
-                  <VerificationCard 
+                  <VerificationCard
                     type="video_kyc"
                     label="Video KYC"
                     icon={Video}
@@ -525,6 +528,14 @@ export function ApplicantProfileCard({
                     onClick={handleVideoKYCClick}
                   />
 
+                  {/* CIBIL Report */}
+                  <VerificationCard
+                    type="credit_bureau"
+                    label="CIBIL Report"
+                    icon={CreditCard}
+                    verification={cibilVerification}
+                    onClick={() => setCibilDialogOpen(true)}
+                  />
                 </>
               )}
             </div>
@@ -581,6 +592,16 @@ export function ApplicantProfileCard({
         orgId={orgId}
         applicantName={applicantName}
         applicantPhone={mobile}
+      />
+
+      {/* CIBIL Dialog */}
+      <CreditBureauDialog
+        open={cibilDialogOpen}
+        onClose={() => setCibilDialogOpen(false)}
+        applicationId={applicationId}
+        orgId={orgId}
+        applicant={applicant}
+        existingVerification={verifications.find(v => v.verification_type === 'credit_bureau')}
       />
 
       {/* WhatsApp Chat Dialog */}
