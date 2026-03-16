@@ -82,7 +82,9 @@ export default function AadhaarVerificationDialog({
     existingVerification?.request_data?.unique_request_number || null
   );
   const [whatsappSent, setWhatsappSent] = useState(false);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
@@ -110,15 +112,19 @@ export default function AadhaarVerificationDialog({
       if (!data.success) throw new Error(data.error || "Failed to initiate Aadhaar verification");
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       const url = data.data.url;
       const reqNumber = data.data.unique_request_number;
       setDigilockerUrl(url);
       setUniqueRequestNumber(reqNumber);
       toast({
         title: "DigiLocker Verification Initiated",
-        description: "Now send the verification link to the customer via WhatsApp and Email.",
+        description: "Sending verification link to the customer...",
       });
+
+      // Auto-send WhatsApp and Email in parallel
+      if (applicantPhone) autoSendWhatsApp(url);
+      if (applicantEmail) autoSendEmail(url);
     },
     onError: (error: any) => {
       toast({
@@ -129,17 +135,24 @@ export default function AadhaarVerificationDialog({
     },
   });
 
-  // Send verification link via WhatsApp
-  const sendWhatsApp = async () => {
-    if (!digilockerUrl || !applicantPhone) return;
+  // Send verification link via WhatsApp (uses template for cold outreach)
+  const sendWhatsApp = async (url?: string) => {
+    const linkUrl = url || digilockerUrl;
+    if (!linkUrl || !applicantPhone) return;
     setSendingWhatsapp(true);
+    setWhatsappError(null);
     try {
-      const message = `Hi ${applicantName},\n\nPlease complete your Aadhaar verification for your loan application by clicking the link below:\n\n${digilockerUrl}\n\nThis link will take you to DigiLocker where you can securely verify your Aadhaar.\n\nTeam Paisaa Saarthi`;
-
+      // Use approved template "aadhaar_verification_link" with variables:
+      // {{1}} = customer name, {{2}} = application ID, {{3}} = DigiLocker URL
       const { data, error } = await supabase.functions.invoke('send-whatsapp-message', {
         body: {
           phoneNumber: applicantPhone,
-          message,
+          templateName: "aadhaar_verification_link",
+          templateVariables: {
+            "1": applicantName,
+            "2": applicationId,
+            "3": linkUrl,
+          },
         },
       });
 
@@ -150,20 +163,20 @@ export default function AadhaarVerificationDialog({
       toast({ title: "WhatsApp sent", description: "Verification link sent to customer via WhatsApp" });
     } catch (err: any) {
       console.error("WhatsApp send error:", err);
-      toast({
-        variant: "destructive",
-        title: "WhatsApp Failed",
-        description: err.message || "Failed to send WhatsApp. You can copy the link and send manually.",
-      });
+      const errMsg = err.message || "Failed to send WhatsApp. You can copy the link and send manually.";
+      setWhatsappError(errMsg);
+      toast({ variant: "destructive", title: "WhatsApp Failed", description: errMsg });
     } finally {
       setSendingWhatsapp(false);
     }
   };
 
   // Send verification link via Email
-  const sendEmail = async () => {
-    if (!digilockerUrl || !applicantEmail) return;
+  const sendEmail = async (url?: string) => {
+    const linkUrl = url || digilockerUrl;
+    if (!linkUrl || !applicantEmail) return;
     setSendingEmail(true);
+    setEmailError(null);
     try {
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -174,13 +187,13 @@ export default function AadhaarVerificationDialog({
             <p>Hi ${applicantName},</p>
             <p>Please complete your Aadhaar verification for your loan application by clicking the button below:</p>
             <div style="text-align: center; margin: 32px 0;">
-              <a href="${digilockerUrl}" style="background: #0d9488; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+              <a href="${linkUrl}" style="background: #0d9488; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
                 Verify Aadhaar via DigiLocker
               </a>
             </div>
             <p style="color: #6b7280; font-size: 14px;">This link will take you to DigiLocker where you can securely authorize access to your Aadhaar data.</p>
             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
-            <p style="color: #9ca3af; font-size: 12px;">If the button doesn't work, copy and paste this link into your browser:<br/>${digilockerUrl}</p>
+            <p style="color: #9ca3af; font-size: 12px;">If the button doesn't work, copy and paste this link into your browser:<br/>${linkUrl}</p>
             <p style="color: #6b7280; font-size: 14px;">Team Paisaa Saarthi</p>
           </div>
         </div>
@@ -200,21 +213,17 @@ export default function AadhaarVerificationDialog({
       toast({ title: "Email sent", description: "Verification link sent to customer via Email" });
     } catch (err: any) {
       console.error("Email send error:", err);
-      toast({
-        variant: "destructive",
-        title: "Email Failed",
-        description: err.message || "Failed to send email. You can copy the link and send manually.",
-      });
+      const errMsg = err.message || "Failed to send email. You can copy the link and send manually.";
+      setEmailError(errMsg);
+      toast({ variant: "destructive", title: "Email Failed", description: errMsg });
     } finally {
       setSendingEmail(false);
     }
   };
 
-  // Send both WhatsApp and Email
-  const sendBoth = async () => {
-    if (applicantPhone) sendWhatsApp();
-    if (applicantEmail) sendEmail();
-  };
+  // Auto-send functions called from initiateMutation.onSuccess
+  const autoSendWhatsApp = (url: string) => sendWhatsApp(url);
+  const autoSendEmail = (url: string) => sendEmail(url);
 
   // Check verification status via VerifiedU
   const checkStatus = async () => {
@@ -416,59 +425,58 @@ export default function AadhaarVerificationDialog({
                 </div>
               )}
 
-              {/* Send buttons */}
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  onClick={sendWhatsApp}
-                  disabled={sendingWhatsapp || !applicantPhone || whatsappSent}
-                  variant={whatsappSent ? "outline" : "default"}
-                  className={whatsappSent ? "border-green-500 text-green-600" : "bg-green-600 hover:bg-green-700"}
-                >
+              {/* Auto-send status */}
+              <div className="space-y-2">
+                {/* WhatsApp status */}
+                <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                  <div className="flex items-center gap-2 text-sm">
+                    <MessageCircle className="h-4 w-4" />
+                    <span>WhatsApp</span>
+                    {!applicantPhone && <span className="text-xs text-destructive">(no phone)</span>}
+                  </div>
                   {sendingWhatsapp ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Badge variant="outline" className="text-xs"><Loader2 className="h-3 w-3 animate-spin mr-1" />Sending...</Badge>
                   ) : whatsappSent ? (
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                  ) : (
-                    <MessageCircle className="mr-2 h-4 w-4" />
-                  )}
-                  {whatsappSent ? "WhatsApp Sent" : "Send via WhatsApp"}
-                </Button>
+                    <Badge className="bg-green-100 text-green-800 text-xs"><CheckCircle className="h-3 w-3 mr-1" />Sent</Badge>
+                  ) : whatsappError ? (
+                    <div className="flex items-center gap-1">
+                      <Badge variant="destructive" className="text-xs">Failed</Badge>
+                      <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => sendWhatsApp()} disabled={!applicantPhone}>
+                        Retry
+                      </Button>
+                    </div>
+                  ) : applicantPhone ? (
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendWhatsApp()} disabled={!digilockerUrl}>
+                      Send
+                    </Button>
+                  ) : null}
+                </div>
 
-                <Button
-                  onClick={sendEmail}
-                  disabled={sendingEmail || !applicantEmail || emailSent}
-                  variant={emailSent ? "outline" : "default"}
-                  className={emailSent ? "border-blue-500 text-blue-600" : "bg-blue-600 hover:bg-blue-700"}
-                >
+                {/* Email status */}
+                <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4" />
+                    <span>Email</span>
+                    {!applicantEmail && <span className="text-xs text-destructive">(no email)</span>}
+                  </div>
                   {sendingEmail ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Badge variant="outline" className="text-xs"><Loader2 className="h-3 w-3 animate-spin mr-1" />Sending...</Badge>
                   ) : emailSent ? (
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                  ) : (
-                    <Mail className="mr-2 h-4 w-4" />
-                  )}
-                  {emailSent ? "Email Sent" : "Send via Email"}
-                </Button>
+                    <Badge className="bg-blue-100 text-blue-800 text-xs"><CheckCircle className="h-3 w-3 mr-1" />Sent</Badge>
+                  ) : emailError ? (
+                    <div className="flex items-center gap-1">
+                      <Badge variant="destructive" className="text-xs">Failed</Badge>
+                      <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => sendEmail()} disabled={!applicantEmail}>
+                        Retry
+                      </Button>
+                    </div>
+                  ) : applicantEmail ? (
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendEmail()} disabled={!digilockerUrl}>
+                      Send
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-
-              {!whatsappSent && !emailSent && digilockerUrl && (
-                <Button
-                  onClick={sendBoth}
-                  disabled={sendingWhatsapp || sendingEmail}
-                  variant="default"
-                  className="w-full"
-                >
-                  <Send className="mr-2 h-4 w-4" />
-                  Send via Both WhatsApp & Email
-                </Button>
-              )}
-
-              {!applicantPhone && (
-                <p className="text-xs text-destructive">Phone number not available. Copy the link and send manually.</p>
-              )}
-              {!applicantEmail && (
-                <p className="text-xs text-destructive">Email not available. Copy the link and send manually.</p>
-              )}
 
               {/* Check Status */}
               <div className="border-t pt-4">

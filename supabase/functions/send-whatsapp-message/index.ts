@@ -316,7 +316,21 @@ Deno.serve(async (req) => {
     let exotelPayload: any;
 
     if (useTemplateApi) {
-      // Use WhatsApp template API for hardcoded templates like "conversation"
+      // Build template components with variables if provided
+      const components: any[] = [];
+      if (templateVariables && Object.keys(templateVariables).length > 0) {
+        // Convert { "1": "value1", "2": "value2" } to body parameters array
+        const sortedKeys = Object.keys(templateVariables).sort((a, b) => Number(a) - Number(b));
+        const parameters = sortedKeys.map(key => ({
+          type: "text",
+          text: templateVariables[key],
+        }));
+        components.push({
+          type: "body",
+          parameters,
+        });
+      }
+
       exotelPayload = {
         whatsapp: {
           messages: [{
@@ -326,13 +340,18 @@ Deno.serve(async (req) => {
               type: "template",
               template: {
                 name: templateName,
-                language: { code: "en" }, // "conversation" template uses "English" = "en"
-                components: [] // No variables for "conversation" template
+                language: { code: "en" },
+                components,
               }
             }
           }]
         }
       };
+
+      // Build readable message content for storage
+      if (templateVariables) {
+        messageContent = Object.values(templateVariables).join(' | ');
+      }
     } else if (mediaUrl && mediaType) {
       // Media message (image, document, video, audio)
       // Exotel V2 API expects "link" not "url" for media content
