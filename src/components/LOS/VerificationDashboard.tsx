@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, Clock, Edit, AlertCircle, Eye, Upload, Video } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Edit, AlertCircle, Eye, Upload, Video, RefreshCw, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import PANVerificationDialog from "./Verification/PANVerificationDialog";
 import AadhaarVerificationDialog from "./Verification/AadhaarVerificationDialog";
@@ -117,6 +117,38 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
     d.document_type === "aadhaar_card" || d.document_type === "aadhaar_front"
   );
   const getAadhaarBackDocument = () => identityDocuments.find(d => d.document_type === "aadhaar_back");
+
+  // Fetch Aadhaar verification results directly from dashboard
+  const [fetchingAadhaarResults, setFetchingAadhaarResults] = useState(false);
+  const fetchAadhaarResults = async () => {
+    const aadhaarVerification = getVerification("aadhaar");
+    const uniqueRequestNumber = (aadhaarVerification?.request_data as Record<string, any>)?.unique_request_number;
+    if (!uniqueRequestNumber) {
+      toast({ variant: "destructive", title: "No request number", description: "Aadhaar verification was not initiated via DigiLocker." });
+      return;
+    }
+    setFetchingAadhaarResults(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('verifiedu-aadhaar-details', {
+        body: { uniqueRequestNumber, applicationId, orgId },
+      });
+      if (error) throw error;
+      if (data?.success && data?.data?.is_valid) {
+        toast({ title: "Aadhaar Verified!", description: `Customer ${data.data.name || ""} verified successfully via DigiLocker` });
+        queryClient.invalidateQueries({ queryKey: ["loan-verifications", applicationId] });
+      } else if (data?.success && data?.data && !data?.data?.is_valid) {
+        toast({ variant: "destructive", title: "Verification Failed", description: "Aadhaar verification returned invalid. Customer may need to retry." });
+        queryClient.invalidateQueries({ queryKey: ["loan-verifications", applicationId] });
+      } else {
+        toast({ title: "Verification Pending", description: "Customer has not completed DigiLocker verification yet. Please try again later." });
+      }
+    } catch (err: any) {
+      console.error("Aadhaar fetch error:", err);
+      toast({ variant: "destructive", title: "Fetch Failed", description: err.message || "Failed to fetch Aadhaar results." });
+    } finally {
+      setFetchingAadhaarResults(false);
+    }
+  };
 
   const updateStageMutation = useMutation({
     mutationFn: async (newStage: string) => {
@@ -371,6 +403,23 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
                     </Button>
                   )}
                   
+                  {/* Fetch Results button for Aadhaar in_progress */}
+                  {verificationType.type === "aadhaar" && status === "in_progress" && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={fetchAadhaarResults}
+                      disabled={fetchingAadhaarResults}
+                    >
+                      {fetchingAadhaarResults ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                      )}
+                      {fetchingAadhaarResults ? "Fetching..." : "Fetch Results"}
+                    </Button>
+                  )}
+
                   {/* Special handling for VideoKYC */}
                   {verificationType.type === "video_kyc" ? (
                     <>
