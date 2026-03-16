@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IndianRupee, Search, Eye, Filter, Smartphone, ArrowUpDown, CalendarIcon, HandCoins } from "lucide-react";
+import { IndianRupee, Search, Eye, Filter, Smartphone, ArrowUpDown, CalendarIcon, HandCoins, RefreshCw } from "lucide-react";
 import { CollectionRecord } from "@/hooks/useCollections";
 import { useNavigate } from "react-router-dom";
 import { ClickToCall } from "@/components/Contact/ClickToCall";
@@ -37,6 +37,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { RepeatLoanDialog } from "@/components/LOS/RepeatLoanDialog";
+import { useOrgContext } from "@/hooks/useOrgContext";
 
 interface CollectionsTableProps {
   collections: CollectionRecord[];
@@ -58,7 +60,9 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
   const [settleDialogOpen, setSettleDialogOpen] = useState(false);
   const [settleRecord, setSettleRecord] = useState<CollectionRecord | null>(null);
   const [settleNotes, setSettleNotes] = useState("");
+  const [reloanRecord, setReloanRecord] = useState<CollectionRecord | null>(null);
   const { isCollectionEnabled } = useUPICollection();
+  const { orgId } = useOrgContext();
   const pageSize = 25;
 
   const formatCurrency = (amount: number) => {
@@ -348,7 +352,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                     </TableCell>
                     <TableCell className="py-2">
                       <div className="flex items-center justify-center gap-1">
-                        {record.status !== "paid" && record.status !== "settled" && (
+                        {record.status !== "paid" && record.status !== "settled" ? (
                           <>
                             <Button
                               size="sm"
@@ -387,6 +391,16 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                               </Button>
                             )}
                           </>
+                        ) : record.contact_id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs px-2 border-primary text-primary hover:bg-primary/10"
+                            onClick={() => setReloanRecord(record)}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Reloan
+                          </Button>
                         )}
                         <Button
                           size="sm"
@@ -464,6 +478,19 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
         onOpenChange={setUpiDialogOpen}
         record={selectedUpiRecord}
       />
+
+      {/* Repeat Loan Dialog */}
+      {reloanRecord && orgId && reloanRecord.contact_id && (
+        <RepeatLoanDialog
+          open={!!reloanRecord}
+          onOpenChange={(open) => { if (!open) setReloanRecord(null); }}
+          applicationId={reloanRecord.loan_application_id}
+          orgId={orgId}
+          contactId={reloanRecord.contact_id}
+          previousAmount={reloanRecord.loan_amount}
+          previousTenure={reloanRecord.tenure_days}
+        />
+      )}
 
       {/* Settlement Confirmation Dialog */}
       <Dialog open={settleDialogOpen} onOpenChange={setSettleDialogOpen}>
