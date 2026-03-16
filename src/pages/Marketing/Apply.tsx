@@ -39,7 +39,7 @@ export default function Apply() {
                   <Link to="/contact">Get in Touch <ArrowRight className="ml-2 h-4 w-4" /></Link>
                 </Button>
                 <Button asChild variant="outline" size="sm" className="rounded-full">
-                  <a href="tel:+917982012776"><Phone className="mr-2 h-4 w-4" />+91 79-82012776</a>
+                  <a href="tel:+919654485776"><Phone className="mr-2 h-4 w-4" />+91 96544 85776</a>
                 </Button>
               </div>
             </CardContent>

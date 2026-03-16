@@ -87,7 +87,7 @@ export function MarketingFooter() {
             <h3 className="font-heading font-semibold text-base mb-4">Contact Us</h3>
             <div className="space-y-3 text-sm text-white/60">
               <p className="flex items-start gap-2">📍 Paisaa Saarthi, Office no. 110, 1st floor, H-161, BSI Business Park Sec-63, Noida, UP-201301</p>
-              <p>📞 <a href="tel:+917982012776" className="hover:text-white transition-colors">+91 79-82012776</a></p>
+              <p>📞 <a href="tel:+919654485776" className="hover:text-white transition-colors">+91 96544 85776</a></p>
               <p>📧 <a href="mailto:info@paisaasaarthi.com" className="hover:text-white transition-colors">info@paisaasaarthi.com</a></p>
             </div>
           </div>
@@ -104,7 +104,7 @@ export function MarketingFooter() {
             <p>• We never entertain any demand to pay any commission to process a loan. If you come across any such demand, please report it to us immediately.</p>
           </div>
           <p className="mt-4 text-sm text-white/70">
-            📞 Report suspicious activity: <a href="tel:+917982012776" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>+91 79-82012776</a> | 📧 Email: <a href="mailto:info@paisaasaarthi.com" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>info@paisaasaarthi.com</a>
+            📞 Report suspicious activity: <a href="tel:+919654485776" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>+91 96544 85776</a> | 📧 Email: <a href="mailto:info@paisaasaarthi.com" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>info@paisaasaarthi.com</a>
           </p>
         </div>
       </div>
@@ -118,7 +118,7 @@ export function MarketingFooter() {
         <p className="text-sm text-white/70 mt-3 max-w-3xl mx-auto">We at Paisaa Saarthi follow all the directives of RBI for grievance redressal.</p>
         <p className="text-sm text-white/70 mt-2 max-w-3xl mx-auto">We practice responsible lending within the regulatory framework in the best interests of our customers. In case you are not satisfied with our services, our dedicated grievance redressal team is always there to look into the matter and address issues within 5 working days.</p>
         <p className="mt-4 text-sm text-white/70">
-          📞 Call us at: <a href="tel:+917982012776" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>+91 79-82012776</a> | 📧 Email us at: <a href="mailto:info@paisaasaarthi.com" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>info@paisaasaarthi.com</a>
+          📞 Call us at: <a href="tel:+919654485776" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>+91 96544 85776</a> | 📧 Email us at: <a href="mailto:info@paisaasaarthi.com" className="font-semibold" style={{ color: "hsl(var(--gold-500))" }}>info@paisaasaarthi.com</a>
         </p>
       </div>
 

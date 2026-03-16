@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Phone, Mail, MapPin, Clock, MessageCircle, Send } from "lucide-react";
 
 const contactInfo = [
-  { icon: Phone, title: "Phone", details: ["+91 79-82012776"] },
+  { icon: Phone, title: "Phone", details: ["+91 96544 85776"] },
   { icon: Mail, title: "Email", details: ["info@paisaasaarthi.com", "support@paisaasaarthi.com"] },
   { icon: MapPin, title: "Address", details: ["Paisaa Saarthi, Office no. 110 1st floor", "H-161, BSI Business Park Sec-63, Noida, UP-201301"] },
   { icon: Clock, title: "Working Hours", details: ["Monday - Saturday", "9:00 AM - 6:00 PM"] },
@@ -91,7 +91,7 @@ export default function Contact() {
                     </div>
                   </div>
                   <Button asChild size="sm" className="rounded-full" style={{ background: "#25D366" }}>
-                    <a href="https://wa.me/917982012776?text=Hi,%20I%20have%20a%20query%20about%20your%20loan%20services" target="_blank" rel="noopener noreferrer">Chat Now</a>
+                    <a href="https://wa.me/919654485776?text=Hi,%20I%20have%20a%20query%20about%20your%20loan%20services" target="_blank" rel="noopener noreferrer">Chat Now</a>
                   </Button>
                 </CardContent>
               </Card>

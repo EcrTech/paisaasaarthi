@@ -13,7 +13,7 @@ const navLinks = [
   { label: "Contact", to: "/contact" },
 ];
 
-const PHONE_NUMBER = "+91 79-82012776";
+const PHONE_NUMBER = "+91 96544 85776";
 const REFERRAL_LINK = "/apply";
 
 export function MarketingHeader() {

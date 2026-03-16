@@ -1,8 +1,8 @@
 import { MessageCircle, Phone } from "lucide-react";
 
-const WHATSAPP_NUMBER = "917982012776";
+const WHATSAPP_NUMBER = "919654485776";
 const WHATSAPP_TEXT = "Hi, I'm interested in a loan from Paisaa Saarthi";
-const CALL_NUMBER = "+917982012776";
+const CALL_NUMBER = "+919654485776";
 
 export function FloatingButtons() {
   return (

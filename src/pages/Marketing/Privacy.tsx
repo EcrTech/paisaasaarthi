@@ -143,7 +143,7 @@ export default function Privacy() {
               <p className="font-semibold text-foreground mb-2">Data Protection Officer</p>
               <p><strong>Name:</strong> Mr. Abhishek</p>
               <p><a href="mailto:info@PaisaaSaarthi.com" className="underline" style={{ color: "hsl(var(--teal-500))" }}>info@PaisaaSaarthi.com</a></p>
-              <p><a href="tel:+917838409079" className="underline" style={{ color: "hsl(var(--teal-500))" }}>78384 09079</a></p>
+              <p><a href="tel:+919654485776" className="underline" style={{ color: "hsl(var(--teal-500))" }}>96544 85776</a></p>
             </div>
           </div>
 
