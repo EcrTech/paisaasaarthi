@@ -8,10 +8,6 @@ import { CheckCircle, XCircle, Clock, Edit, AlertCircle, Eye, Upload, Video } fr
 import { useToast } from "@/hooks/use-toast";
 import PANVerificationDialog from "./Verification/PANVerificationDialog";
 import AadhaarVerificationDialog from "./Verification/AadhaarVerificationDialog";
-import EmploymentVerificationDialog from "./Verification/EmploymentVerificationDialog";
-import BankAnalysisDialog from "./Verification/BankAnalysisDialog";
-import CreditBureauDialog from "./Verification/CreditBureauDialog";
-
 import BankAccountVerificationDialog from "./Verification/BankAccountVerificationDialog";
 import VerificationDetailsDialog from "./Verification/VerificationDetailsDialog";
 import { VideoKYCRetryButton } from "./Verification/VideoKYCRetryButton";
@@ -49,24 +45,6 @@ const VERIFICATION_TYPES = [
     name: "Bank Account Verification", 
     description: "Verify bank account via penny drop",
     category: "financial"
-  },
-  { 
-    type: "employment", 
-    name: "Employment Verification", 
-    description: "Verify employment via EPFO",
-    category: "employment"
-  },
-  { 
-    type: "bank_statement", 
-    name: "Bank Statement Analysis", 
-    description: "Analyze 6-month bank statements",
-    category: "financial"
-  },
-  { 
-    type: "credit_bureau", 
-    name: "Credit Bureau Check", 
-    description: "Fetch credit score and report",
-    category: "credit"
   },
 ];
 
@@ -353,56 +331,6 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
                           )}
                         </>
                       )}
-                      {verificationType.type === "employment" && (
-                        <>
-                          {(verification.response_data as Record<string, any>).employer_name && (
-                            <div>
-                              <span className="text-muted-foreground">Employer: </span>
-                              <span className="font-medium">{(verification.response_data as Record<string, any>).employer_name}</span>
-                            </div>
-                          )}
-                          {(verification.response_data as Record<string, any>).employment_status && (
-                            <div>
-                              <span className="text-muted-foreground">Status: </span>
-                              <Badge variant={(verification.response_data as Record<string, any>).employment_status === "employed" ? "default" : "secondary"} className="text-xs">
-                                {(verification.response_data as Record<string, any>).employment_status}
-                              </Badge>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      {verificationType.type === "credit_bureau" && (
-                        <>
-                          {(verification.response_data as Record<string, any>).credit_score && (
-                            <div>
-                              <span className="text-muted-foreground">Score: </span>
-                              <span className="font-bold">{(verification.response_data as Record<string, any>).credit_score}</span>
-                            </div>
-                          )}
-                          {(verification.response_data as Record<string, any>).score_range && (
-                            <div>
-                              <span className="text-muted-foreground">Range: </span>
-                              <span className="font-medium">{(verification.response_data as Record<string, any>).score_range}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      {verificationType.type === "bank_statement" && (
-                        <>
-                          {(verification.response_data as Record<string, any>).average_balance && (
-                            <div>
-                              <span className="text-muted-foreground">Avg Balance: </span>
-                              <span className="font-medium">₹{Number((verification.response_data as Record<string, any>).average_balance).toLocaleString()}</span>
-                            </div>
-                          )}
-                          {(verification.response_data as Record<string, any>).monthly_credits && (
-                            <div>
-                              <span className="text-muted-foreground">Monthly Credits: </span>
-                              <span className="font-medium">₹{Number((verification.response_data as Record<string, any>).monthly_credits).toLocaleString()}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
                       {verificationType.type === "video_kyc" && (
                         <>
                           {(verification.response_data as Record<string, any>).face_match_score && (
@@ -470,16 +398,6 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
                         />
                       )}
                     </>
-                  ) : verificationType.type === "credit_bureau" ? (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => setSelectedVerification({ type: verificationType.type, data: verification })}
-                      className="bg-primary hover:bg-primary/90"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      {(verification?.response_data as Record<string, unknown>)?.is_live_fetch ? "View Report" : "Credit Bureau Check"}
-                    </Button>
                   ) : (
                     <Button
                       variant={status === "pending" ? "default" : "outline"}
@@ -577,39 +495,6 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
 
       {selectedVerification?.type === "bank_account" && (
         <BankAccountVerificationDialog
-          open={true}
-          onClose={() => setSelectedVerification(null)}
-          applicationId={applicationId}
-          orgId={orgId}
-          applicant={primaryApplicant}
-          existingVerification={selectedVerification.data}
-        />
-      )}
-
-      {selectedVerification?.type === "employment" && (
-        <EmploymentVerificationDialog
-          open={true}
-          onClose={() => setSelectedVerification(null)}
-          applicationId={applicationId}
-          orgId={orgId}
-          applicant={primaryApplicant}
-          existingVerification={selectedVerification.data}
-        />
-      )}
-
-      {selectedVerification?.type === "bank_statement" && (
-        <BankAnalysisDialog
-          open={true}
-          onClose={() => setSelectedVerification(null)}
-          applicationId={applicationId}
-          orgId={orgId}
-          applicant={primaryApplicant}
-          existingVerification={selectedVerification.data}
-        />
-      )}
-
-      {selectedVerification?.type === "credit_bureau" && (
-        <CreditBureauDialog
           open={true}
           onClose={() => setSelectedVerification(null)}
           applicationId={applicationId}

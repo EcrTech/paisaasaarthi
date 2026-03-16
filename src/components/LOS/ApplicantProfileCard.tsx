@@ -9,10 +9,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
-import { User, FileText, CheckCircle, Eye, Loader2, Video, CreditCard, MessageSquare, Mail, Phone } from "lucide-react";
+import { User, FileText, CheckCircle, Eye, Loader2, Video, MessageSquare, Mail, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-import CreditBureauDialog from "@/components/LOS/Verification/CreditBureauDialog";
 import { VideoKYCRetryButton } from "@/components/LOS/Verification/VideoKYCRetryButton";
 import { VideoKYCViewDialog } from "@/components/LOS/Verification/VideoKYCViewDialog";
 import { WhatsAppChatDialog } from "@/components/LOS/Relationships/WhatsAppChatDialog";
@@ -251,7 +250,6 @@ export function ApplicantProfileCard({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerImage, setViewerImage] = useState<{ url: string; name: string; isPdf: boolean } | null>(null);
   
-  const [cibilDialogOpen, setCibilDialogOpen] = useState(false);
   const [showRetryLinkDialog, setShowRetryLinkDialog] = useState(false);
   const [videoKYCViewOpen, setVideoKYCViewOpen] = useState(false);
   const [videoKYCRecordingUrl, setVideoKYCRecordingUrl] = useState<string | null>(null);
@@ -338,7 +336,6 @@ export function ApplicantProfileCard({
 
   const keyDocs = [panDoc, aadhaarDoc].filter(Boolean) as Document[];
   const videoKycVerification = getVerification('video_kyc');
-  const cibilVerification = getVerification('credit_bureau');
 
   // Handle Video KYC card click - show view dialog if completed, otherwise show retry link dialog
   const handleVideoKYCClick = async () => {
@@ -389,10 +386,40 @@ export function ApplicantProfileCard({
                   <User className="h-8 w-8 text-muted-foreground" />
                 )}
               </div>
-              {/* Name below photo */}
-              <div className="text-center max-w-[120px]">
+              {/* Name and details below photo */}
+              <div className="text-center max-w-[160px]">
                 <h3 className="text-sm font-semibold leading-tight">{applicantName}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">{panNumber || ''}</p>
+                {mobile && (
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1">
+                    <Phone className="h-3 w-3" />
+                    {mobile}
+                  </p>
+                )}
+                {applicant.email && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1 truncate max-w-full cursor-default">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{applicant.email}</span>
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent>{applicant.email}</TooltipContent>
+                  </Tooltip>
+                )}
+                {(applicant as any).office_email && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1 truncate max-w-full cursor-default">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{(applicant as any).office_email}</span>
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent>{(applicant as any).office_email} (Office)</TooltipContent>
+                  </Tooltip>
+                )}
+                {panNumber && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{panNumber}</p>
+                )}
               </div>
               
               {/* Communication Icons */}
@@ -498,14 +525,6 @@ export function ApplicantProfileCard({
                     onClick={handleVideoKYCClick}
                   />
 
-                  {/* CIBIL Report */}
-                  <VerificationCard 
-                    type="credit_bureau"
-                    label="CIBIL Report"
-                    icon={CreditCard}
-                    verification={cibilVerification}
-                    onClick={() => setCibilDialogOpen(true)}
-                  />
                 </>
               )}
             </div>
@@ -562,16 +581,6 @@ export function ApplicantProfileCard({
         orgId={orgId}
         applicantName={applicantName}
         applicantPhone={mobile}
-      />
-
-      {/* CIBIL Dialog */}
-      <CreditBureauDialog
-        open={cibilDialogOpen}
-        onClose={() => setCibilDialogOpen(false)}
-        applicationId={applicationId}
-        orgId={orgId}
-        applicant={applicant}
-        existingVerification={verifications.find(v => v.verification_type === 'credit_bureau')}
       />
 
       {/* WhatsApp Chat Dialog */}

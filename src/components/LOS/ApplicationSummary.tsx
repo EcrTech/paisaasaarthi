@@ -74,8 +74,6 @@ export function ApplicationSummary({ applicationId, orgId }: ApplicationSummaryP
 
   const primaryApplicant = application.loan_applicants?.[0];
   const sanction = application.loan_sanctions?.[0];
-  const creditBureau = verifications?.find((v: any) => v.verification_type === "credit_bureau");
-
   const formatCurrency = (amount: number | null) => {
     if (!amount) return "N/A";
     return new Intl.NumberFormat("en-IN", {
@@ -221,37 +219,6 @@ export function ApplicationSummary({ applicationId, orgId }: ApplicationSummaryP
                 <div>
                   <label className="text-xs text-muted-foreground">Bank</label>
                   <p className="text-sm">{primaryApplicant.bank_name || "N/A"}</p>
-                </div>
-              </div>
-            </div>
-            <Separator />
-          </>
-        )}
-
-        {/* Credit Bureau */}
-        {creditBureau && (
-          <>
-            <div>
-              <h4 className="text-sm font-semibold flex items-center gap-2 mb-3">
-                <FileText className="h-4 w-4" />
-                Credit Bureau Check
-              </h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
-                <div>
-                  <label className="text-xs text-muted-foreground">Bureau</label>
-                  <p className="text-sm uppercase">{(creditBureau.response_data as any)?.bureau_type || "N/A"}</p>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Credit Score</label>
-                  <p className="text-sm font-semibold">{(creditBureau.response_data as any)?.credit_score || "N/A"}</p>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Active Accounts</label>
-                  <p className="text-sm">{(creditBureau.response_data as any)?.active_accounts || 0}</p>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Total Outstanding</label>
-                  <p className="text-sm">{formatCurrency((creditBureau.response_data as any)?.total_outstanding)}</p>
                 </div>
               </div>
             </div>

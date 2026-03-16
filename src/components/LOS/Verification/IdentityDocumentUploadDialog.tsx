@@ -70,14 +70,13 @@ export function IdentityDocumentUploadDialog({
         .from("loan_documents")
         .insert({
           loan_application_id: applicationId,
-          org_id: orgId,
           document_type: documentType,
           document_category: "identity",
           file_name: file.name,
           file_path: filePath,
-          file_type: file.type,
+          mime_type: file.type,
           file_size: file.size,
-          status: "uploaded",
+          upload_status: "uploaded",
         });
 
       if (insertError) throw insertError;
