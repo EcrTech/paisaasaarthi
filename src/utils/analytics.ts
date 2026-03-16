@@ -8,7 +8,15 @@
 // Constants
 export const GOOGLE_ADS_ID = 'AW-17871680753';
 export const META_PIXEL_ID = '2454408188319767';
-export const GOOGLE_CONVERSION_VIDEO_KYC = 'AW-17871680753/O8oJCNz54u8bEPHp8MlC';
+
+// Google Ads Conversion IDs (4-step funnel)
+export const GOOGLE_CONVERSION_SIGNUP = 'AW-17871680753/CxRBCL6C2u8bEPHp8MlC';        // Step 1: Sign-up
+export const GOOGLE_CONVERSION_ADD_TO_CART = 'AW-17871680753/4Bc0CJqkzu8bEPHp8MlC';    // Step 2: Add to Cart (PAN verified)
+export const GOOGLE_CONVERSION_BEGIN_CHECKOUT = 'AW-17871680753/LIRBCNXA1e8bEPHp8MlC'; // Step 3: Begin Checkout (Aadhaar/DigiLocker)
+export const GOOGLE_CONVERSION_PURCHASE = 'AW-17871680753/O8oJCNz54u8bEPHp8MlC';       // Step 4: Purchase (Video KYC + submission)
+
+// Legacy alias
+export const GOOGLE_CONVERSION_VIDEO_KYC = GOOGLE_CONVERSION_PURCHASE;
 
 /**
  * Safe wrapper for gtag - ensures it's available before calling
@@ -154,12 +162,7 @@ export function trackLoanConversion(
  */
 export function trackVideoKYCComplete(applicationId: string): void {
   console.log('[Analytics] Video KYC complete:', applicationId);
-  
-  // Google Ads primary conversion
-  trackGoogleConversion(GOOGLE_CONVERSION_VIDEO_KYC, {
-    transactionId: applicationId,
-  });
-  
+
   // Meta CompleteRegistration
   trackMetaEvent('CompleteRegistration', {
     content_name: 'Video KYC',
@@ -174,13 +177,18 @@ export function trackVideoKYCComplete(applicationId: string): void {
  */
 export function trackPANVerified(applicationId?: string): void {
   console.log('[Analytics] PAN verified:', applicationId);
-  
+
+  // Google Ads Add to Cart conversion (Step 2)
+  trackGoogleConversion(GOOGLE_CONVERSION_ADD_TO_CART, {
+    transactionId: applicationId,
+  });
+
   // Google Analytics event
   gtag('event', 'pan_verified', {
     event_category: 'Verification',
     event_label: 'PAN',
   });
-  
+
   // Meta Lead event
   trackMetaEvent('Lead', {
     content_name: 'PAN Verification',
@@ -193,13 +201,16 @@ export function trackPANVerified(applicationId?: string): void {
  */
 export function trackAadhaarInitiated(): void {
   console.log('[Analytics] Aadhaar verification initiated');
-  
+
+  // Google Ads Begin Checkout conversion (Step 3)
+  trackGoogleConversion(GOOGLE_CONVERSION_BEGIN_CHECKOUT);
+
   // Google Analytics event
   gtag('event', 'aadhaar_initiated', {
     event_category: 'Verification',
     event_label: 'DigiLocker',
   });
-  
+
   // Meta InitiateCheckout (verification flow)
   trackMetaEvent('InitiateCheckout', {
     content_name: 'Aadhaar DigiLocker',
@@ -254,6 +265,12 @@ export function trackReferralStep1Lead(
 ): void {
   console.log('[Analytics] Referral Step 1 Lead:', { loanAmount, utmParams });
 
+  // Google Ads Sign-up conversion (Step 1)
+  trackGoogleConversion(GOOGLE_CONVERSION_SIGNUP, {
+    value: loanAmount ?? 1.0,
+    currency: 'INR',
+  });
+
   // Google Analytics event
   gtag('event', 'step1_lead_form', {
     event_category: 'Loan Application',
@@ -262,6 +279,13 @@ export function trackReferralStep1Lead(
     utm_source: utmParams?.utm_source || undefined,
     utm_medium: utmParams?.utm_medium || undefined,
     utm_campaign: utmParams?.utm_campaign || undefined,
+  });
+
+  // Meta SubmitApplication event (Step 1)
+  trackMetaEvent('SubmitApplication', {
+    content_name: 'Referral Loan Application',
+    value: loanAmount,
+    currency: 'INR',
   });
 
   // Meta Lead event
