@@ -115,24 +115,14 @@ Deno.serve(async (req) => {
     console.log('Request method:', req.method);
     console.log('Timestamp:', new Date().toISOString());
 
-    // Check for Authorization header
     const authHeader = req.headers.get('Authorization');
-    console.log('Auth Header Status:', {
-      present: !!authHeader,
-      preview: authHeader ? `${authHeader.substring(0, 20)}...` : 'MISSING',
-      length: authHeader?.length || 0
-    });
-
-    if (!authHeader) {
-      throw new Error('No Authorization header provided');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Extract JWT token (remove "Bearer " prefix)
-    const token = authHeader.replace('Bearer ', '');
-    console.log('Extracted JWT token (length):', token.length);
-
-    // Create Supabase client
-    console.log('Creating Supabase client with ANON_KEY...');
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -145,32 +135,18 @@ Deno.serve(async (req) => {
         },
       }
     );
-    console.log('✓ Supabase client created successfully');
 
-    // Authenticate user by passing token directly to getUser()
-    console.log('Attempting user authentication with JWT token...');
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
 
-    console.log('User Auth Result:', {
-      success: !!user,
-      userId: user?.id || 'N/A',
-      userEmail: user?.email || 'N/A',
-      hasError: !!userError,
-      errorCode: userError?.code || 'N/A',
-      errorMessage: userError?.message || 'N/A',
-      errorStatus: userError?.status || 'N/A',
-    });
-
-    if (userError) {
-      console.error('Auth Error Details:', JSON.stringify(userError, null, 2));
-      throw new Error(`Authentication failed: ${userError.message}`);
+    if (userError || !user) {
+      console.error('Auth failed:', userError?.message);
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    if (!user) {
-      throw new Error('No user found in session');
-    }
-
-    console.log('✓ User authenticated:', user.email);
+    console.log('User authenticated:', user.email);
 
     const body: SendMessageRequest = await req.json();
     const { contactId: providedContactId, phoneNumber, templateId, templateName, templateVariables, message, mediaType, mediaUrl, mediaCaption } = body;

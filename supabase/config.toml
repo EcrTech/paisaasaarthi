@@ -110,3 +110,9 @@ verify_jwt = false
 
 [functions.bulk-lead-upload]
 verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false
+
+[functions.send-whatsapp-message]
+verify_jwt = false

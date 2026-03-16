@@ -155,8 +155,42 @@ serve(async (req) => {
       });
     }
 
-    // Update verification record in database if we have applicationId (original or resolved)
-    if (resolvedApplicationId && resolvedOrgId) {
+    // VerifiedU wraps aadhaar response in aadhaar_Data (note capital D)
+    const details = responseData.aadhaar_Data || responseData.data || responseData;
+
+    // SAFEGUARD: Verify the returned unique_request_number matches what we requested
+    // VerifiedU has been observed returning data for a different request under the same company account
+    const returnedRequestNumber = details.unique_request_number;
+    const requestNumberMismatch = returnedRequestNumber && returnedRequestNumber !== uniqueRequestNumber;
+
+    if (requestNumberMismatch) {
+      console.error("CRITICAL: VerifiedU returned data for a DIFFERENT request number!", {
+        requested: uniqueRequestNumber,
+        returned: returnedRequestNumber,
+        returned_name: details.name,
+      });
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Data mismatch detected",
+        message: "The verification service returned data for a different request. This may be a temporary issue. Please try again or contact support.",
+        still_processing: false,
+        mismatch: true,
+        debug: {
+          requested_number: uniqueRequestNumber,
+          returned_number: returnedRequestNumber,
+        }
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check if verification is still processing at VerifiedU
+    const isStillProcessing = details.status === "in_process" || details.status === "initiated";
+
+    // Only update DB when verification is actually complete (not still in_process)
+    if (resolvedApplicationId && resolvedOrgId && !isStillProcessing) {
       // Find and update the existing verification record
       const { data: existingVerification } = await adminClient
         .from("loan_verifications")
@@ -169,15 +203,22 @@ serve(async (req) => {
         .single();
 
       const verificationData = {
-        status: responseData.is_valid ? "success" : "failed",
+        status: details.is_valid ? "success" : "failed",
         response_data: {
-          aadhaar_uid: responseData.aadhaar_uid,
-          name: responseData.name,
-          gender: responseData.gender,
-          dob: responseData.dob,
-          addresses: responseData.addresses,
-          is_valid: responseData.is_valid,
-          verified_address: responseData.addresses?.[0]?.combined || "",
+          aadhaar_uid: details.aadhaar_uid,
+          name: details.name,
+          gender: details.gender,
+          dob: details.dob || details.date_of_birth_masked,
+          addresses: details.addresses,
+          is_valid: details.is_valid,
+          verified_address: (() => {
+            const a = details.addresses?.[0];
+            if (!a) return "";
+            if (a.combined) return a.combined;
+            const ca = a.complete_address;
+            if (!ca) return "";
+            return [ca.house, ca.street, ca.landmark, ca.loc, ca.vtc, ca.subdist, ca.dist, ca.state, ca.pc].filter(Boolean).join(", ");
+          })(),
         },
         verified_at: new Date().toISOString(),
       };
@@ -198,75 +239,65 @@ serve(async (req) => {
       }
 
       // Update applicant record with verified DOB, gender, and ADDRESS from Aadhaar
-      if (responseData.dob || responseData.gender || responseData.addresses?.length) {
+      if (details.dob || details.date_of_birth_masked || details.gender || details.addresses?.length) {
         const updateData: Record<string, unknown> = {};
-        
-        if (responseData.dob) {
-          updateData.dob = responseData.dob;
+
+        // Only use DOB if it's an actual date, not a masked value like "******1995"
+        const rawDob = details.dob || details.date_of_birth_masked;
+        if (rawDob && !rawDob.includes("*")) {
+          updateData.dob = rawDob;
         }
-        if (responseData.gender) {
-          updateData.gender = responseData.gender;
+        if (details.gender) {
+          updateData.gender = details.gender;
         }
-        
-        // Sync verified address to current_address JSONB field
-        // Documented format: addresses[].complete_address { house, street, landmark, loc, po, dist, subdist, vtc, pc, state, country }
-        if (responseData.addresses?.length > 0) {
-          const addrEntry = responseData.addresses[0];
-          // Address fields are nested under complete_address per API docs
+
+        if (details.addresses?.length > 0) {
+          const addrEntry = details.addresses[0];
           const addr = addrEntry.complete_address || addrEntry;
 
-          // Build line1: house + street + landmark
           const line1Parts = [addr.house, addr.street, addr.landmark].filter(Boolean);
           const line1 = line1Parts.join(', ') || '';
-
-          // Build line2: locality/loc + vtc + subdist
           const line2Parts = [addr.loc || addr.locality, addr.vtc, addr.subdist].filter(Boolean);
           const line2 = line2Parts.join(', ') || '';
-
-          // Extract city (dist), state, and pincode (pc)
           const city = addr.dist || '';
           const state = addr.state || '';
           const pincode = addr.pc || '';
-          
-          updateData.current_address = {
-            line1: line1,
-            line2: line2,
-            city: city,
-            state: state,
-            pincode: pincode
-          };
-          
-          console.log("Extracted address from Aadhaar:", {
-            line1, line2, city, state, pincode
-          });
+
+          updateData.current_address = { line1, line2, city, state, pincode };
+          console.log("Extracted address from Aadhaar:", { line1, line2, city, state, pincode });
         }
-        
+
         const { error: applicantUpdateError } = await adminClient
           .from("loan_applicants")
           .update(updateData)
           .eq("loan_application_id", resolvedApplicationId)
           .eq("applicant_type", "primary");
-        
+
         if (applicantUpdateError) {
           console.warn("Failed to update applicant from Aadhaar:", applicantUpdateError);
         } else {
           console.log("Updated applicant from Aadhaar verification:", updateData);
         }
       }
+    } else if (isStillProcessing) {
+      console.log("Aadhaar verification still in_process at VerifiedU, not updating DB status");
     }
 
     return new Response(JSON.stringify({
       success: true,
       data: {
-        aadhaar_uid: responseData.aadhaar_uid,
-        name: responseData.name,
-        gender: responseData.gender,
-        dob: responseData.dob,
-        addresses: responseData.addresses,
-        is_valid: responseData.is_valid,
+        aadhaar_uid: details.aadhaar_uid,
+        name: details.name,
+        gender: details.gender,
+        dob: details.dob || details.date_of_birth_masked,
+        addresses: details.addresses,
+        is_valid: details.is_valid,
+        status: details.status,
       },
+      still_processing: isStillProcessing,
       applicationId: resolvedApplicationId,
       orgId: resolvedOrgId,
+      debug: { raw_response: responseData },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

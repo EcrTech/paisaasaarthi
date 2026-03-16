@@ -97,17 +97,16 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     return <Badge variant="secondary" className="text-xs">Pending</Badge>;
   };
 
-  // Calculate adjusted due based on due date (capped at due date)
+  // Calculate total due on the due date (full tenure interest)
   const getAdjustedDue = (record: CollectionRecord) => {
     if (!record.disbursement_date || !record.interest_rate) {
       return record.total_emi;
     }
     const disbDate = new Date(record.disbursement_date);
-    const today = new Date();
-    const refDate = today < new Date(record.due_date) ? today : new Date(record.due_date);
-    const actualDays = Math.max(1, Math.round((refDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
-    return record.principal + adjustedInterest;
+    const dueDate = new Date(record.due_date);
+    const totalDays = Math.max(1, Math.round((dueDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const totalInterest = Math.round(record.principal * (record.interest_rate / 100) * totalDays);
+    return record.principal + totalInterest;
   };
 
   // Calculate due as of today (no cap at due date)

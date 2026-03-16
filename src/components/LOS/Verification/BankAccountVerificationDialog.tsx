@@ -73,10 +73,9 @@ export default function BankAccountVerificationDialog({
     enabled: !!applicationId,
   });
 
-  // Auto-populate from applicant data, then overlay with OCR data
+  // Auto-populate from applicant data (fill empty fields only)
   useEffect(() => {
     if (existingVerification) return;
-    // Use the dedicated query result, or fall back to the applicant prop
     const source = primaryApplicant || applicant;
     if (source && (source.bank_account_number || source.bank_ifsc_code)) {
       setFormData(prev => ({
@@ -90,9 +89,9 @@ export default function BankAccountVerificationDialog({
     }
   }, [primaryApplicant, applicant, existingVerification]);
 
-  // Pre-fill from bank statement OCR data
+  // Pre-fill from bank statement OCR data (fill empty fields, even with existing verification)
   useEffect(() => {
-    if (bankStatementOcr && !existingVerification) {
+    if (bankStatementOcr) {
       setFormData(prev => ({
         ...prev,
         account_number: prev.account_number || bankStatementOcr.account_number || "",
@@ -102,7 +101,7 @@ export default function BankAccountVerificationDialog({
         branch_name: prev.branch_name || bankStatementOcr.branch_name || "",
       }));
     }
-  }, [bankStatementOcr, existingVerification]);
+  }, [bankStatementOcr]);
 
   // Verify Bank Account via VerifiedU API
   const verifyMutation = useMutation({

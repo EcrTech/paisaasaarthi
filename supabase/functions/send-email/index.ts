@@ -70,24 +70,14 @@ serve(async (req) => {
     console.log('Request method:', req.method);
     console.log('Timestamp:', new Date().toISOString());
 
-    // Check for Authorization header
     const authHeader = req.headers.get("Authorization");
-    console.log('Auth Header Status:', {
-      present: !!authHeader,
-      preview: authHeader ? `${authHeader.substring(0, 20)}...` : 'MISSING',
-      length: authHeader?.length || 0
-    });
-
-    if (!authHeader) {
-      throw new Error('No Authorization header provided');
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Extract JWT token (remove "Bearer " prefix)
-    const token = authHeader.replace('Bearer ', '');
-    console.log('Extracted JWT token (length):', token.length);
-
-    // Create Supabase client
-    console.log('Creating Supabase client with ANON_KEY...');
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
@@ -100,35 +90,18 @@ serve(async (req) => {
         },
       }
     );
-    console.log('✓ Supabase client created successfully');
 
-    // Authenticate user by passing token directly to getUser()
-    console.log('Attempting user authentication with JWT token...');
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
 
-    console.log('User Auth Result:', {
-      success: !!user,
-      userId: user?.id || 'N/A',
-      userEmail: user?.email || 'N/A',
-      hasError: !!authError,
-      errorCode: authError?.code || 'N/A',
-      errorMessage: authError?.message || 'N/A',
-      errorStatus: authError?.status || 'N/A',
-    });
-
-    if (authError) {
-      console.error('Auth Error Details:', JSON.stringify(authError, null, 2));
-      throw new Error(`Authentication failed: ${authError.message}`);
+    if (authError || !user) {
+      console.error('Auth failed:', authError?.message);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    if (!user) {
-      throw new Error('No user found in session');
-    }
-
-    console.log('✓ User authenticated:', user.email);
+    console.log('User authenticated:', user.email);
 
     const { 
       to, 
@@ -225,9 +198,7 @@ serve(async (req) => {
     // Use verified domain as sender, user's email as reply-to
     const fromEmail = `info@${sendingDomain}`;
     const replyToEmail = user.email || fromEmail;
-    const fromName = profile.first_name 
-      ? `${profile.first_name} ${profile.last_name || ''}`.trim()
-      : (user.email || "User");
+    const fromName = "Paisaa Saarthi";
 
     console.log("Sending email to:", to, "from:", fromEmail, "reply-to:", replyToEmail);
 

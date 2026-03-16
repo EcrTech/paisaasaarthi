@@ -74,31 +74,56 @@ serve(async (req) => {
     });
 
     const responseData = await response.json();
-    console.log("[verifiedu-public-aadhaar-details] VerifiedU response received, is_valid:", responseData.is_valid);
+    console.log("[verifiedu-public-aadhaar-details] VerifiedU response received:", JSON.stringify(responseData));
 
     if (!response.ok) {
       console.error("[verifiedu-public-aadhaar-details] API error:", responseData);
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         success: false,
         error: responseData.message || "Failed to fetch Aadhaar details",
-        details: responseData 
+        details: responseData
       }), {
         status: response.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // VerifiedU wraps aadhaar response in aadhaar_Data (note capital D)
+    const details = responseData.aadhaar_Data || responseData.data || responseData;
+
+    // SAFEGUARD: Verify returned request number matches what we requested
+    const returnedRequestNumber = details.unique_request_number;
+    if (returnedRequestNumber && returnedRequestNumber !== uniqueRequestNumber) {
+      console.error("[verifiedu-public-aadhaar-details] CRITICAL: Request number mismatch!", {
+        requested: uniqueRequestNumber,
+        returned: returnedRequestNumber,
+      });
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Data mismatch detected",
+        message: "The verification service returned data for a different request. Please try again.",
+        mismatch: true,
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const isStillProcessing = details.status === "in_process" || details.status === "initiated";
+
     // Return structured Aadhaar data
     return new Response(JSON.stringify({
       success: true,
       data: {
-        aadhaar_uid: responseData.aadhaar_uid,
-        name: responseData.name,
-        gender: responseData.gender,
-        dob: responseData.dob,
-        addresses: responseData.addresses,
-        is_valid: responseData.is_valid,
+        aadhaar_uid: details.aadhaar_uid,
+        name: details.name,
+        gender: details.gender,
+        dob: details.dob || details.date_of_birth_masked,
+        addresses: details.addresses,
+        is_valid: details.is_valid,
+        status: details.status,
       },
+      still_processing: isStillProcessing,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
