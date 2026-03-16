@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,23 @@ export default function PANVerificationDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Fetch PAN card OCR data from uploaded document
+  const { data: panDocOcr } = useQuery({
+    queryKey: ["pan-doc-ocr", applicationId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("loan_documents")
+        .select("ocr_data")
+        .eq("loan_application_id", applicationId)
+        .eq("document_type", "pan_card")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data?.ocr_data as Record<string, any> | null;
+    },
+    enabled: !!applicationId,
+  });
+
   const [formData, setFormData] = useState({
     pan_number: existingVerification?.request_data?.pan_number || applicant?.pan_number || "",
     name_on_pan: existingVerification?.response_data?.name_on_pan || existingVerification?.response_data?.name || "",
@@ -38,6 +55,17 @@ export default function PANVerificationDialog({
     status: existingVerification?.status || "success",
     remarks: existingVerification?.remarks || "",
   });
+
+  // Pre-fill from OCR data if no existing verification
+  useEffect(() => {
+    if (panDocOcr && !existingVerification) {
+      setFormData(prev => ({
+        ...prev,
+        pan_number: prev.pan_number || panDocOcr.pan_number || "",
+        name_on_pan: prev.name_on_pan || panDocOcr.name || "",
+      }));
+    }
+  }, [panDocOcr, existingVerification]);
 
   // Verify PAN via VerifiedU API (no separate auth needed)
   const verifyMutation = useMutation({
