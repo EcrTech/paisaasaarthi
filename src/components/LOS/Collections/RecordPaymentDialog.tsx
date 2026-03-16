@@ -208,7 +208,7 @@ export function RecordPaymentDialog({
                   id="amount"
                   type="number"
                   step="0.01"
-                  placeholder={remaining.toString()}
+                  placeholder={adjustedRemaining.toString()}
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   className="pl-9"

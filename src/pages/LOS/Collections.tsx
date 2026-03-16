@@ -13,7 +13,7 @@ import DashboardLayout from "@/components/Layout/DashboardLayout";
 
 export default function Collections() {
   const { data: stats, isLoading: statsLoading } = useEMIStats();
-  const { collections, isLoading: collectionsLoading, recordPayment, isRecording } = useCollections();
+  const { collections, isLoading: collectionsLoading, recordPayment, isRecording, settleLoan, isSettling } = useCollections();
   const [selectedRecord, setSelectedRecord] = useState<CollectionRecord | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
@@ -117,9 +117,11 @@ export default function Collections() {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-0">
-          <CollectionsTable 
-            collections={collections} 
-            onRecordPayment={handleRecordPayment} 
+          <CollectionsTable
+            collections={collections}
+            onRecordPayment={handleRecordPayment}
+            onSettleLoan={settleLoan}
+            isSettling={isSettling}
           />
         </CardContent>
       </Card>

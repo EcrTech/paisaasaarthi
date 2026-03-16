@@ -157,10 +157,45 @@ export function useCollections() {
     },
   });
 
+  const settleLoanMutation = useMutation({
+    mutationFn: async (params: {
+      scheduleId: string;
+      settlementAmount: number;
+      settlementDate: string;
+      notes?: string;
+    }) => {
+      // Update schedule to settled status
+      const { error } = await supabase
+        .from("loan_repayment_schedule")
+        .update({
+          status: "settled",
+          amount_paid: params.settlementAmount,
+          payment_date: params.settlementDate,
+        })
+        .eq("id", params.scheduleId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["collections"] });
+      queryClient.invalidateQueries({ queryKey: ["emi-stats"] });
+      toast({ title: "Loan settled successfully" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error settling loan",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return {
     collections: collections || [],
     isLoading,
     recordPayment: recordPaymentMutation.mutate,
     isRecording: recordPaymentMutation.isPending,
+    settleLoan: settleLoanMutation.mutate,
+    isSettling: settleLoanMutation.isPending,
   };
 }

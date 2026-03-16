@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IndianRupee, Search, Eye, Filter, Smartphone, ArrowUpDown, CalendarIcon } from "lucide-react";
+import { IndianRupee, Search, Eye, Filter, Smartphone, ArrowUpDown, CalendarIcon, HandCoins } from "lucide-react";
 import { CollectionRecord } from "@/hooks/useCollections";
 import { useNavigate } from "react-router-dom";
 import { ClickToCall } from "@/components/Contact/ClickToCall";
@@ -26,15 +26,26 @@ import { UPICollectionDialog } from "./UPICollectionDialog";
 import { useUPICollection } from "@/hooks/useUPICollection";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
 interface CollectionsTableProps {
   collections: CollectionRecord[];
   onRecordPayment: (record: CollectionRecord) => void;
+  onSettleLoan: (params: { scheduleId: string; settlementAmount: number; settlementDate: string; notes?: string }) => void;
+  isSettling: boolean;
 }
 
-export function CollectionsTable({ collections, onRecordPayment }: CollectionsTableProps) {
+export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, isSettling }: CollectionsTableProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -44,6 +55,9 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
   const [currentPage, setCurrentPage] = useState(1);
   const [upiDialogOpen, setUpiDialogOpen] = useState(false);
   const [selectedUpiRecord, setSelectedUpiRecord] = useState<CollectionRecord | null>(null);
+  const [settleDialogOpen, setSettleDialogOpen] = useState(false);
+  const [settleRecord, setSettleRecord] = useState<CollectionRecord | null>(null);
+  const [settleNotes, setSettleNotes] = useState("");
   const { isCollectionEnabled } = useUPICollection();
   const pageSize = 25;
 
@@ -70,6 +84,9 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
     
     if (status === "paid") {
       return <Badge className="bg-green-100 text-green-800 text-xs">Paid</Badge>;
+    }
+    if (status === "settled") {
+      return <Badge className="bg-purple-100 text-purple-800 text-xs">Settled</Badge>;
     }
     if (status === "partially_paid") {
       return <Badge className="bg-blue-100 text-blue-800 text-xs">Partial</Badge>;
@@ -189,6 +206,7 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
             <SelectItem value="overdue">Overdue</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
             <SelectItem value="partially_paid">Partial</SelectItem>
+            <SelectItem value="settled">Settled</SelectItem>
           </SelectContent>
         </Select>
 
@@ -315,7 +333,7 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
                     </TableCell>
                     <TableCell className="py-2">
                       <div className="flex items-center justify-center gap-1">
-                        {record.status !== "paid" && (
+                        {record.status !== "paid" && record.status !== "settled" && (
                           <>
                             <Button
                               size="sm"
@@ -325,6 +343,19 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
                             >
                               <IndianRupee className="h-3 w-3 mr-1" />
                               Pay
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs px-2"
+                              onClick={() => {
+                                setSettleRecord(record);
+                                setSettleNotes("");
+                                setSettleDialogOpen(true);
+                              }}
+                            >
+                              <HandCoins className="h-3 w-3 mr-1" />
+                              Settle
                             </Button>
                             {isCollectionEnabled && (
                               <Button
@@ -418,6 +449,80 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
         onOpenChange={setUpiDialogOpen}
         record={selectedUpiRecord}
       />
+
+      {/* Settlement Confirmation Dialog */}
+      <Dialog open={settleDialogOpen} onOpenChange={setSettleDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HandCoins className="h-5 w-5" />
+              Settle Loan
+            </DialogTitle>
+            <DialogDescription>
+              Mark this loan as settled. The outstanding balance will be recorded as the settlement amount.
+            </DialogDescription>
+          </DialogHeader>
+          {settleRecord && (
+            <div className="space-y-4 py-2">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Application:</span>
+                  <span className="font-medium">{settleRecord.application_number}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Applicant:</span>
+                  <span className="font-medium">{settleRecord.applicant_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Due:</span>
+                  <span className="font-medium">{formatCurrency(getAdjustedDue(settleRecord))}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Already Paid:</span>
+                  <span className="font-medium text-green-600">{formatCurrency(settleRecord.amount_paid)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-1 mt-1">
+                  <span className="text-muted-foreground font-medium">Settlement Amount:</span>
+                  <span className="font-bold text-primary">
+                    {formatCurrency(Math.max(0, getAdjustedDue(settleRecord) - settleRecord.amount_paid))}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="settleNotes">Notes (Optional)</Label>
+                <Textarea
+                  id="settleNotes"
+                  placeholder="Settlement reason or remarks..."
+                  value={settleNotes}
+                  onChange={(e) => setSettleNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettleDialogOpen(false)} disabled={isSettling}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!settleRecord) return;
+                const settlementAmount = Math.max(0, getAdjustedDue(settleRecord) - settleRecord.amount_paid);
+                onSettleLoan({
+                  scheduleId: settleRecord.id,
+                  settlementAmount,
+                  settlementDate: new Date().toISOString().split("T")[0],
+                  notes: settleNotes || undefined,
+                });
+                setSettleDialogOpen(false);
+              }}
+              disabled={isSettling}
+            >
+              {isSettling ? "Settling..." : "Confirm Settlement"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
