@@ -106,7 +106,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     const today = new Date();
     const refDate = today < new Date(record.due_date) ? today : new Date(record.due_date);
     const actualDays = Math.max(1, Math.round((refDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays / 365);
+    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
     return record.principal + adjustedInterest;
   };
 

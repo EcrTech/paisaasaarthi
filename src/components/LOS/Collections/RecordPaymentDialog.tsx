@@ -65,7 +65,7 @@ export function RecordPaymentDialog({
     const actualDays = Math.max(1, Math.round((pmtDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
 
     // Interest = Principal × Rate% × Days / 365
-    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays / 365);
+    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
     const adjustedTotal = record.principal + adjustedInterest;
 
     return { adjustedInterest, adjustedTotal, actualDays };
