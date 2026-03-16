@@ -209,21 +209,24 @@ serve(async (req) => {
         }
         
         // Sync verified address to current_address JSONB field
+        // Documented format: addresses[].complete_address { house, street, landmark, loc, po, dist, subdist, vtc, pc, state, country }
         if (responseData.addresses?.length > 0) {
-          const addr = responseData.addresses[0];
-          
+          const addrEntry = responseData.addresses[0];
+          // Address fields are nested under complete_address per API docs
+          const addr = addrEntry.complete_address || addrEntry;
+
           // Build line1: house + street + landmark
           const line1Parts = [addr.house, addr.street, addr.landmark].filter(Boolean);
           const line1 = line1Parts.join(', ') || '';
-          
-          // Build line2: locality + vtc + subdist
-          const line2Parts = [addr.locality, addr.vtc, addr.subdist].filter(Boolean);
+
+          // Build line2: locality/loc + vtc + subdist
+          const line2Parts = [addr.loc || addr.locality, addr.vtc, addr.subdist].filter(Boolean);
           const line2 = line2Parts.join(', ') || '';
-          
-          // Extract city (dist), state, and pincode (pc) - MANDATORY fields
+
+          // Extract city (dist), state, and pincode (pc)
           const city = addr.dist || '';
-          const state = addr.state || '';          // MANDATORY
-          const pincode = addr.pc || '';           // MANDATORY
+          const state = addr.state || '';
+          const pincode = addr.pc || '';
           
           updateData.current_address = {
             line1: line1,

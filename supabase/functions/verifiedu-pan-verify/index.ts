@@ -58,7 +58,6 @@ serve(async (req) => {
 
     if (!verifieduToken || !companyId || !baseUrl) {
       console.log("VerifiedU credentials not configured, using mock mode");
-      // Mock response for testing
       const mockResponse = {
         success: true,
         data: {
@@ -77,7 +76,11 @@ serve(async (req) => {
       });
     }
 
+    console.log(`[PAN Verify] Calling VerifiedU API at ${baseUrl}/api/verifiedu/VerifyPAN for PAN: ${panNumber.toUpperCase().slice(0, 5)}*****`);
+
     // Call VerifiedU API
+    // Documented format: { "PanNumber": "PJUPS4536C" }
+    // Expected response: { "success": true, "data": { "id", "status", "pan_number", "dob", "name", "is_valid", ... } }
     const response = await fetch(`${baseUrl}/api/verifiedu/VerifyPAN`, {
       method: "POST",
       headers: {
@@ -90,20 +93,74 @@ serve(async (req) => {
       }),
     });
 
-    const responseData = await response.json();
-    console.log("VerifiedU PAN response:", JSON.stringify(responseData));
+    const responseText = await response.text();
+    console.log(`[PAN Verify] HTTP ${response.status} | Response: ${responseText}`);
 
+    let responseData: any;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      console.error("[PAN Verify] Failed to parse response as JSON");
+      return new Response(JSON.stringify({
+        error: "Invalid response from VerifiedU API",
+        debug: { raw_response: responseText, http_status: response.status },
+      }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check for HTTP-level errors
     if (!response.ok) {
-      return new Response(JSON.stringify({ 
-        error: responseData.message || "PAN verification failed",
-        details: responseData 
+      console.error(`[PAN Verify] API returned HTTP ${response.status}:`, JSON.stringify(responseData));
+      return new Response(JSON.stringify({
+        error: responseData.message || responseData.Message || `VerifiedU API returned HTTP ${response.status}`,
+        details: responseData,
       }), {
         status: response.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Save verification to database if applicationId is provided
+    // Check for API-level errors (HTTP 200 but success: false)
+    if (responseData.success === false) {
+      console.error("[PAN Verify] API returned success: false:", JSON.stringify(responseData));
+
+      // Still save to DB as failed
+      if (applicationId && orgId) {
+        const adminClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        await adminClient.from("loan_verifications").insert({
+          loan_application_id: applicationId,
+          verification_type: "pan",
+          verification_source: "verifiedu",
+          status: "failed",
+          request_data: { pan_number: panNumber.toUpperCase() },
+          response_data: responseData,
+          verified_at: new Date().toISOString(),
+        });
+      }
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: responseData.message || responseData.Message || "PAN verification failed at VerifiedU",
+        debug: { raw_response: responseData },
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Success path — extract data from documented structure
+    const panData = responseData.data || {};
+    const isValid = panData.is_valid === true;
+    const panName = panData.name || "";
+    const panDob = panData.dob || "";
+
+    console.log(`[PAN Verify] Result — is_valid: ${isValid}, name: ${panName}, status: ${panData.status}`);
+
+    // Save verification to database
     if (applicationId && orgId) {
       const adminClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -114,28 +171,26 @@ serve(async (req) => {
         loan_application_id: applicationId,
         verification_type: "pan",
         verification_source: "verifiedu",
-        status: responseData.data?.is_valid ? "success" : "failed",
+        status: isValid ? "success" : "failed",
         request_data: { pan_number: panNumber.toUpperCase() },
-        response_data: responseData.data,
+        response_data: panData,
         verified_at: new Date().toISOString(),
       });
 
       if (insertError) {
-        console.error("Failed to save PAN verification:", insertError);
+        console.error("[PAN Verify] Failed to save verification:", insertError);
       }
 
       // Update applicant DOB if we have a valid date from PAN verification
-      if (responseData.data?.dob) {
+      if (panDob && isValid) {
         const { error: applicantUpdateError } = await adminClient
           .from("loan_applicants")
-          .update({ dob: responseData.data.dob })
+          .update({ dob: panDob })
           .eq("loan_application_id", applicationId)
           .eq("applicant_type", "primary");
-        
+
         if (applicantUpdateError) {
-          console.warn("Failed to update applicant DOB from PAN:", applicantUpdateError);
-        } else {
-          console.log("Updated applicant DOB from PAN verification:", responseData.data.dob);
+          console.warn("[PAN Verify] Failed to update applicant DOB:", applicantUpdateError);
         }
       }
     }
@@ -143,12 +198,12 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       data: {
-        id: responseData.data?.id,
-        status: responseData.data?.status,
-        pan_number: responseData.data?.pan_number,
-        dob: responseData.data?.dob,
-        name: responseData.data?.name,
-        is_valid: responseData.data?.is_valid,
+        id: panData.id,
+        status: panData.status,
+        pan_number: panData.pan_number || panNumber.toUpperCase(),
+        dob: panDob,
+        name: panName,
+        is_valid: isValid,
       },
       debug: {
         raw_request: { url: `${baseUrl}/api/verifiedu/VerifyPAN`, body: { PanNumber: panNumber.toUpperCase() } },
@@ -160,9 +215,9 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error("Error in verifiedu-pan-verify:", error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Internal server error" 
+    console.error("[PAN Verify] Unhandled error:", error);
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : "Internal server error"
     }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
