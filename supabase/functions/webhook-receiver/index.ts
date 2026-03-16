@@ -195,12 +195,14 @@ async function handleContactInsertion(
     throw new Error('Validation failed: ' + errors.join(', '));
   }
 
-  // Check for duplicate by phone
+  // Check for duplicate by phone (flexible match: 10-digit, +91, 91 prefix variants)
+  const webhookPhone10 = (mappedContact.phone || '').replace(/\D/g, '').slice(-10);
   const { data: existingContact } = await supabase
     .from('contacts')
     .select('id, first_name, last_name, email')
     .eq('org_id', form.org_id)
-    .eq('phone', mappedContact.phone)
+    .or(`phone.eq.${webhookPhone10},phone.eq.+91${webhookPhone10},phone.eq.91${webhookPhone10}`)
+    .limit(1)
     .maybeSingle();
 
   let contactId: string;

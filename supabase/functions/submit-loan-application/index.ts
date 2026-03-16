@@ -37,6 +37,11 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
+// Normalize phone to last 10 digits for consistent dedup across channels
+function normalizePhone(phone: string): string {
+  return (phone || '').replace(/\D/g, '').slice(-10);
+}
+
 function validatePAN(pan: string): boolean {
   return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan?.toUpperCase() || '');
 }
@@ -51,6 +56,11 @@ function validatePhone(phone: string): boolean {
 
 function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '');
+}
+
+// Flexible phone lookup filter: matches 10-digit, +91, and 91 prefix variants
+function phoneMatchFilter(phone10: string): string {
+  return `phone.eq.${phone10},phone.eq.+91${phone10},phone.eq.91${phone10}`;
 }
 
 async function generateApplicationNumber(supabase: any): Promise<string> {
@@ -219,12 +229,14 @@ Deno.serve(async (req) => {
       let applicationNumber: string = '';
 
       // If no draftApplicationId provided, look for existing draft by phone number to prevent duplicates
-      if (!draftApplicationId && applicant.phone) {
+      const normalizedPhone = normalizePhone(applicant.phone);
+      if (!draftApplicationId && normalizedPhone) {
         const { data: existingContact } = await supabase
           .from('contacts')
           .select('id')
           .eq('org_id', formConfig.org_id)
-          .eq('phone', applicant.phone)
+          .or(phoneMatchFilter(normalizedPhone))
+          .limit(1)
           .maybeSingle();
 
         if (existingContact) {
@@ -322,7 +334,8 @@ Deno.serve(async (req) => {
           .from('contacts')
           .select('id')
           .eq('org_id', formConfig.org_id)
-          .eq('phone', applicant.phone)
+          .or(phoneMatchFilter(normalizedPhone))
+          .limit(1)
           .maybeSingle();
 
         if (existingContactForDedup) {
@@ -405,12 +418,13 @@ Deno.serve(async (req) => {
       let contactId = earlyLeadContactId || null;
 
       if (!contactId) {
-        // Check for existing contact by phone
+        // Check for existing contact by phone (flexible match across formats)
         const { data: existingContact } = await supabase
           .from('contacts')
           .select('id')
           .eq('org_id', formConfig.org_id)
-          .eq('phone', applicant.phone)
+          .or(phoneMatchFilter(normalizedPhone))
+          .limit(1)
           .maybeSingle();
 
         contactId = existingContact?.id;
@@ -782,11 +796,13 @@ Deno.serve(async (req) => {
     const lastName = nameParts.slice(1).join(' ') || '';
 
     // Create a contact/lead for this applicant (marked as "New Lead")
+    const publicPhone10 = normalizePhone(body.personalDetails.mobile);
     const { data: existingContact } = await supabase
       .from('contacts')
       .select('id')
       .eq('org_id', formConfig.org_id)
-      .eq('phone', body.personalDetails.mobile)
+      .or(phoneMatchFilter(publicPhone10))
+      .limit(1)
       .maybeSingle();
 
     if (!existingContact) {

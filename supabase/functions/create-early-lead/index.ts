@@ -5,6 +5,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Normalize phone to last 10 digits for consistent dedup
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '').slice(-10);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -16,7 +21,8 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { name, phone, loanAmount, referralCode, source, geolocation } = body;
+    const { name, loanAmount, referralCode, source, geolocation } = body;
+    const phone = normalizePhone(body.phone || '');
 
     console.log('[create-early-lead] Processing early lead:', { phone, referralCode, loanAmount });
 
@@ -53,11 +59,14 @@ Deno.serve(async (req) => {
     const lastName = nameParts.slice(1).join(' ') || '';
 
     // Check for existing contact with same phone (deduplication)
+    // Use flexible matching: exact, with +91 prefix, or last-10-digit suffix
+    const phone10 = phone.slice(-10);
     const { data: existingContact } = await supabase
       .from('contacts')
       .select('id')
       .eq('org_id', orgId)
-      .eq('phone', phone)
+      .or(`phone.eq.${phone10},phone.eq.+91${phone10},phone.eq.91${phone10}`)
+      .limit(1)
       .maybeSingle();
 
     let contactId = existingContact?.id;

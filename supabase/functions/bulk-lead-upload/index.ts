@@ -112,12 +112,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Dedup by phone
+        // Dedup by phone (flexible match: 10-digit, +91, 91 prefix variants)
+        const phone10 = phone.slice(-10);
         const { data: existing } = await supabase
           .from('contacts')
           .select('id')
           .eq('org_id', orgId)
-          .eq('phone', phone)
+          .or(`phone.eq.${phone10},phone.eq.+91${phone10},phone.eq.91${phone10}`)
+          .limit(1)
           .maybeSingle();
 
         let contactId: string;
