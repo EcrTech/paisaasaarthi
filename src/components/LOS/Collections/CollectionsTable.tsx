@@ -97,7 +97,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     return <Badge variant="secondary" className="text-xs">Pending</Badge>;
   };
 
-  // Calculate adjusted due based on today (or due date if in the past)
+  // Calculate adjusted due based on due date (capped at due date)
   const getAdjustedDue = (record: CollectionRecord) => {
     if (!record.disbursement_date || !record.interest_rate) {
       return record.total_emi;
@@ -106,6 +106,18 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     const today = new Date();
     const refDate = today < new Date(record.due_date) ? today : new Date(record.due_date);
     const actualDays = Math.max(1, Math.round((refDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
+    return record.principal + adjustedInterest;
+  };
+
+  // Calculate due as of today (no cap at due date)
+  const getDueToday = (record: CollectionRecord) => {
+    if (!record.disbursement_date || !record.interest_rate) {
+      return record.total_emi;
+    }
+    const disbDate = new Date(record.disbursement_date);
+    const today = new Date();
+    const actualDays = Math.max(1, Math.round((today.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
     const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
     return record.principal + adjustedInterest;
   };
@@ -271,6 +283,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                     <ArrowUpDown className="h-3 w-3" />
                   </div>
                 </TableHead>
+                <TableHead className="py-2 text-xs font-semibold text-right">Due Today</TableHead>
                 <TableHead className="py-2 text-xs font-semibold text-right">Due Amount</TableHead>
                 <TableHead className="py-2 text-xs font-semibold text-right">Paid</TableHead>
                 <TableHead className="py-2 text-xs font-semibold text-right">Balance</TableHead>
@@ -282,7 +295,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
             <TableBody>
               {paginatedCollections.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                     No records found
                   </TableCell>
                 </TableRow>
@@ -308,6 +321,9 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                       </div>
                     </TableCell>
                     <TableCell className="py-2 text-xs">{formatDate(record.due_date)}</TableCell>
+                    <TableCell className="py-2 text-xs text-right font-medium text-orange-600">
+                      {formatCurrency(getDueToday(record))}
+                    </TableCell>
                     <TableCell className="py-2 text-xs text-right font-medium">
                       {(() => {
                         const adjusted = getAdjustedDue(record);
