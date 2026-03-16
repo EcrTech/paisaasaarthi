@@ -54,22 +54,41 @@ export function RecordPaymentDialog({
     new Date().toISOString().split("T")[0]
   );
 
+  // Recalculate interest pro-rata based on payment date
+  const getAdjustedDue = () => {
+    if (!record || !record.disbursement_date || !record.interest_rate) {
+      return { adjustedInterest: record?.interest || 0, adjustedTotal: record?.total_emi || 0 };
+    }
+
+    const disbDate = new Date(record.disbursement_date);
+    const pmtDate = new Date(paymentDate);
+    const actualDays = Math.max(1, Math.round((pmtDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+    // Interest = Principal × Rate% × Days / 365
+    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays / 365);
+    const adjustedTotal = record.principal + adjustedInterest;
+
+    return { adjustedInterest, adjustedTotal, actualDays };
+  };
+
+  const { adjustedInterest, adjustedTotal, actualDays } = getAdjustedDue();
+  const adjustedRemaining = Math.max(0, adjustedTotal - record!?.amount_paid || 0);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!record) return;
 
     const amount = parseFloat(paymentAmount) || 0;
-    const remaining = record.total_emi - record.amount_paid;
-    const principalRatio = record.principal / record.total_emi;
-    const interestRatio = record.interest / record.total_emi;
+    const principalPaid = Math.min(amount, record.principal - (record.amount_paid > adjustedInterest ? record.amount_paid - adjustedInterest : 0));
+    const interestPaid = amount - principalPaid;
 
     onSubmit({
       scheduleId: record.id,
       applicationId: record.loan_application_id,
       paymentDate,
       paymentAmount: amount,
-      principalPaid: amount * principalRatio,
-      interestPaid: amount * interestRatio,
+      principalPaid: Math.max(0, principalPaid),
+      interestPaid: Math.max(0, interestPaid),
       lateFeePaid: 0,
       paymentMethod,
       transactionReference: transactionRef || undefined,
@@ -93,8 +112,6 @@ export function RecordPaymentDialog({
 
   if (!record) return null;
 
-  const remaining = record.total_emi - record.amount_paid;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -117,8 +134,24 @@ export function RecordPaymentDialog({
                 <span className="font-medium">{record.applicant_name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Due Amount:</span>
-                <span className="font-medium">{formatCurrency(record.total_emi)}</span>
+                <span className="text-muted-foreground">Principal:</span>
+                <span className="font-medium">{formatCurrency(record.principal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">
+                  Interest ({actualDays || record.tenure_days} days @ {record.interest_rate}%):
+                </span>
+                <span className="font-medium">{formatCurrency(adjustedInterest)}</span>
+              </div>
+              {adjustedTotal !== record.total_emi && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Original due (full tenure):</span>
+                  <span className="line-through text-muted-foreground">{formatCurrency(record.total_emi)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Adjusted Due:</span>
+                <span className="font-medium">{formatCurrency(adjustedTotal)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Already Paid:</span>
@@ -126,8 +159,13 @@ export function RecordPaymentDialog({
               </div>
               <div className="flex justify-between border-t pt-1 mt-1">
                 <span className="text-muted-foreground font-medium">Remaining:</span>
-                <span className="font-bold text-primary">{formatCurrency(remaining)}</span>
+                <span className="font-bold text-primary">{formatCurrency(adjustedRemaining)}</span>
               </div>
+              {adjustedRemaining <= 0 && (
+                <div className="text-xs text-green-600 font-medium mt-1">
+                  Loan fully settled based on payment date
+                </div>
+              )}
             </div>
 
             {/* Payment Date */}
@@ -177,15 +215,17 @@ export function RecordPaymentDialog({
                   required
                 />
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-xs"
-                onClick={() => setPaymentAmount(remaining.toString())}
-              >
-                Fill full amount ({formatCurrency(remaining)})
-              </Button>
+              {adjustedRemaining > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => setPaymentAmount(adjustedRemaining.toString())}
+                >
+                  Fill full amount ({formatCurrency(adjustedRemaining)})
+                </Button>
+              )}
             </div>
 
             {/* Transaction Reference */}

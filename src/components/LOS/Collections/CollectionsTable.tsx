@@ -80,6 +80,19 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
     return <Badge variant="secondary" className="text-xs">Pending</Badge>;
   };
 
+  // Calculate adjusted due based on today (or due date if in the past)
+  const getAdjustedDue = (record: CollectionRecord) => {
+    if (!record.disbursement_date || !record.interest_rate) {
+      return record.total_emi;
+    }
+    const disbDate = new Date(record.disbursement_date);
+    const today = new Date();
+    const refDate = today < new Date(record.due_date) ? today : new Date(record.due_date);
+    const actualDays = Math.max(1, Math.round((refDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays / 365);
+    return record.principal + adjustedInterest;
+  };
+
   const filteredCollections = useMemo(() => {
     let filtered = collections;
 
@@ -278,13 +291,21 @@ export function CollectionsTable({ collections, onRecordPayment }: CollectionsTa
                     </TableCell>
                     <TableCell className="py-2 text-xs">{formatDate(record.due_date)}</TableCell>
                     <TableCell className="py-2 text-xs text-right font-medium">
-                      {formatCurrency(record.total_emi)}
+                      {(() => {
+                        const adjusted = getAdjustedDue(record);
+                        return adjusted !== record.total_emi ? (
+                          <div>
+                            <span>{formatCurrency(adjusted)}</span>
+                            <div className="text-[10px] text-muted-foreground line-through">{formatCurrency(record.total_emi)}</div>
+                          </div>
+                        ) : formatCurrency(record.total_emi);
+                      })()}
                     </TableCell>
                     <TableCell className="py-2 text-xs text-right text-green-600">
                       {formatCurrency(record.amount_paid)}
                     </TableCell>
                     <TableCell className="py-2 text-xs text-right font-medium text-primary">
-                      {formatCurrency(record.total_emi - record.amount_paid)}
+                      {formatCurrency(Math.max(0, getAdjustedDue(record) - record.amount_paid))}
                     </TableCell>
                     <TableCell className="py-2 text-xs text-muted-foreground">
                       {record.utr_number || "—"}

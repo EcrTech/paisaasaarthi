@@ -18,6 +18,8 @@ export interface CollectionRecord {
   status: string;
   loan_amount: number;
   disbursement_date: string;
+  interest_rate: number;
+  tenure_days: number;
   contact_id?: string;
   utr_number?: string;
 }
@@ -46,9 +48,11 @@ export function useCollections() {
             application_number,
             loan_id,
             requested_amount,
+            interest_rate,
+            tenure_days,
             contact_id,
             loan_applicants(first_name, last_name, mobile),
-            loan_disbursements(disbursement_date)
+            loan_disbursements(disbursement_date, disbursement_amount)
           ),
           loan_payments(transaction_reference)
         `)
@@ -78,8 +82,10 @@ export function useCollections() {
           interest: item.interest_amount,
           amount_paid: item.amount_paid || 0,
           status: item.status,
-          loan_amount: item.loan_applications?.requested_amount || 0,
+          loan_amount: disbursement?.disbursement_amount || item.loan_applications?.requested_amount || 0,
           disbursement_date: disbursement?.disbursement_date || "",
+          interest_rate: item.loan_applications?.interest_rate || 0,
+          tenure_days: item.loan_applications?.tenure_days || 0,
           contact_id: item.loan_applications?.contact_id,
           utr_number: payment?.transaction_reference || undefined,
         };
