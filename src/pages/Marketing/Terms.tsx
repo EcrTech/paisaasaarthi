@@ -116,7 +116,7 @@ export default function Terms() {
           <h2 className="font-heading text-2xl font-bold">Ready to Apply for a Loan?</h2>
           <p className="mt-2 text-white/70">By applying, you agree to these Terms & Conditions and our Privacy Policy</p>
           <Button asChild size="lg" className="mt-6 rounded-full px-10 font-semibold" style={{ background: "hsl(var(--gold-500))", color: "#000" }}>
-            <Link to="/apply">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            <Link to="/apply/ref/REF-MIUHLOTL">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
           </Button>
         </div>
       </div>

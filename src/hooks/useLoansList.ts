@@ -4,6 +4,7 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 
 export interface LoanListItem {
   id: string;
+  contactId: string | null;
   applicationId: string;
   applicationNumber: string;
   loanId: string;
@@ -40,6 +41,7 @@ export function useLoansList(searchTerm?: string) {
         .from("loan_applications")
         .select(`
           id,
+          contact_id,
           loan_id,
           application_number,
           current_stage,
@@ -86,11 +88,13 @@ export function useLoansList(searchTerm?: string) {
       if (error) throw error;
 
       let loans: LoanListItem[] = (data || [])
-        .filter((app: any) => app.current_stage === 'disbursed')
+        .filter((app: any) => ['disbursed', 'closed'].includes(app.current_stage))
         .map((app: any) => {
           const applicant = Array.isArray(app.loan_applicants) ? app.loan_applicants[0] : app.loan_applicants;
           const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions[0] : app.loan_sanctions;
-          const disbursement = Array.isArray(app.loan_disbursements) ? app.loan_disbursements[0] : app.loan_disbursements;
+          const disbursements = Array.isArray(app.loan_disbursements) ? app.loan_disbursements : (app.loan_disbursements ? [app.loan_disbursements] : []);
+          const firstDisbursement = disbursements[0];
+          const totalDisbursedAmount = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
           const emiSchedule = app.loan_repayment_schedule || [];
           const payments = app.loan_payments || [];
 
@@ -141,12 +145,13 @@ export function useLoansList(searchTerm?: string) {
 
           return {
             id: app.id,
+            contactId: app.contact_id || null,
             applicationId: app.id,
             applicationNumber: app.application_number,
             loanId: app.loan_id,
-            disbursedAmount: disbursement?.disbursement_amount || 0,
+            disbursedAmount: totalDisbursedAmount,
             sanctionedAmount: sanction?.sanctioned_amount || 0,
-            disbursementDate: disbursement?.disbursement_date,
+            disbursementDate: firstDisbursement?.disbursement_date,
             tenureDays: app.tenure_days,
             applicantName: fullName,
             panNumber: applicant?.pan_number || "N/A",

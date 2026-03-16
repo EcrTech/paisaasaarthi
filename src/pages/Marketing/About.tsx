@@ -91,7 +91,7 @@ export default function About() {
           <h2 className="font-heading text-3xl font-bold">Join 10,000+ Happy Customers</h2>
           <p className="mt-4 text-white/70">Experience the Paisaa Saarthi difference. Quick loans, transparent terms, and a team that truly cares about your financial well-being.</p>
           <Button asChild size="lg" className="mt-8 rounded-full px-10 font-semibold" style={{ background: "hsl(var(--gold-500))", color: "#000" }}>
-            <Link to="/apply">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            <Link to="/apply/ref/REF-MIUHLOTL">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
           </Button>
         </div>
       </section>

@@ -54,7 +54,7 @@ export default function Services() {
             ))}
           </div>
           <Button asChild size="lg" className="mt-8 rounded-full px-8 font-semibold" style={{ background: "hsl(var(--gold-500))", color: "#000" }}>
-            <Link to="/apply">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            <Link to="/apply/ref/REF-MIUHLOTL">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
           </Button>
         </div>
       </section>
@@ -96,7 +96,7 @@ export default function Services() {
             <h3 className="font-heading font-bold text-foreground">Check Your Eligibility</h3>
             <p className="text-sm text-muted-foreground mt-1">It takes just 2 minutes and won't affect your credit score</p>
             <Button asChild size="lg" className="mt-4 rounded-full px-8 font-semibold" style={{ background: "hsl(var(--teal-500))" }}>
-              <Link to="/apply">Check Now</Link>
+              <Link to="/apply/ref/REF-MIUHLOTL">Check Now</Link>
             </Button>
           </div>
         </div>

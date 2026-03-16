@@ -55,7 +55,7 @@ export default function HowToApply() {
 
           <div className="text-center mt-10">
             <Button asChild size="lg" className="rounded-full px-10 font-semibold" style={{ background: "hsl(var(--gold-500))", color: "#000" }}>
-              <Link to="/apply">Start Application <ArrowRight className="ml-2 h-5 w-5" /></Link>
+              <Link to="/apply/ref/REF-MIUHLOTL">Start Application <ArrowRight className="ml-2 h-5 w-5" /></Link>
             </Button>
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function HowToApply() {
           <h2 className="font-heading text-3xl font-bold text-foreground">Ready to Get Started?</h2>
           <p className="mt-3 text-muted-foreground">Apply now and get your loan approved within 24 hours. No lengthy paperwork, no hidden charges.</p>
           <Button asChild size="lg" className="mt-8 rounded-full px-10 font-semibold" style={{ background: "hsl(var(--teal-500))" }}>
-            <Link to="/apply">Apply for Loan <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            <Link to="/apply/ref/REF-MIUHLOTL">Apply for Loan <ArrowRight className="ml-2 h-5 w-5" /></Link>
           </Button>
         </div>
       </section>

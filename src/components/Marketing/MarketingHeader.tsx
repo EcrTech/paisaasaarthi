@@ -14,7 +14,7 @@ const navLinks = [
 ];
 
 const PHONE_NUMBER = "+91 96544 85776";
-const REFERRAL_LINK = "/apply";
+const REFERRAL_LINK = "/apply/ref/REF-MIUHLOTL";
 
 export function MarketingHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);

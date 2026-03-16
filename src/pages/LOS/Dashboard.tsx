@@ -30,70 +30,86 @@ export default function LOSDashboard() {
     queryKey: ["los-stats", orgId],
     queryFn: async () => {
       const today = new Date().toISOString().split("T")[0];
-      
-      // Execute ALL queries in parallel - massive performance improvement
+
+      // Helper to fetch all rows with pagination (PostgREST caps at 1000 per request)
+      const fetchAllRows = async (buildQuery: () => any) => {
+        const PAGE_SIZE = 1000;
+        let allData: any[] = [];
+        let from = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+          if (error) throw error;
+          allData = allData.concat(data || []);
+          hasMore = (data?.length || 0) === PAGE_SIZE;
+          from += PAGE_SIZE;
+        }
+        return allData;
+      };
+
+      // Lifecycle priority: each contact counted once in their highest stage
+      const STAGE_PRIORITY: Record<string, number> = {
+        disbursed: 6,
+        disbursement_pending: 5,
+        sanctioned: 5,
+        approval_pending: 4,
+        credit_assessment: 3,
+        field_verification: 3,
+        document_collection: 3,
+        application_login: 3,
+        rejected: 1,
+        cancelled: 1,
+        closed: 7,
+      };
+
+      // Dashboard card mapping from lifecycle priority
+      const priorityToCard = (priority: number) => {
+        if (priority >= 7) return "disbursed";    // closed = fully done
+        if (priority >= 6) return "disbursed";
+        if (priority >= 4) return "pendingApproval"; // approval_pending, sanctioned, disbursement_pending
+        if (priority >= 3) return "inProgress";      // application stages
+        return "other";                              // rejected, cancelled
+      };
+
+      // Execute ALL queries in parallel
       const [
-        totalAppsRes,
-        pendingApprovalRes,
-        disbursedRes,
-        inProgressRes,
-        approvedAppsRes,
-        disbursementsRes,
+        allAppsData,
+        approvedAppsData,
+        disbursementsData,
         pendingEMIsRes,
         overdueEMIsRes,
         negativeAreasRes,
         applicantsWithAddressRes
       ] = await Promise.all([
-        // Total unique leads (count distinct contacts with applications, excluding drafts)
-        supabase
-          .from("loan_applications")
-          .select("contact_id")
-          .eq("org_id", orgId)
-          .neq("status", "draft")
-          .not("contact_id", "is", null),
-        
-        // Pending approval (applications awaiting approval or disbursement)
-        supabase
-          .from("loan_applications")
-          .select("*", { count: "exact", head: true })
-          .eq("org_id", orgId)
-          .in("current_stage", ["approval_pending", "sanctioned", "disbursement_pending"]),
-        
-        // Disbursed
-        supabase
-          .from("loan_applications")
-          .select("*", { count: "exact", head: true })
-          .eq("org_id", orgId)
-          .eq("current_stage", "disbursed"),
-        
-        // In progress (applications in initial stages)
-        supabase
-          .from("loan_applications")
-          .select("*", { count: "exact", head: true })
-          .eq("org_id", orgId)
-          .in("current_stage", [
-            "application_login",
-            "document_collection",
-            "field_verification",
-            "credit_assessment",
-            "approval_pending",
-          ]),
-        
-        // Total sanctioned/approved amount (includes approved + disbursed applications)
-        supabase
-          .from("loan_applications")
-          .select("approved_amount")
-          .eq("org_id", orgId)
-          .not("approved_amount", "is", null)
-          .in("status", ["approved", "disbursed"]),
+        // All non-draft apps with contact_id and current_stage (paginated)
+        fetchAllRows(() =>
+          supabase
+            .from("loan_applications")
+            .select("contact_id, current_stage")
+            .eq("org_id", orgId)
+            .neq("status", "draft")
+            .not("contact_id", "is", null)
+        ),
 
-        // Total disbursed amount (filtered by org via loan_applications join)
-        supabase
-          .from("loan_disbursements")
-          .select("disbursement_amount, loan_applications!inner(org_id)")
-          .eq("status", "completed")
-          .eq("loan_applications.org_id", orgId),
-        
+        // Total sanctioned/approved amount (paginated)
+        fetchAllRows(() =>
+          supabase
+            .from("loan_applications")
+            .select("approved_amount")
+            .eq("org_id", orgId)
+            .not("approved_amount", "is", null)
+            .in("status", ["approved", "disbursed", "closed"])
+        ),
+
+        // Total disbursed amount (paginated)
+        fetchAllRows(() =>
+          supabase
+            .from("loan_disbursements")
+            .select("disbursement_amount, loan_applications!inner(org_id)")
+            .eq("status", "completed")
+            .eq("loan_applications.org_id", orgId)
+        ),
+
         // Pending EMIs
         supabase
           .from("loan_repayment_schedule")
@@ -107,7 +123,7 @@ export default function LOSDashboard() {
           .select("*", { count: "exact", head: true })
           .eq("org_id", orgId)
           .or(`status.eq.overdue,and(status.eq.pending,due_date.lt.${today})`),
-        
+
         // Negative area pin codes
         supabase
           .from("loan_negative_areas")
@@ -115,36 +131,58 @@ export default function LOSDashboard() {
           .eq("org_id", orgId)
           .eq("area_type", "pincode")
           .eq("is_active", true),
-        
+
         // Applicants with address to check against negative areas
-        supabase
-          .from("loan_applicants")
-          .select("loan_application_id, current_address")
-          .not("current_address", "is", null)
+        fetchAllRows(() =>
+          supabase
+            .from("loan_applicants")
+            .select("loan_application_id, current_address")
+            .not("current_address", "is", null)
+        ),
       ]);
 
-      const totalSanctioned = approvedAppsRes.data?.reduce(
-        (sum, app) => sum + (app.approved_amount || 0),
-        0
-      ) || 0;
+      // Deduplicate: each contact counted once at their highest lifecycle stage
+      const contactHighest = new Map<string, number>();
+      for (const app of allAppsData) {
+        const priority = STAGE_PRIORITY[app.current_stage] || 2;
+        const current = contactHighest.get(app.contact_id) || 0;
+        if (priority > current) {
+          contactHighest.set(app.contact_id, priority);
+        }
+      }
 
-      const totalDisbursedAmount = disbursementsRes.data?.reduce(
-        (sum, d) => sum + d.disbursement_amount,
+      let pendingApproval = 0;
+      let inProgress = 0;
+      let disbursed = 0;
+      for (const priority of contactHighest.values()) {
+        const card = priorityToCard(priority);
+        if (card === "disbursed") disbursed++;
+        else if (card === "pendingApproval") pendingApproval++;
+        else if (card === "inProgress") inProgress++;
+      }
+
+      const totalSanctioned = approvedAppsData.reduce(
+        (sum: number, app: any) => sum + (app.approved_amount || 0),
         0
-      ) || 0;
+      );
+
+      const totalDisbursedAmount = disbursementsData.reduce(
+        (sum: number, d: any) => sum + d.disbursement_amount,
+        0
+      );
 
       // Count applications from negative areas
       const negativePincodes = new Set(negativeAreasRes.data?.map(a => a.area_value) || []);
-      const negativeAreaApps = applicantsWithAddressRes.data?.filter(a => {
+      const negativeAreaApps = applicantsWithAddressRes.filter((a: any) => {
         const pincode = (a.current_address as any)?.pincode;
         return pincode && negativePincodes.has(pincode);
       }).length || 0;
 
       return {
-        totalApps: new Set(totalAppsRes.data?.map((a: any) => a.contact_id)).size,
-        pendingApproval: pendingApprovalRes.count || 0,
-        disbursed: disbursedRes.count || 0,
-        inProgress: inProgressRes.count || 0,
+        totalApps: contactHighest.size,
+        pendingApproval,
+        disbursed,
+        inProgress,
         totalSanctioned,
         totalDisbursedAmount,
         pendingEMIs: pendingEMIsRes.count || 0,

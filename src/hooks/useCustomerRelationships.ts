@@ -2,27 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
 
-export interface EMIRecord {
-  id: string;
-  emi_number: number;
-  principal_amount: number;
-  interest_amount: number;
-  total_emi: number;
-  due_date: string;
-  status: string;
-  payment_date: string | null;
-  amount_paid: number | null;
-}
-
-export interface PaymentRecord {
-  id: string;
-  payment_amount: number;
-  payment_date: string;
-  payment_mode: string;
-  reference_number: string | null;
-  status: string;
-}
-
 export interface LoanApplicationSummary {
   applicationId: string;
   loanId: string | null;
@@ -34,82 +13,24 @@ export interface LoanApplicationSummary {
   disbursedAmount: number | null;
   tenureDays: number;
   createdAt: string;
-  sanctionDate: string | null;
   disbursementDate: string | null;
-  emiSchedule: EMIRecord[];
-  payments: PaymentRecord[];
-  totalPaid: number;
-  totalOutstanding: number;
-}
-
-export interface CustomerDocument {
-  id: string;
-  documentType: string;
-  documentCategory: string;
-  filePath: string;
-  fileName: string;
-  verificationStatus: string;
 }
 
 export interface CustomerRelationship {
   customerId: string;
+  name: string;
+  mobile: string;
+  email: string | null;
   panNumber: string;
   aadhaarNumber: string;
-  mobile: string;
-  name: string;
-  email: string | null;
-  photoUrl: string | null;
+  totalApplications: number;
   totalLoans: number;
-  activeLoans: number;
-  totalDisbursed: number;
-  totalPaid: number;
+  disbursedAmount: number;
   outstandingAmount: number;
-  paymentScore: 'excellent' | 'good' | 'fair' | 'poor';
-  lastApplicationDate: string;
+  delayedPayments: number;
+  maxDaysDelayed: number;
+  lastActivityDate: string;
   applications: LoanApplicationSummary[];
-  documents: CustomerDocument[];
-}
-
-interface CustomerGroup {
-  pan_number: string;
-  mobile: string;
-  first_name: string;
-  middle_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  aadhaar_number: string | null;
-}
-
-function calculatePaymentScore(applications: LoanApplicationSummary[]): 'excellent' | 'good' | 'fair' | 'poor' {
-  let totalEmis = 0;
-  let paidOnTime = 0;
-  let paidLate = 0;
-  let overdue = 0;
-
-  applications.forEach(app => {
-    app.emiSchedule.forEach(emi => {
-      totalEmis++;
-      if (emi.status === 'paid') {
-        if (emi.payment_date && new Date(emi.payment_date) <= new Date(emi.due_date)) {
-          paidOnTime++;
-        } else {
-          paidLate++;
-        }
-      } else if (emi.status === 'overdue') {
-        overdue++;
-      }
-    });
-  });
-
-  if (totalEmis === 0) return 'good'; // No history yet
-
-  const onTimeRatio = paidOnTime / totalEmis;
-  const overdueRatio = overdue / totalEmis;
-
-  if (overdueRatio > 0.2) return 'poor';
-  if (overdueRatio > 0.1 || paidLate / totalEmis > 0.3) return 'fair';
-  if (onTimeRatio > 0.9) return 'excellent';
-  return 'good';
 }
 
 function maskAadhaar(aadhaar: string | null): string {
@@ -125,11 +46,9 @@ export function useCustomerRelationships(searchTerm?: string) {
     queryFn: async (): Promise<CustomerRelationship[]> => {
       if (!orgId) return [];
 
-      // Step 1: Get all unique customers (grouped by PAN or mobile)
-      const { data: applicants, error: applicantsError } = await supabase
+      const { data: applicants, error } = await supabase
         .from("loan_applicants")
         .select(`
-          id,
           pan_number,
           mobile,
           first_name,
@@ -140,95 +59,6 @@ export function useCustomerRelationships(searchTerm?: string) {
           loan_application_id,
           loan_applications!inner (
             id,
-            org_id,
-            loan_id,
-            application_number,
-            status,
-            current_stage,
-            requested_amount,
-            approved_amount,
-            tenure_days,
-            created_at
-          )
-        `)
-        .eq("loan_applications.org_id", orgId)
-        .eq("applicant_type", "primary");
-
-      if (applicantsError) throw applicantsError;
-
-      // Group applicants by PAN number (primary identifier) or mobile
-      const customerMap = new Map<string, {
-        info: CustomerGroup;
-        applicationIds: string[];
-      }>();
-
-      applicants?.forEach((applicant: any) => {
-        const key = applicant.pan_number || applicant.mobile;
-        if (!key) return;
-
-        if (!customerMap.has(key)) {
-          customerMap.set(key, {
-            info: {
-              pan_number: applicant.pan_number,
-              mobile: applicant.mobile,
-              first_name: applicant.first_name,
-              middle_name: applicant.middle_name,
-              last_name: applicant.last_name,
-              email: applicant.email,
-              aadhaar_number: applicant.aadhaar_number,
-            },
-            applicationIds: [],
-          });
-        }
-
-        customerMap.get(key)!.applicationIds.push(applicant.loan_application_id);
-      });
-
-      // Filter by search term if provided
-      let filteredCustomers = Array.from(customerMap.entries());
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        filteredCustomers = filteredCustomers.filter(([_, customer]) => {
-          const fullName = `${customer.info.first_name} ${customer.info.middle_name || ''} ${customer.info.last_name || ''}`.toLowerCase();
-          return (
-            customer.info.pan_number?.toLowerCase().includes(search) ||
-            customer.info.mobile?.includes(search) ||
-            fullName.includes(search)
-          );
-        });
-      }
-
-      // Fetch customer_id from contacts for all customers by phone
-      const allMobiles = Array.from(customerMap.values())
-        .map(c => c.info.mobile)
-        .filter(Boolean);
-      
-      const contactCustomerIdMap = new Map<string, string>();
-      if (allMobiles.length > 0) {
-        const { data: contactsData } = await supabase
-          .from("contacts")
-          .select("phone, customer_id")
-          .in("phone", allMobiles)
-          .not("customer_id", "is", null);
-        
-        contactsData?.forEach((c: any) => {
-          if (c.customer_id) {
-            contactCustomerIdMap.set(c.phone, c.customer_id);
-          }
-        });
-      }
-
-      // Step 2: For each customer, fetch detailed application data
-      const relationships: CustomerRelationship[] = [];
-
-      for (const [_, customer] of filteredCustomers) {
-        const applicationIds = customer.applicationIds;
-
-        // Fetch applications with all related data
-        const { data: applications, error: appsError } = await supabase
-          .from("loan_applications")
-          .select(`
-            id,
             loan_id,
             application_number,
             status,
@@ -237,107 +67,109 @@ export function useCustomerRelationships(searchTerm?: string) {
             approved_amount,
             tenure_days,
             created_at,
-            
-            loan_sanctions (
-              id,
-              sanctioned_amount,
-              created_at
-            ),
-            loan_disbursements (
-              id,
-              disbursement_amount,
-              disbursement_date
-            ),
-            loan_repayment_schedule (
-              id,
-              emi_number,
-              principal_amount,
-              interest_amount,
-              total_emi,
-              due_date,
-              status,
-              payment_date,
-              amount_paid
-            ),
-            loan_payments (
-              id,
-              payment_amount,
-              payment_date,
-              payment_method,
-              transaction_reference
-            ),
-            loan_documents (
-              id,
-              document_type,
-              document_category,
-              file_path,
-              file_name,
-              verification_status
-            )
-          `)
-          .in("id", applicationIds)
-          .order("created_at", { ascending: false });
+            loan_sanctions ( sanctioned_amount ),
+            loan_disbursements ( disbursement_amount, disbursement_date ),
+            loan_repayment_schedule ( total_emi, due_date, status, amount_paid )
+          )
+        `)
+        .eq("loan_applications.org_id", orgId)
+        .eq("applicant_type", "primary");
 
-        if (appsError) throw appsError;
+      if (error) throw error;
 
-        // Collect all documents from all applications
-        const allDocuments: CustomerDocument[] = [];
-        let photoUrl: string | null = null;
+      // Group by PAN or mobile
+      const customerMap = new Map<string, {
+        pan_number: string;
+        mobile: string;
+        first_name: string;
+        middle_name: string | null;
+        last_name: string | null;
+        email: string | null;
+        aadhaar_number: string | null;
+        apps: any[];
+      }>();
 
-        const appSummaries: LoanApplicationSummary[] = (applications || []).map((app: any) => {
-          const emiSchedule: EMIRecord[] = (app.loan_repayment_schedule || []).map((emi: any) => ({
-            id: emi.id,
-            emi_number: emi.emi_number,
-            principal_amount: emi.principal_amount,
-            interest_amount: emi.interest_amount,
-            total_emi: emi.total_emi,
-            due_date: emi.due_date,
-            status: emi.status,
-            payment_date: emi.payment_date,
-            amount_paid: emi.amount_paid,
-          }));
+      (applicants || []).forEach((row: any) => {
+        const key = row.pan_number || row.mobile;
+        if (!key) return;
 
-          const payments: PaymentRecord[] = (app.loan_payments || []).map((p: any) => ({
-            id: p.id,
-            payment_amount: p.payment_amount,
-            payment_date: p.payment_date,
-            payment_mode: p.payment_method || 'unknown',
-            reference_number: p.transaction_reference,
-            status: 'completed',
-          }));
+        if (!customerMap.has(key)) {
+          customerMap.set(key, {
+            pan_number: row.pan_number,
+            mobile: row.mobile,
+            first_name: row.first_name,
+            middle_name: row.middle_name,
+            last_name: row.last_name,
+            email: row.email,
+            aadhaar_number: row.aadhaar_number,
+            apps: [],
+          });
+        }
 
-          // Collect documents
-          (app.loan_documents || []).forEach((doc: any) => {
-            // Check if this is a photo document
-            if (doc.document_type?.toLowerCase().includes('photo') || 
-                doc.document_category?.toLowerCase().includes('photo')) {
-              if (!photoUrl && doc.file_path) {
-                photoUrl = doc.file_path;
-              }
-            }
-            
-            // Add to documents collection if not already present
-            if (!allDocuments.find(d => d.id === doc.id)) {
-              allDocuments.push({
-                id: doc.id,
-                documentType: doc.document_type,
-                documentCategory: doc.document_category,
-                filePath: doc.file_path,
-                fileName: doc.file_name,
-                verificationStatus: doc.verification_status,
-              });
+        const app = Array.isArray(row.loan_applications)
+          ? row.loan_applications[0]
+          : row.loan_applications;
+
+        if (app) {
+          const entry = customerMap.get(key)!;
+          if (!entry.apps.some((a: any) => a.id === app.id)) {
+            entry.apps.push(app);
+          }
+        }
+      });
+
+      // Filter: only customers with at least one disbursed/closed loan
+      let customers = Array.from(customerMap.entries()).filter(([_, c]) =>
+        c.apps.some((a: any) => ['disbursed', 'closed'].includes(a.current_stage))
+      );
+
+      // Search filter
+      if (searchTerm) {
+        const s = searchTerm.toLowerCase();
+        customers = customers.filter(([_, c]) => {
+          const name = `${c.first_name} ${c.middle_name || ''} ${c.last_name || ''}`.toLowerCase();
+          return (
+            c.pan_number?.toLowerCase().includes(s) ||
+            c.mobile?.includes(s) ||
+            name.includes(s)
+          );
+        });
+      }
+
+      const today = new Date();
+
+      // Build results
+      return customers.map(([_, c]) => {
+        const fullName = [c.first_name, c.middle_name, c.last_name].filter(Boolean).join(' ');
+
+        const sortedApps = [...c.apps].sort((a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        let totalDisbursed = 0;
+        let totalEmiAmount = 0;
+        let totalAmountPaid = 0;
+        let delayedPayments = 0;
+        let maxDaysDelayed = 0;
+
+        const appSummaries: LoanApplicationSummary[] = sortedApps.map((app: any) => {
+          const disbursements = app.loan_disbursements || [];
+          const totalDisb = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
+          const sanction = app.loan_sanctions?.[0];
+          const emis = app.loan_repayment_schedule || [];
+
+          totalDisbursed += totalDisb;
+          totalEmiAmount += emis.reduce((sum: number, e: any) => sum + (e.total_emi || 0), 0);
+          totalAmountPaid += emis.reduce((sum: number, e: any) => sum + (e.amount_paid || 0), 0);
+
+          // Count delayed/overdue EMIs and max days
+          emis.forEach((emi: any) => {
+            if (emi.status === 'overdue' || (emi.status === 'pending' && new Date(emi.due_date) < today)) {
+              delayedPayments++;
+              const daysLate = Math.floor((today.getTime() - new Date(emi.due_date).getTime()) / (1000 * 60 * 60 * 24));
+              if (daysLate > maxDaysDelayed) maxDaysDelayed = daysLate;
             }
           });
-
-          const disbursement = app.loan_disbursements?.[0];
-          const sanction = app.loan_sanctions?.[0];
-
-          const totalPaid = payments
-            .filter((p: PaymentRecord) => p.status === 'completed')
-            .reduce((sum: number, p: PaymentRecord) => sum + p.payment_amount, 0);
-
-          const totalDue = emiSchedule.reduce((sum: number, e: EMIRecord) => sum + e.total_emi, 0);
-          const totalOutstanding = Math.max(0, totalDue - totalPaid);
 
           return {
             applicationId: app.id,
@@ -346,61 +178,38 @@ export function useCustomerRelationships(searchTerm?: string) {
             status: app.status,
             currentStage: app.current_stage,
             requestedAmount: app.requested_amount,
-            approvedAmount: app.approved_amount || sanction?.sanctioned_amount,
-            disbursedAmount: disbursement?.disbursement_amount,
+            approvedAmount: app.approved_amount || sanction?.sanctioned_amount || null,
+            disbursedAmount: totalDisb || null,
             tenureDays: app.tenure_days,
             createdAt: app.created_at,
-            sanctionDate: sanction?.created_at,
-            disbursementDate: disbursement?.disbursement_date,
-            emiSchedule,
-            payments,
-            totalPaid,
-            totalOutstanding,
+            disbursementDate: disbursements[0]?.disbursement_date || null,
           };
         });
 
-        const totalDisbursed = appSummaries.reduce((sum, app) => sum + (app.disbursedAmount || 0), 0);
-        const totalPaid = appSummaries.reduce((sum, app) => sum + app.totalPaid, 0);
-        const totalOutstanding = appSummaries.reduce((sum, app) => sum + app.totalOutstanding, 0);
-        const activeLoans = appSummaries.filter(app => 
-          app.currentStage === 'disbursed' && app.totalOutstanding > 0
+        const outstandingAmount = Math.max(0, totalEmiAmount - totalAmountPaid);
+        const totalLoans = appSummaries.filter(a =>
+          ['disbursed', 'closed'].includes(a.currentStage)
         ).length;
 
-        const fullName = [customer.info.first_name, customer.info.middle_name, customer.info.last_name]
-          .filter(Boolean)
-          .join(' ');
-
-        relationships.push({
-          customerId: contactCustomerIdMap.get(customer.info.mobile) || customer.info.pan_number || customer.info.mobile,
-          panNumber: customer.info.pan_number || 'N/A',
-          aadhaarNumber: maskAadhaar(customer.info.aadhaar_number),
-          mobile: customer.info.mobile || 'N/A',
+        return {
+          customerId: c.pan_number || c.mobile,
           name: fullName,
-          email: customer.info.email,
-          photoUrl,
-          totalLoans: appSummaries.length,
-          activeLoans,
-          totalDisbursed,
-          totalPaid,
-          outstandingAmount: totalOutstanding,
-          paymentScore: calculatePaymentScore(appSummaries),
-          lastApplicationDate: appSummaries[0]?.createdAt || '',
+          mobile: c.mobile || 'N/A',
+          email: c.email,
+          panNumber: c.pan_number || 'N/A',
+          aadhaarNumber: maskAadhaar(c.aadhaar_number),
+          totalApplications: appSummaries.length,
+          totalLoans,
+          disbursedAmount: totalDisbursed,
+          outstandingAmount,
+          delayedPayments,
+          maxDaysDelayed: Math.max(0, maxDaysDelayed),
+          lastActivityDate: sortedApps[0]?.created_at || '',
           applications: appSummaries,
-          documents: allDocuments,
-        });
-      }
-
-      // Only include customers who have at least one disbursed loan (business rule: client = disbursed)
-      const clients = relationships.filter(r => 
-        r.applications.some(a => a.currentStage === 'disbursed')
+        };
+      }).sort((a, b) =>
+        new Date(b.lastActivityDate).getTime() - new Date(a.lastActivityDate).getTime()
       );
-
-      // Sort by last application date descending
-      clients.sort((a, b) => 
-        new Date(b.lastApplicationDate).getTime() - new Date(a.lastApplicationDate).getTime()
-      );
-
-      return clients;
     },
     enabled: !!orgId,
   });

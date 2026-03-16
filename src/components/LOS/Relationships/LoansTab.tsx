@@ -143,16 +143,36 @@ export function LoansTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Summary stats
-  const stats = {
-    total: loans?.length || 0,
-    active: loans?.filter((l) => l.paymentStatus !== "completed").length || 0,
-    onTrack: loans?.filter((l) => l.paymentStatus === "on_track").length || 0,
-    overdue: loans?.filter((l) => l.paymentStatus === "overdue").length || 0,
-    completed: loans?.filter((l) => l.paymentStatus === "completed").length || 0,
-    totalDisbursed: loans?.reduce((sum, l) => sum + l.disbursedAmount, 0) || 0,
-    totalOutstanding: loans?.reduce((sum, l) => sum + l.outstandingAmount, 0) || 0,
+  // Summary stats — each contact counted once at their highest lifecycle stage
+  // Priority: Overdue > On Track > Completed (overdue is most urgent to surface)
+  const computeLoanStats = () => {
+    if (!loans || loans.length === 0) return { total: 0, active: 0, onTrack: 0, overdue: 0, completed: 0, totalDisbursed: 0, totalOutstanding: 0 };
+
+    const PRIORITY: Record<string, number> = { overdue: 3, on_track: 2, completed: 1 };
+    const contactHighest = new Map<string, string>();
+
+    for (const loan of loans) {
+      if (!loan.contactId) continue;
+      const current = contactHighest.get(loan.contactId);
+      if (!current || (PRIORITY[loan.paymentStatus] || 0) > (PRIORITY[current] || 0)) {
+        contactHighest.set(loan.contactId, loan.paymentStatus);
+      }
+    }
+
+    const counts = { total: contactHighest.size, active: 0, onTrack: 0, overdue: 0, completed: 0 };
+    for (const status of contactHighest.values()) {
+      if (status === "overdue") { counts.overdue++; counts.active++; }
+      else if (status === "on_track") { counts.onTrack++; counts.active++; }
+      else if (status === "completed") counts.completed++;
+    }
+
+    return {
+      ...counts,
+      totalDisbursed: loans.reduce((sum, l) => sum + l.disbursedAmount, 0),
+      totalOutstanding: loans.reduce((sum, l) => sum + l.outstandingAmount, 0),
+    };
   };
+  const stats = computeLoanStats();
 
   return (
     <div className="space-y-6">

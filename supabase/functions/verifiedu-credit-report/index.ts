@@ -86,30 +86,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse Experian response - extract key fields
-    // The response structure may vary; handle common patterns
-    const creditScore = responseData?.CREDIT_SCORE
-      || responseData?.DATA?.CREDIT_SCORE
-      || responseData?.creditScore
-      || null;
+    // Parse Experian response - extract key fields from INProfileResponse structure
+    const profile = responseData?.INProfileResponse;
+    const scoreSection = profile?.SCORE;
+    const currentApp = profile?.Current_Application;
+    const caisAccount = profile?.CAIS_Account;
+    const capsSummary = profile?.TotalCAPS_Summary;
 
-    const reportData = {
+    // Extract credit score - Experian nests it at INProfileResponse.SCORE.BureauScore
+    const bureauScore = parseInt(scoreSection?.BureauScore, 10);
+    const creditScore = !isNaN(bureauScore) && bureauScore > 0 ? bureauScore : null;
+    const scoreConfidence = scoreSection?.BureauScoreConfidLevel || null;
+
+    // Extract account summary
+    const accountSummary = caisAccount?.CAIS_Summary?.Credit_Account;
+    const totalAccounts = parseInt(accountSummary?.CreditAccountTotal, 10) || 0;
+    const activeAccounts = parseInt(accountSummary?.CreditAccountActive, 10) || 0;
+    const overdueAccounts = parseInt(accountSummary?.CreditAccountOverdue, 10) || 0;
+    const totalBalance = parseInt(accountSummary?.OutstandingBalanceAll, 10) || 0;
+
+    // Extract enquiry summary
+    const totalEnquiries = parseInt(capsSummary?.TotalCAPSLast180Days, 10) || 0;
+
+    // Extract name from response
+    const applicantName = currentApp?.Current_Applicant_Details?.First_Name
+      || currentApp?.Current_Application_Details?.First_Name
+      || name;
+
+    const reportData: Record<string, any> = {
       bureau_type: 'experian',
       credit_score: creditScore,
+      score_confidence: scoreConfidence,
+      total_accounts: totalAccounts,
+      active_accounts: activeAccounts,
+      overdue_accounts: overdueAccounts,
+      total_outstanding_balance: totalBalance,
+      total_enquiries_180days: totalEnquiries,
       raw_response: responseData,
-      name_on_report: responseData?.DATA?.NAME || responseData?.NAME || name,
+      name_on_report: applicantName,
       pan_on_report: pan.toUpperCase(),
       mobile_on_report: mobile,
-      transaction_id: responseData?.TRANSACTION_ID || responseData?.DATA?.TRANSACTION_ID || null,
+      transaction_id: responseData?.Header?.ReportOrderNO || null,
       report_date: new Date().toISOString(),
       is_live_fetch: true,
     };
-
-    // Try to extract additional fields from common response structures
-    const data = responseData?.DATA || responseData;
-    if (data) {
-      reportData.credit_score = reportData.credit_score || data.SCORE || data.score || null;
-    }
 
     console.log(`[verifiedu-credit-report] Experian score: ${reportData.credit_score}`);
 
@@ -120,7 +140,7 @@ Deno.serve(async (req) => {
         applicant_id: applicantId,
         verification_type: 'credit_bureau',
         verification_source: 'experian',
-        status: reportData.credit_score ? 'success' : 'failed',
+        status: creditScore ? 'success' : (scoreConfidence === 'L' ? 'no_record' : 'failed'),
         request_data: {
           bureau_type: 'experian',
           api_endpoint: 'credit-report-experian',
@@ -128,9 +148,9 @@ Deno.serve(async (req) => {
           timestamp: new Date().toISOString(),
         },
         response_data: reportData,
-        remarks: reportData.credit_score
-          ? `Experian credit score: ${reportData.credit_score}`
-          : 'Experian report fetched but no score extracted',
+        remarks: creditScore
+          ? `Experian credit score: ${creditScore}`
+          : (scoreConfidence === 'L' ? 'No credit history found in Experian' : 'Experian report fetched but no score extracted'),
         verified_at: new Date().toISOString(),
       };
 

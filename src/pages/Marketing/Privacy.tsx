@@ -188,7 +188,7 @@ export default function Privacy() {
           <p className="mt-2 text-white/70">Contact our Data Protection Officer for any privacy-related inquiries</p>
           <div className="flex flex-wrap justify-center gap-4 mt-6">
             <Button asChild size="lg" className="rounded-full px-8 font-semibold" style={{ background: "hsl(var(--gold-500))", color: "#000" }}>
-              <Link to="/apply">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
+              <Link to="/apply/ref/REF-MIUHLOTL">Apply Now <ArrowRight className="ml-2 h-5 w-5" /></Link>
             </Button>
             <Button asChild size="lg" variant="outline" className="rounded-full px-8 font-semibold border-white text-white hover:bg-white/10">
               <a href="mailto:info@PaisaaSaarthi.com"><Mail className="mr-2 h-5 w-5" /> Contact DPO</a>

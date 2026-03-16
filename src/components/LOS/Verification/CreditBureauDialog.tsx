@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CreditReportViewer } from "./CreditReportViewer";
 import { QuickCreditAnalysisView } from "./QuickCreditAnalysisView";
+import { transformExperianToViewerFormat } from "@/utils/transformExperianReport";
 
 interface CreditBureauDialogProps {
   open: boolean;
@@ -495,6 +496,7 @@ export default function CreditBureauDialog({
             accounts: liveReportData.accounts,
             enquiries: liveReportData.enquiries,
             personal_info: liveReportData.personalInfo,
+            ...(liveReportData.raw_response ? { raw_response: liveReportData.raw_response } : {}),
           } : {}),
         },
         remarks: formData.remarks,
@@ -664,10 +666,39 @@ export default function CreditBureauDialog({
                   <CheckCircle className="h-5 w-5 text-green-600" />
                   <span className="font-medium">Credit Report Fetched Successfully</span>
                   <Badge variant="outline" className="ml-auto">
-                    Score: {liveReportData.creditScore}
+                    Score: {liveReportData.credit_score || liveReportData.creditScore || "N/A"}
                   </Badge>
                 </div>
-                <CreditReportViewer data={liveReportData} />
+                {liveReportData.bureau_type === "experian" ? (
+                  liveReportData.raw_response ? (
+                    (() => {
+                      const viewerData = transformExperianToViewerFormat(liveReportData.raw_response);
+                      return viewerData.creditScore > 0 ? (
+                        <CreditReportViewer data={viewerData} />
+                      ) : (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-amber-600" />
+                          <span className="text-sm text-amber-800">No credit history found in Experian for this applicant</span>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-muted-foreground">Name: </span><span className="font-medium">{liveReportData.name_on_report || "N/A"}</span></div>
+                        <div><span className="text-muted-foreground">PAN: </span><span className="font-medium">{liveReportData.pan_on_report || "N/A"}</span></div>
+                        <div><span className="text-muted-foreground">Active Accounts: </span><span className="font-medium">{liveReportData.active_accounts ?? "N/A"}</span></div>
+                        <div><span className="text-muted-foreground">Total Outstanding: </span><span className="font-medium">₹{(liveReportData.total_outstanding_balance || liveReportData.total_outstanding || 0).toLocaleString()}</span></div>
+                      </div>
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                        <span className="text-sm text-amber-800">Detailed report not available. Click "Fetch Credit Report" to get the full report.</span>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <CreditReportViewer data={liveReportData} />
+                )}
               </div>
             )}
           </TabsContent>

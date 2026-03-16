@@ -46,7 +46,7 @@ export function RepeatLoanDialog({
 
       // Get the next application number via sequence
       const { data: seqData, error: seqError } = await supabase.rpc("nextval_text", {
-        seq_name: "loan_application_seq",
+        seq_name: "loan_application_number_seq",
       });
       if (seqError) throw seqError;
 

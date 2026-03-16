@@ -35,7 +35,7 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
     queryFn: async () => {
       const { data, error } = await supabase
         .from("loan_applications")
-        .select("id, assigned_to, current_stage, status, requested_amount, approved_amount, created_at")
+        .select("id, contact_id, assigned_to, current_stage, status, requested_amount, approved_amount, created_at")
         .eq("org_id", orgId!)
         .neq("status", "draft")
         .gte("created_at", fromDate.toISOString())
@@ -116,43 +116,71 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
       collectionMap[c.loan_application_id].collected += c.amount_paid || 0;
     });
 
-    // Group by assigned_to
-    const grouped: Record<string, StaffMetrics> = {};
+    // Lifecycle priority for deduplication: each contact counted once at highest stage
+    const STAGE_PRIORITY: Record<string, number> = {
+      disbursed: 6, closed: 7,
+      disbursement_pending: 5, sanctioned: 5,
+      approval_pending: 4,
+      credit_assessment: 3, field_verification: 3, document_collection: 3, application_login: 3, assessment: 3,
+      rejected: 1, cancelled: 1,
+    };
+
+    const stageToCategory = (priority: number) => {
+      if (priority >= 6) return "disbursed";
+      if (priority >= 5) return "sanctioned";
+      if (priority >= 4) return "approved";
+      if (priority >= 3) return "in_progress";
+      return "other";
+    };
+
+    // Group by assigned_to, then deduplicate contacts within each staff member
+    // Step 1: For each staff+contact pair, find the highest lifecycle stage
+    const staffContactHighest: Record<string, Map<string, { priority: number; appId: string; amount: number }>> = {};
 
     applications.forEach((app: any) => {
       const userId = app.assigned_to;
-      if (!userId) return;
+      const contactId = app.contact_id;
+      if (!userId || !contactId) return;
 
-      if (!grouped[userId]) {
-        grouped[userId] = {
-          user_id: userId,
-          user_name: profileMap[userId] || "Unknown",
-          leads_assigned: 0,
-          applications_in_progress: 0,
-          approvals: 0,
-          sanctions: 0,
-          disbursements: 0,
-          total_disbursed_amount: 0,
-          collection_rate: 0,
-        };
+      if (!staffContactHighest[userId]) {
+        staffContactHighest[userId] = new Map();
       }
 
-      grouped[userId].leads_assigned++;
-
-      if (["assessment", "approval_pending"].includes(app.current_stage)) {
-        grouped[userId].applications_in_progress++;
-      }
-      if (["sanctioned", "disbursement_pending", "disbursed"].includes(app.current_stage)) {
-        grouped[userId].approvals++;
-      }
-      if (["sanctioned", "disbursement_pending", "disbursed"].includes(app.current_stage)) {
-        grouped[userId].sanctions++;
-      }
-      if (app.current_stage === "disbursed") {
-        grouped[userId].disbursements++;
-        grouped[userId].total_disbursed_amount += disbMap[app.id] || app.approved_amount || app.requested_amount || 0;
+      const priority = STAGE_PRIORITY[app.current_stage] || 2;
+      const current = staffContactHighest[userId].get(contactId);
+      if (!current || priority > current.priority) {
+        staffContactHighest[userId].set(contactId, {
+          priority,
+          appId: app.id,
+          amount: disbMap[app.id] || app.approved_amount || app.requested_amount || 0,
+        });
       }
     });
+
+    // Step 2: Build staff metrics from deduplicated contacts
+    const grouped: Record<string, StaffMetrics> = {};
+
+    for (const [userId, contactMap] of Object.entries(staffContactHighest)) {
+      grouped[userId] = {
+        user_id: userId,
+        user_name: profileMap[userId] || "Unknown",
+        leads_assigned: contactMap.size,
+        applications_in_progress: 0,
+        approvals: 0,
+        sanctions: 0,
+        disbursements: 0,
+        total_disbursed_amount: 0,
+        collection_rate: 0,
+      };
+
+      for (const { priority, amount } of contactMap.values()) {
+        const category = stageToCategory(priority);
+        if (category === "in_progress") grouped[userId].applications_in_progress++;
+        if (category === "approved") grouped[userId].approvals++;
+        if (category === "sanctioned") { grouped[userId].approvals++; grouped[userId].sanctions++; }
+        if (category === "disbursed") { grouped[userId].approvals++; grouped[userId].sanctions++; grouped[userId].disbursements++; grouped[userId].total_disbursed_amount += amount; }
+      }
+    }
 
     // Calculate collection rates
     Object.values(grouped).forEach((staff) => {

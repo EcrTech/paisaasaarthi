@@ -280,11 +280,20 @@ export default function AadhaarVerificationDialog({
       }
     } catch (err: any) {
       console.error("Status check error:", err);
-      toast({
-        variant: "destructive",
-        title: "Status Check Failed",
-        description: err.message || "Failed to check verification status. The customer may not have completed verification yet.",
-      });
+      const errMsg = err?.message || "";
+      if (errMsg.includes("409") || errMsg.includes("mismatch") || errMsg.includes("Conflict")) {
+        toast({
+          variant: "destructive",
+          title: "Temporary Issue",
+          description: "The verification service returned a temporary error. Please wait a moment and click 'Check Status' again.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Status Check Failed",
+          description: "Failed to check verification status. The customer may not have completed verification yet.",
+        });
+      }
     } finally {
       setCheckingStatus(false);
     }

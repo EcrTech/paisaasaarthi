@@ -251,15 +251,35 @@ export function ApplicationsTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Summary stats
-  const stats = {
-    total: applications?.length || 0,
-    approved: applications?.filter((a) => a.isApproved).length || 0,
-    sanctioned: applications?.filter((a) => a.isSanctioned).length || 0,
-    disbursed: applications?.filter((a) => a.isDisbursed).length || 0,
-    pending: applications?.filter((a) => !a.isApproved && a.status !== "rejected").length || 0,
-    rejected: applications?.filter((a) => a.status === "rejected").length || 0,
+  // Summary stats — each contact counted once at their highest lifecycle stage
+  // Priority: Disbursed > Sanctioned > Approved > Pending > Rejected
+  const computeStats = () => {
+    if (!applications || applications.length === 0) return { total: 0, approved: 0, sanctioned: 0, disbursed: 0, pending: 0, rejected: 0 };
+
+    const contactHighest = new Map<string, string>();
+    const PRIORITY: Record<string, number> = { disbursed: 5, sanctioned: 4, approved: 3, pending: 2, rejected: 1 };
+
+    for (const app of applications) {
+      if (!app.contactId) continue;
+      let stage = "pending";
+      if (app.isDisbursed) stage = "disbursed";
+      else if (app.isSanctioned) stage = "sanctioned";
+      else if (app.isApproved) stage = "approved";
+      else if (app.status === "rejected") stage = "rejected";
+
+      const current = contactHighest.get(app.contactId);
+      if (!current || PRIORITY[stage] > PRIORITY[current]) {
+        contactHighest.set(app.contactId, stage);
+      }
+    }
+
+    const counts = { total: contactHighest.size, approved: 0, sanctioned: 0, disbursed: 0, pending: 0, rejected: 0 };
+    for (const stage of contactHighest.values()) {
+      counts[stage as keyof typeof counts]++;
+    }
+    return counts;
   };
+  const stats = computeStats();
 
   return (
     <div className="space-y-6">

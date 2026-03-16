@@ -7,7 +7,7 @@ const quickLinks = [
   { label: "Our Services", to: "/services" },
   { label: "How to Apply", to: "/how-to-apply" },
   { label: "FAQ", to: "/faq" },
-  { label: "Apply Now", to: "/apply" },
+  { label: "Apply Now", to: "/apply/ref/REF-MIUHLOTL" },
 ];
 
 const loanInfoItems = [

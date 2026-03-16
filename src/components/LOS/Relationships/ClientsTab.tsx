@@ -20,22 +20,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/common/LoadingState";
 import { EmptyState } from "@/components/common/EmptyState";
-import { Search, Users, Download, TrendingUp, IndianRupee, AlertCircle, Eye } from "lucide-react";
-
-const scoreConfig: Record<string, { label: string; color: string }> = {
-  excellent: { label: "Excellent", color: "bg-green-500" },
-  good: { label: "Good", color: "bg-blue-500" },
-  fair: { label: "Fair", color: "bg-amber-500" },
-  poor: { label: "Poor", color: "bg-red-500" },
-};
+import { Search, Users, Download, IndianRupee, AlertCircle, Eye } from "lucide-react";
 
 export function ClientsTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [scoreFilter, setScoreFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRelationship | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -52,15 +43,8 @@ export function ClientsTab() {
 
   // Filter customers
   const filteredCustomers = customers?.filter((customer) => {
-    if (scoreFilter !== "all" && customer.paymentScore !== scoreFilter) {
-      return false;
-    }
-    if (statusFilter === "active" && customer.activeLoans === 0) {
-      return false;
-    }
-    if (statusFilter === "closed" && customer.activeLoans > 0) {
-      return false;
-    }
+    if (statusFilter === "active" && customer.totalLoans === 0) return false;
+    if (statusFilter === "overdue" && customer.delayedPayments === 0) return false;
     return true;
   }) || [];
 
@@ -80,15 +64,11 @@ export function ClientsTab() {
   const handleExportCSV = () => {
     if (!filteredCustomers.length) return;
 
-    // Build filename with filter info
-    let filename = `customers-${format(new Date(), "yyyy-MM-dd")}`;
-    if (scoreFilter !== "all") filename += `_score-${scoreFilter}`;
+    let filename = `clients-${format(new Date(), "yyyy-MM-dd")}`;
     if (statusFilter !== "all") filename += `_${statusFilter}`;
     if (debouncedSearch) filename += `_search`;
 
-    // Build filter metadata row
     const filterParts = [];
-    filterParts.push(`Payment Score: ${scoreFilter === "all" ? "All" : scoreFilter}`);
     filterParts.push(`Status: ${statusFilter === "all" ? "All" : statusFilter}`);
     if (debouncedSearch) filterParts.push(`Search: "${debouncedSearch}"`);
     const filterInfo = [`"Filters Applied: ${filterParts.join(", ")}"`];
@@ -96,29 +76,27 @@ export function ClientsTab() {
     const headers = [
       "Customer ID",
       "Name",
-      "PAN",
       "Mobile",
+      "Total Applications",
       "Total Loans",
-      "Active Loans",
-      "Total Disbursed",
-      "Total Paid",
-      "Outstanding",
-      "Payment Score",
-      "Last Application Date",
+      "Disbursed Amount",
+      "Outstanding Amount",
+      "Delayed Payments",
+      "Max Days Delayed",
+      "Last Activity",
     ];
 
     const rows = filteredCustomers.map((c) => [
       c.customerId,
-      c.name,
-      c.panNumber,
+      `"${c.name}"`,
       c.mobile,
+      c.totalApplications,
       c.totalLoans,
-      c.activeLoans,
-      c.totalDisbursed,
-      c.totalPaid,
+      c.disbursedAmount,
       c.outstandingAmount,
-      c.paymentScore,
-      c.lastApplicationDate ? format(new Date(c.lastApplicationDate), "dd/MM/yyyy") : "",
+      c.delayedPayments,
+      c.maxDaysDelayed,
+      c.lastActivityDate ? format(new Date(c.lastActivityDate), "dd/MM/yyyy") : "",
     ]);
 
     const csvContent = [filterInfo, headers, ...rows].map((row) => row.join(",")).join("\n");
@@ -134,9 +112,9 @@ export function ClientsTab() {
   // Summary stats
   const stats = {
     total: customers?.length || 0,
-    withActiveLoans: customers?.filter((c) => c.activeLoans > 0).length || 0,
-    totalDisbursed: customers?.reduce((sum, c) => sum + c.totalDisbursed, 0) || 0,
+    totalDisbursed: customers?.reduce((sum, c) => sum + c.disbursedAmount, 0) || 0,
     totalOutstanding: customers?.reduce((sum, c) => sum + c.outstandingAmount, 0) || 0,
+    overdueClients: customers?.filter((c) => c.delayedPayments > 0).length || 0,
   };
 
   return (
@@ -149,18 +127,7 @@ export function ClientsTab() {
               <Users className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-2xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total Customers</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-2xl font-bold">{stats.withActiveLoans}</p>
-                <p className="text-xs text-muted-foreground">With Active Loans</p>
+                <p className="text-xs text-muted-foreground">Total Clients</p>
               </div>
             </div>
           </CardContent>
@@ -179,10 +146,21 @@ export function ClientsTab() {
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-orange-500" />
+              <IndianRupee className="h-5 w-5 text-orange-500" />
               <div>
                 <p className="text-lg font-bold">{formatCurrency(stats.totalOutstanding)}</p>
                 <p className="text-xs text-muted-foreground">Total Outstanding</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              <div>
+                <p className="text-2xl font-bold">{stats.overdueClients}</p>
+                <p className="text-xs text-muted-foreground">Overdue Clients</p>
               </div>
             </div>
           </CardContent>
@@ -195,7 +173,7 @@ export function ClientsTab() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-lg">Search & Filter</CardTitle>
-              <CardDescription>Find customers by PAN, mobile, name, or customer ID</CardDescription>
+              <CardDescription>Find clients by mobile, name, or customer ID</CardDescription>
             </div>
             <Button onClick={handleExportCSV} variant="outline" disabled={!filteredCustomers.length}>
               <Download className="h-4 w-4 mr-2" />
@@ -208,32 +186,20 @@ export function ClientsTab() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by PAN, Mobile, Name, or Customer ID..."
+                placeholder="Search by mobile, name, or customer ID..."
                 value={searchTerm}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Select value={scoreFilter} onValueChange={setScoreFilter}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Payment Score" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Scores</SelectItem>
-                <SelectItem value="excellent">Excellent</SelectItem>
-                <SelectItem value="good">Good</SelectItem>
-                <SelectItem value="fair">Fair</SelectItem>
-                <SelectItem value="poor">Poor</SelectItem>
-              </SelectContent>
-            </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full md:w-48">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active Loans</SelectItem>
-                <SelectItem value="closed">No Active Loans</SelectItem>
+                <SelectItem value="all">All Clients</SelectItem>
+                <SelectItem value="active">With Active Loans</SelectItem>
+                <SelectItem value="overdue">With Overdue EMIs</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -242,13 +208,13 @@ export function ClientsTab() {
 
       {/* Results */}
       {isLoading ? (
-        <LoadingState message="Loading customers..." />
+        <LoadingState message="Loading clients..." />
       ) : filteredCustomers.length === 0 ? (
         <Card>
           <CardContent className="p-6">
             <EmptyState
               icon={<Users className="h-12 w-12" />}
-              title="No customers found"
+              title="No clients found"
               message={
                 searchTerm
                   ? "Try adjusting your search or filters"
@@ -266,73 +232,69 @@ export function ClientsTab() {
                   <TableRow>
                     <TableHead>Customer ID</TableHead>
                     <TableHead>Name</TableHead>
-                    <TableHead>PAN</TableHead>
                     <TableHead>Mobile</TableHead>
-                    <TableHead className="text-center">Total Loans</TableHead>
-                    <TableHead className="text-center">Active</TableHead>
+                    <TableHead className="text-center">Applications</TableHead>
+                    <TableHead className="text-center">Loans</TableHead>
                     <TableHead className="text-right">Disbursed</TableHead>
                     <TableHead className="text-right">Outstanding</TableHead>
-                    <TableHead>Payment Score</TableHead>
+                    <TableHead className="text-center">Delayed</TableHead>
+                    <TableHead className="text-center">Days Delayed</TableHead>
                     <TableHead>Last Activity</TableHead>
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCustomers.map((customer) => {
-                    const score = scoreConfig[customer.paymentScore] || { label: customer.paymentScore, color: "bg-gray-500" };
-                    
-                    return (
-                      <TableRow 
-                        key={customer.customerId} 
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleViewDetails(customer)}
-                      >
-                        <TableCell className="font-mono text-sm font-medium">
-                          {customer.customerId}
-                        </TableCell>
-                        <TableCell className="font-medium">{customer.name}</TableCell>
-                        <TableCell className="font-mono text-sm">{customer.panNumber}</TableCell>
-                        <TableCell className="text-sm">{customer.mobile}</TableCell>
-                        <TableCell className="text-center">{customer.totalLoans}</TableCell>
-                        <TableCell className="text-center">
-                          <span className={customer.activeLoans > 0 ? "text-green-600 font-medium" : "text-muted-foreground"}>
-                            {customer.activeLoans}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(customer.totalDisbursed)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span className={customer.outstandingAmount > 0 ? "text-orange-600 font-medium" : "text-green-600"}>
-                            {formatCurrency(customer.outstandingAmount)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={`${score.color} text-white`}>
-                            {score.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {customer.lastApplicationDate 
-                            ? format(new Date(customer.lastApplicationDate), "dd MMM yyyy")
-                            : "-"
-                          }
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewDetails(customer);
-                            }}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {filteredCustomers.map((customer) => (
+                    <TableRow
+                      key={customer.customerId}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleViewDetails(customer)}
+                    >
+                      <TableCell className="font-mono text-sm font-medium">
+                        {customer.customerId}
+                      </TableCell>
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell className="text-sm">{customer.mobile}</TableCell>
+                      <TableCell className="text-center">{customer.totalApplications}</TableCell>
+                      <TableCell className="text-center">{customer.totalLoans}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(customer.disbursedAmount)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={customer.outstandingAmount > 0 ? "text-orange-600 font-medium" : "text-green-600"}>
+                          {formatCurrency(customer.outstandingAmount)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className={customer.delayedPayments > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                          {customer.delayedPayments}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className={customer.maxDaysDelayed > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                          {customer.maxDaysDelayed > 0 ? customer.maxDaysDelayed : "-"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {customer.lastActivityDate
+                          ? format(new Date(customer.lastActivityDate), "dd MMM yyyy")
+                          : "-"
+                        }
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewDetails(customer);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

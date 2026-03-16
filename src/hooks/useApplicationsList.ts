@@ -4,6 +4,7 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 
 export interface ApplicationListItem {
   id: string;
+  contactId: string | null;
   applicationNumber: string;
   loanId: string | null;
   status: string;
@@ -44,6 +45,7 @@ export function useApplicationsList(searchTerm?: string) {
           .from("loan_applications")
           .select(`
             id,
+            contact_id,
             loan_id,
             application_number,
             status,
@@ -102,6 +104,7 @@ export function useApplicationsList(searchTerm?: string) {
 
         return {
           id: app.id,
+          contactId: app.contact_id || null,
           applicationNumber: app.application_number,
           loanId: app.loan_id,
           status: app.status,

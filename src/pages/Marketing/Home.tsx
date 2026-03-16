@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowRight, Shield, Smartphone, Lock, Zap, Eye, Clock, Star, Users, CheckCircle } from "lucide-react";
 
-const REFERRAL_LINK = "/apply";
+const REFERRAL_LINK = "/apply/ref/REF-MIUHLOTL";
 
 const trustBadges = [
   { icon: Shield, label: "RBI Registered" },
