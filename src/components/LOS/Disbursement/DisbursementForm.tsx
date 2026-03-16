@@ -61,7 +61,7 @@ export default function DisbursementForm({ applicationId }: DisbursementFormProp
     },
   });
 
-  // Fetch primary applicant's bank details
+  // Fetch primary applicant's bank details (prefer the one with bank details, handle duplicates)
   const { data: primaryApplicant } = useQuery({
     queryKey: ["primary-applicant-bank", applicationId],
     queryFn: async () => {
@@ -70,8 +70,9 @@ export default function DisbursementForm({ applicationId }: DisbursementFormProp
         .select("first_name, last_name, bank_account_number, bank_ifsc_code, bank_name, bank_account_holder_name")
         .eq("loan_application_id", applicationId)
         .eq("applicant_type", "primary")
-        .maybeSingle();
-      return data;
+        .order("bank_account_number", { ascending: false, nullsFirst: false })
+        .limit(1);
+      return data?.[0] || null;
     },
   });
 
@@ -127,48 +128,73 @@ export default function DisbursementForm({ applicationId }: DisbursementFormProp
   const gstOnPf = Math.round(pf * 0.18);
   const netDisbursementAmount = approvedAmount - pf - gstOnPf;
 
-  // If disbursement completed, show summary
+  // If disbursement completed, show summary with re-upload option
   if (existingDisbursement && existingDisbursement.status === "completed") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            Disbursement Completed
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-4 bg-green-500/10 rounded-lg">
-            <div className="text-sm text-muted-foreground">Disbursed Amount</div>
-            <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(existingDisbursement.disbursement_amount)}
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 p-4 border rounded-lg bg-muted/50">
-            <div>
-              <div className="text-sm text-muted-foreground">UTR Number</div>
-              <div className="font-mono font-medium">{existingDisbursement.utr_number || "N/A"}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Date</div>
-              <div className="font-medium">
-                {existingDisbursement.disbursement_date 
-                  ? new Date(existingDisbursement.disbursement_date).toLocaleDateString()
-                  : "N/A"}
+      <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              Disbursement Completed
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-4 bg-green-500/10 rounded-lg">
+              <div className="text-sm text-muted-foreground">Disbursed Amount</div>
+              <div className="text-2xl font-bold text-green-600">
+                {formatCurrency(existingDisbursement.disbursement_amount)}
               </div>
             </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Beneficiary</div>
-              <div className="font-medium">{existingDisbursement.beneficiary_name || "N/A"}</div>
+
+            <div className="grid gap-4 md:grid-cols-2 p-4 border rounded-lg bg-muted/50">
+              <div>
+                <div className="text-sm text-muted-foreground">UTR Number</div>
+                <div className="font-mono font-medium">{existingDisbursement.utr_number || "N/A"}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Date</div>
+                <div className="font-medium">
+                  {existingDisbursement.disbursement_date
+                    ? new Date(existingDisbursement.disbursement_date).toLocaleDateString()
+                    : "N/A"}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Beneficiary</div>
+                <div className="font-medium">{existingDisbursement.beneficiary_name || "N/A"}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Account Number</div>
+                <div className="font-mono font-medium">{existingDisbursement.account_number || "N/A"}</div>
+              </div>
             </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Account Number</div>
-              <div className="font-mono font-medium">{existingDisbursement.account_number || "N/A"}</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
+            <Button
+              variant="outline"
+              onClick={() => setShowProofUpload(true)}
+              className="w-full"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Re-upload UTR Proof
+            </Button>
+          </CardContent>
+        </Card>
+
+        <ProofUploadDialog
+          open={showProofUpload}
+          onOpenChange={setShowProofUpload}
+          applicationId={applicationId}
+          disbursementId={existingDisbursement.id}
+          disbursementAmount={existingDisbursement.disbursement_amount}
+          bankDetails={bankDetails}
+          isReupload
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["loan-disbursements", applicationId] });
+            queryClient.invalidateQueries({ queryKey: ["loan-application", applicationId] });
+          }}
+        />
+      </>
     );
   }
 

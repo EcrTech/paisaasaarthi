@@ -110,6 +110,7 @@ const { data: applications = [], isLoading } = useQuery({
           assigned_profile:profiles!loan_applications_assigned_to_fkey(first_name, last_name)
         `)
         .eq("org_id", orgId)
+        .neq("status", "draft")
         .order("created_at", { ascending: false });
 
       if (error) {

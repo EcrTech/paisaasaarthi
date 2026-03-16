@@ -8,8 +8,7 @@ import { ApplicationHeader } from "@/components/ReferralApplication/ApplicationH
 import { StepProgressBar } from "@/components/ReferralApplication/StepProgressBar";
 import { LoanRequirementsScreen } from "@/components/ReferralApplication/LoanRequirementsScreen";
 import { ContactConsentScreen } from "@/components/ReferralApplication/ContactConsentScreen";
-import { PANVerificationStep } from "@/components/ReferralApplication/PANVerificationStep";
-import { AadhaarVerificationStep } from "@/components/ReferralApplication/AadhaarVerificationStep";
+import { IdentityInputStep } from "@/components/ReferralApplication/IdentityInputStep";
 import { VideoKYCStep } from "@/components/ReferralApplication/VideoKYCStep";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { captureUTMParams, getMarketingSource, type UTMParams } from "@/utils/utm";
@@ -50,24 +49,9 @@ interface StoredFormState {
     officeEmailVerified: boolean;
   };
   panNumber: string;
-  panVerified: boolean;
-  panData?: { name: string; status: string; dob?: string };
+  panVerified?: boolean;
   aadhaarNumber: string;
-  aadhaarVerified: boolean;
-  aadhaarData?: { 
-    name: string; 
-    address: string; 
-    dob: string;
-    gender?: string;
-    aadhaarNumber?: string;
-    addressData?: {
-      line1: string;
-      line2: string;
-      city: string;
-      state: string;
-      pincode: string;
-    };
-  };
+  aadhaarVerified?: boolean;
   geolocation?: { latitude: number; longitude: number; accuracy: number };
   referralCode?: string;
 }
@@ -174,26 +158,7 @@ export default function ReferralLoanApplication() {
   });
 
   const [panNumber, setPanNumber] = useState("");
-  const [panVerified, setPanVerified] = useState(false);
-  const [panData, setPanData] = useState<{ name: string; status: string; dob?: string } | undefined>();
-
   const [aadhaarNumber, setAadhaarNumber] = useState("");
-  const [aadhaarVerified, setAadhaarVerified] = useState(false);
-  const [aadhaarData, setAadhaarData] = useState<{ 
-    name: string; 
-    address: string; 
-    dob: string; 
-    aadhaarNumber?: string;
-    gender?: string;
-    addressData?: {
-      line1: string;
-      line2: string;
-      city: string;
-      state: string;
-      pincode: string;
-    };
-  } | undefined>();
-
   const [videoKycCompleted, setVideoKycCompleted] = useState(false);
 
   // Restore form state from localStorage on mount (for DigiLocker redirect return)
@@ -210,11 +175,7 @@ export default function ReferralLoanApplication() {
           setConsents(parsed.consents);
           setVerificationStatus(parsed.verificationStatus);
           setPanNumber(parsed.panNumber);
-          setPanVerified(parsed.panVerified);
-          if (parsed.panData) setPanData(parsed.panData);
           setAadhaarNumber(parsed.aadhaarNumber);
-          setAadhaarVerified(parsed.aadhaarVerified);
-          if (parsed.aadhaarData) setAadhaarData(parsed.aadhaarData);
           if (parsed.geolocation) setGeolocation(parsed.geolocation);
         } else {
           console.log('[ReferralLoanApplication] Stored state is for different referral code, clearing');
@@ -239,18 +200,16 @@ export default function ReferralLoanApplication() {
         consents,
         verificationStatus,
         panNumber,
-        panVerified,
-        panData,
+        panVerified: false,
         aadhaarNumber,
-        aadhaarVerified,
-        aadhaarData,
+        aadhaarVerified: false,
         geolocation: geolocation || undefined,
         referralCode,
       };
       localStorage.setItem(REFERRAL_FORM_STORAGE_KEY, JSON.stringify(state));
       console.log('[ReferralLoanApplication] Form state saved to localStorage');
     }
-  }, [stateRestored, currentStep, basicInfo, consents, verificationStatus, panNumber, panVerified, panData, aadhaarNumber, aadhaarVerified, aadhaarData, geolocation, referralCode]);
+  }, [stateRestored, currentStep, basicInfo, consents, verificationStatus, panNumber, aadhaarNumber, geolocation, referralCode]);
 
   // Fetch referrer info
   useEffect(() => {
@@ -332,33 +291,6 @@ export default function ReferralLoanApplication() {
     setConsents((prev) => ({ ...prev, [consent]: value }));
   };
 
-  const handlePanVerified = (data: { name: string; status: string; dob?: string }) => {
-    setPanData(data);
-    setPanVerified(true);
-  };
-
-  const handleAadhaarVerified = (data: { 
-    name: string; 
-    address: string; 
-    dob: string; 
-    aadhaarNumber?: string;
-    gender?: string;
-    addressData?: {
-      line1: string;
-      line2: string;
-      city: string;
-      state: string;
-      pincode: string;
-    };
-  }) => {
-    setAadhaarData(data);
-    setAadhaarVerified(true);
-    // Store aadhaar number if provided from DigiLocker
-    if (data.aadhaarNumber) {
-      setAadhaarNumber(data.aadhaarNumber);
-    }
-  };
-
   // Create draft application before entering Video KYC step using edge function (bypasses RLS)
   const createDraftApplication = async (): Promise<string | null> => {
     if (!referrerInfo) {
@@ -380,8 +312,6 @@ export default function ReferralLoanApplication() {
           },
           panNumber,
           aadhaarNumber,
-          aadhaarData,
-          panData,
         }
       });
 
@@ -425,14 +355,17 @@ export default function ReferralLoanApplication() {
       captureGeolocation();
       return;
     }
-    // Track step 4 - Video KYC
-    trackStep(4, 'video_kyc', 'referral');
-    
-    // Create draft application to get ID for video upload
-    const appId = await createDraftApplication();
+    // Track step 3 - Video KYC
+    trackStep(3, 'video_kyc', 'referral');
+
+    // Reuse existing draft from early lead if available, otherwise create new
+    let appId = draftApplicationId;
+    if (!appId) {
+      appId = await createDraftApplication();
+    }
     if (appId) {
       setDraftApplicationId(appId);
-      setCurrentStep(4);
+      setCurrentStep(3);
     }
   };
 
@@ -465,16 +398,9 @@ export default function ReferralLoanApplication() {
         requestedAmount: basicInfo.requestedAmount,
         tenureDays: basicInfo.tenureDays,
         pan: panNumber,
-        panVerified,
-        panName: panData?.name,
-        panDob: panData?.dob,
+        panVerified: false,
         aadhaar: aadhaarNumber,
-        aadhaarVerified,
-        aadhaarName: aadhaarData?.name,
-        aadhaarAddress: aadhaarData?.address,
-        aadhaarDob: aadhaarData?.dob,
-        aadhaarGender: aadhaarData?.gender,
-        addressData: aadhaarData?.addressData,
+        aadhaarVerified: false,
         videoKycCompleted: true,
       },
         consents,
@@ -693,39 +619,21 @@ export default function ReferralLoanApplication() {
           </div>
         )}
 
-        {/* Step 2: PAN Verification */}
+        {/* Step 2: Identity Details (PAN + Aadhaar input only) */}
         {currentStep === 2 && (
           <div className="px-4 py-4">
             <Card className="border-0 shadow-lg bg-card rounded-2xl overflow-hidden">
               <CardContent className="p-5">
-                <PANVerificationStep
+                <IdentityInputStep
                   panNumber={panNumber}
                   onPanChange={setPanNumber}
-                  onVerified={handlePanVerified}
-                  onNext={() => setCurrentStep(3)}
+                  aadhaarNumber={aadhaarNumber}
+                  onAadhaarChange={setAadhaarNumber}
+                  onNext={handleEnterVideoStep}
                   onBack={() => {
                     setCurrentStep(1);
                     setBasicInfoSubStep(2);
                   }}
-                  isVerified={panVerified}
-                  verifiedData={panData}
-                />
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Step 3: Aadhaar Verification */}
-        {currentStep === 3 && (
-          <div className="px-4 py-4">
-            <Card className="border-0 shadow-lg bg-card rounded-2xl overflow-hidden">
-              <CardContent className="p-5">
-                <AadhaarVerificationStep
-                  onVerified={handleAadhaarVerified}
-                  onNext={handleEnterVideoStep}
-                  onBack={() => setCurrentStep(2)}
-                  isVerified={aadhaarVerified}
-                  verifiedData={aadhaarData}
                 />
               </CardContent>
             </Card>
@@ -740,14 +648,14 @@ export default function ReferralLoanApplication() {
           </div>
         )}
 
-        {/* Step 4: Video KYC */}
-        {currentStep === 4 && !creatingDraft && (
+        {/* Step 3: Video KYC */}
+        {currentStep === 3 && !creatingDraft && (
           <div className="px-4 py-4">
             <Card className="border-0 shadow-lg bg-card rounded-2xl overflow-hidden">
               <CardContent className="p-5">
                 <VideoKYCStep
                   onComplete={handleVideoKycComplete}
-                  onBack={() => setCurrentStep(3)}
+                  onBack={() => setCurrentStep(2)}
                   isCompleted={videoKycCompleted}
                   applicantName={basicInfo.name}
                   applicationId={draftApplicationId || undefined}

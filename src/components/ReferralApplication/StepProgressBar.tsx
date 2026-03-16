@@ -3,9 +3,9 @@ interface StepProgressBarProps {
   totalSteps?: number;
 }
 
-const STEP_LABELS = ["Details", "PAN", "Aadhaar", "Video"];
+const STEP_LABELS = ["Details", "Identity", "Video"];
 
-export function StepProgressBar({ currentStep, totalSteps = 4 }: StepProgressBarProps) {
+export function StepProgressBar({ currentStep, totalSteps = 3 }: StepProgressBarProps) {
   return (
     <div className="py-4 px-4">
       <div className="max-w-xs mx-auto">

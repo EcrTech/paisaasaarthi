@@ -44,11 +44,13 @@ export default function LOSDashboard() {
         negativeAreasRes,
         applicantsWithAddressRes
       ] = await Promise.all([
-        // Total applications
+        // Total unique leads (count distinct contacts with applications, excluding drafts)
         supabase
           .from("loan_applications")
-          .select("*", { count: "exact", head: true })
-          .eq("org_id", orgId),
+          .select("contact_id")
+          .eq("org_id", orgId)
+          .neq("status", "draft")
+          .not("contact_id", "is", null),
         
         // Pending approval (applications awaiting approval or disbursement)
         supabase
@@ -77,30 +79,33 @@ export default function LOSDashboard() {
             "approval_pending",
           ]),
         
-        // Total sanctioned/approved amount
+        // Total sanctioned/approved amount (includes approved + disbursed applications)
         supabase
           .from("loan_applications")
           .select("approved_amount")
           .eq("org_id", orgId)
-          .eq("status", "approved")
-          .not("approved_amount", "is", null),
-        
-        // Total disbursed amount
+          .not("approved_amount", "is", null)
+          .in("status", ["approved", "disbursed"]),
+
+        // Total disbursed amount (filtered by org via loan_applications join)
         supabase
           .from("loan_disbursements")
-          .select("disbursement_amount")
-          .eq("status", "completed"),
+          .select("disbursement_amount, loan_applications!inner(org_id)")
+          .eq("status", "completed")
+          .eq("loan_applications.org_id", orgId),
         
         // Pending EMIs
         supabase
           .from("loan_repayment_schedule")
           .select("*", { count: "exact", head: true })
+          .eq("org_id", orgId)
           .eq("status", "pending"),
-        
+
         // Overdue EMIs
         supabase
           .from("loan_repayment_schedule")
           .select("*", { count: "exact", head: true })
+          .eq("org_id", orgId)
           .or(`status.eq.overdue,and(status.eq.pending,due_date.lt.${today})`),
         
         // Negative area pin codes
@@ -136,7 +141,7 @@ export default function LOSDashboard() {
       }).length || 0;
 
       return {
-        totalApps: totalAppsRes.count || 0,
+        totalApps: new Set(totalAppsRes.data?.map((a: any) => a.contact_id)).size,
         pendingApproval: pendingApprovalRes.count || 0,
         disbursed: disbursedRes.count || 0,
         inProgress: inProgressRes.count || 0,
@@ -160,6 +165,7 @@ export default function LOSDashboard() {
           loan_applicants(first_name, last_name)
         `)
         .eq("org_id", orgId)
+        .neq("status", "draft")
         .order("created_at", { ascending: false })
         .limit(5);
 

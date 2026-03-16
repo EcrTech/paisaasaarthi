@@ -27,6 +27,7 @@ import { CaseHistoryDialog } from "@/components/LOS/CaseHistoryDialog";
 import DocumentUpload from "@/components/LOS/DocumentUpload";
 import DocumentDataVerification from "@/components/LOS/DocumentDataVerification";
 import ApprovalHistory from "@/components/LOS/Approval/ApprovalHistory";
+import VerificationDashboard from "@/components/LOS/VerificationDashboard";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-muted",
@@ -600,6 +601,12 @@ export default function SanctionDetail() {
             applicationId={application.id}
             orgId={orgId!}
             applicantId={primaryApplicant?.id}
+          />
+
+          {/* Verification Dashboard - PAN, Aadhaar, Bank, Employment, etc. */}
+          <VerificationDashboard
+            applicationId={application.id}
+            orgId={orgId!}
           />
 
           {/* Verified Document Data */}

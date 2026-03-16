@@ -37,6 +37,7 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
         .from("loan_applications")
         .select("id, assigned_to, current_stage, status, requested_amount, approved_amount, created_at")
         .eq("org_id", orgId!)
+        .neq("status", "draft")
         .gte("created_at", fromDate.toISOString())
         .lte("created_at", toDate.toISOString());
       if (error) throw error;

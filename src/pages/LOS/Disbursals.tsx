@@ -114,12 +114,14 @@ export default function Disbursals() {
 
           if (documentsReady && !existingDisbursement) {
             // Fetch applicant name
-            const { data: applicant } = await supabase
+            const { data: applicants } = await supabase
               .from("loan_applicants")
               .select("first_name, last_name, bank_account_number, bank_ifsc_code, bank_name, bank_account_holder_name")
               .eq("loan_application_id", app.id)
               .eq("applicant_type", "primary")
-              .maybeSingle();
+              .order("bank_account_number", { ascending: false, nullsFirst: false })
+              .limit(1);
+            const applicant = applicants?.[0] || null;
 
             const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions[0] : app.loan_sanctions;
             const approvedAmount = Number(app.approved_amount) || 0;

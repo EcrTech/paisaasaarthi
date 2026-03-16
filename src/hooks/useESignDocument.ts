@@ -47,6 +47,12 @@ export function useESignRequest() {
 
   return useMutation({
     mutationFn: async (params: ESignRequestParams): Promise<ESignRequestResponse> => {
+      // Refresh session to prevent 401 errors on long-open pages
+      const { error: sessionError } = await supabase.auth.refreshSession();
+      if (sessionError) {
+        throw new Error("Session expired. Please log in again.");
+      }
+
       const { data, error } = await supabase.functions.invoke("nupay-esign-request", {
         body: {
           org_id: params.orgId,
@@ -62,7 +68,8 @@ export function useESignRequest() {
       });
 
       if (error) {
-        throw new Error(error.message);
+        const contextError = error.context?.error || error.context?.message;
+        throw new Error(contextError || error.message);
       }
 
       if (!data.success) {
@@ -100,7 +107,8 @@ export function useESignStatus(params: ESignStatusParams | null, options?: { ena
       });
 
       if (error) {
-        throw new Error(error.message);
+        const contextError = error.context?.error || error.context?.message;
+        throw new Error(contextError || error.message);
       }
 
       return data;
@@ -122,6 +130,8 @@ export function useCheckESignStatus() {
 
   return useMutation({
     mutationFn: async (params: ESignStatusParams): Promise<ESignStatusResponse> => {
+      await supabase.auth.refreshSession();
+
       const { data, error } = await supabase.functions.invoke("nupay-esign-status", {
         body: {
           org_id: params.orgId,
@@ -132,7 +142,8 @@ export function useCheckESignStatus() {
       });
 
       if (error) {
-        throw new Error(error.message);
+        const contextError = error.context?.error || error.context?.message;
+        throw new Error(contextError || error.message);
       }
 
       return data;

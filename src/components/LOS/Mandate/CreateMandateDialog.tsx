@@ -165,14 +165,21 @@ export default function CreateMandateDialog({
       });
 
       if (response.error) throw response.error;
+
+      // Check for NuPay API-level errors (edge function returns success: false)
+      if (!response.data.success) {
+        throw new Error(response.data.error || "NuPay mandate creation failed");
+      }
+
       return response.data;
     },
     onSuccess: (data) => {
-      toast.success("eMandate registration initiated");
       if (data.registration_url) {
+        toast.success("eMandate registration initiated");
         setRegistrationUrl(data.registration_url);
         setStep("success");
       } else {
+        toast.warning("Mandate created but no registration link was returned");
         queryClient.invalidateQueries({ queryKey: ["nupay-mandates"] });
         onOpenChange(false);
       }
@@ -197,12 +204,12 @@ export default function CreateMandateDialog({
     setAuthType("Aadhaar");
     setStep("bank");
 
-    // Prefill from previous mandate if provided
+    // Prefill from previous mandate if provided (trim whitespace from all values)
     if (prefillData) {
-      setAccountHolderName(prefillData.accountHolderName || applicantName);
-      setBankAccountNo(prefillData.bankAccountNo || "");
-      setBankAccountNoConfirm(prefillData.bankAccountNo || "");
-      setIfscCode(prefillData.ifsc || "");
+      setAccountHolderName((prefillData.accountHolderName || applicantName).trim());
+      setBankAccountNo((prefillData.bankAccountNo || "").trim().replace(/\D/g, ""));
+      setBankAccountNoConfirm((prefillData.bankAccountNo || "").trim().replace(/\D/g, ""));
+      setIfscCode((prefillData.ifsc || "").trim().replace(/[^A-Z0-9]/gi, "").toUpperCase());
       setAccountType((prefillData.accountType as "Savings" | "Current") || "Savings");
     } else {
       setAccountHolderName(applicantName);

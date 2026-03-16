@@ -30,6 +30,7 @@ interface ProofUploadDialogProps {
   disbursementAmount?: number;
   bankDetails?: BankDetails;
   disbursementId?: string;
+  isReupload?: boolean;
   onSuccess?: () => void;
 }
 
@@ -41,6 +42,7 @@ export default function ProofUploadDialog({
   disbursementAmount,
   bankDetails,
   disbursementId,
+  isReupload,
   onSuccess,
 }: ProofUploadDialogProps) {
   const queryClient = useQueryClient();
@@ -195,22 +197,26 @@ export default function ProofUploadDialog({
 
       if (updateError) throw updateError;
 
-      // Transition loan stage
-      const { data: transitioned, error: stageError } = await supabase
-        .rpc("transition_loan_stage", {
-          p_application_id: applicationId,
-          p_expected_current_stage: "disbursement_pending",
-          p_new_stage: "disbursed",
-        });
+      // Only transition loan stage on first disbursement (not re-upload)
+      if (!isReupload) {
+        const { data: transitioned, error: stageError } = await supabase
+          .rpc("transition_loan_stage", {
+            p_application_id: applicationId,
+            p_expected_current_stage: "disbursement_pending",
+            p_new_stage: "disbursed",
+          });
 
-      if (stageError) throw stageError;
-      if (!transitioned) throw new Error("Application stage has changed. Please refresh.");
+        if (stageError) throw stageError;
+        if (!transitioned) throw new Error("Application stage has changed. Please refresh.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loan-disbursements"] });
       queryClient.invalidateQueries({ queryKey: ["unified-disbursals"] });
       queryClient.invalidateQueries({ queryKey: ["loan-applications"] });
-      toast.success(`Disbursement completed! UTR: ${utrNumber.trim()}`);
+      toast.success(isReupload
+        ? `UTR proof updated! UTR: ${utrNumber.trim()}`
+        : `Disbursement completed! UTR: ${utrNumber.trim()}`);
       resetAndClose();
       onSuccess?.();
     },
@@ -259,12 +265,16 @@ export default function ProofUploadDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
-            {step === "upload" ? "Upload UTR Proof" : "Confirm Disbursement Details"}
+            {step === "upload"
+              ? (isReupload ? "Re-upload UTR Proof" : "Upload UTR Proof")
+              : "Confirm Disbursement Details"}
           </DialogTitle>
           <DialogDescription>
             {step === "upload"
-              ? "Upload the UTR confirmation or bank transfer proof."
-              : "Review and confirm the UTR number and date before completing the disbursement."
+              ? (isReupload
+                ? "Upload a new UTR proof to replace the existing one."
+                : "Upload the UTR confirmation or bank transfer proof.")
+              : "Review and confirm the UTR number and date."
             }
           </DialogDescription>
         </DialogHeader>
@@ -410,7 +420,7 @@ export default function ProofUploadDialog({
                   ) : (
                     <>
                       <CheckCircle className="h-4 w-4 mr-2" />
-                      Complete Disbursement
+                      {isReupload ? "Update UTR Proof" : "Complete Disbursement"}
                     </>
                   )}
                 </Button>

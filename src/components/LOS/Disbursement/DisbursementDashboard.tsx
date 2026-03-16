@@ -109,19 +109,15 @@ export default function DisbursementDashboard({ applicationId }: DisbursementDas
     queryKey: ["primary-applicant", applicationId],
     queryFn: async () => {
       try {
-        const session = await supabase.auth.getSession();
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/loan_applicants?loan_application_id=eq.${applicationId}&applicant_type=eq.primary&select=first_name,last_name,mobile,alternate_mobile,email,current_address,pan_number,aadhaar_number`;
-        const result = await fetch(
-          url,
-          {
-            headers: {
-              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-              'Authorization': `Bearer ${session.data.session?.access_token}`,
-            },
-          }
-        );
-        const jsonData = await result.json();
-        return jsonData?.[0] || null;
+        // Use RPC function that auto-decrypts encrypted PII fields
+        const { data, error } = await supabase.rpc("get_decrypted_applicant", {
+          p_application_id: applicationId,
+        });
+        if (error) {
+          console.error("Error fetching decrypted applicant:", error);
+          return null;
+        }
+        return data?.[0] || null;
       } catch (error) {
         console.error("Error fetching applicant:", error);
         return null;
@@ -129,24 +125,12 @@ export default function DisbursementDashboard({ applicationId }: DisbursementDas
     },
   });
 
-  // Fetch bank details from loan applicant
-  const { data: bankDetails } = useQuery({
-    queryKey: ["loan-bank-details", applicationId],
-    queryFn: async (): Promise<{ bank_name?: string; account_number?: string; ifsc_code?: string } | null> => {
-      const { data } = await supabase
-        .from("loan_applicants")
-        .select("bank_name, bank_account_number, bank_ifsc_code")
-        .eq("loan_application_id", applicationId)
-        .eq("applicant_type", "primary")
-        .maybeSingle();
-      if (!data) return null;
-      return {
-        bank_name: data.bank_name ?? undefined,
-        account_number: data.bank_account_number ?? undefined,
-        ifsc_code: data.bank_ifsc_code ?? undefined,
-      };
-    },
-  });
+  // Bank details derived from decrypted applicant data
+  const bankDetails = applicant ? {
+    bank_name: (applicant as any).bank_name ?? undefined,
+    account_number: (applicant as any).bank_account_number ?? undefined,
+    ifsc_code: (applicant as any).bank_ifsc_code ?? undefined,
+  } : null;
 
   // Fetch org settings
   const { data: orgSettings } = useQuery({

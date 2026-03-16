@@ -33,45 +33,59 @@ export function useApplicationsList(searchTerm?: string) {
     queryFn: async (): Promise<ApplicationListItem[]> => {
       if (!orgId) return [];
 
-      let query = supabase
-        .from("loan_applications")
-        .select(`
-          id,
-          loan_id,
-          application_number,
-          status,
-          current_stage,
-          requested_amount,
-          approved_amount,
-          tenure_days,
-          created_at,
-          loan_applicants!inner (
-            first_name,
-            middle_name,
-            last_name,
-            pan_number,
-            mobile,
-            email,
-            applicant_type
-          ),
-          loan_sanctions (
-            id,
-            sanctioned_amount,
-            created_at
-          ),
-          loan_disbursements (
-            id,
-            disbursement_amount,
-            disbursement_date
-          )
-        `)
-        .eq("org_id", orgId)
-        .eq("loan_applicants.applicant_type", "primary")
-        .order("created_at", { ascending: false });
+      // Fetch all applications in batches (PostgREST default limit is 1000)
+      const PAGE_SIZE = 1000;
+      let allData: any[] = [];
+      let from = 0;
+      let hasMore = true;
 
-      const { data, error } = await query;
+      while (hasMore) {
+        const { data: batch, error } = await supabase
+          .from("loan_applications")
+          .select(`
+            id,
+            loan_id,
+            application_number,
+            status,
+            current_stage,
+            requested_amount,
+            approved_amount,
+            tenure_days,
+            created_at,
+            loan_applicants!inner (
+              first_name,
+              middle_name,
+              last_name,
+              pan_number,
+              mobile,
+              email,
+              applicant_type
+            ),
+            loan_sanctions (
+              id,
+              sanctioned_amount,
+              created_at
+            ),
+            loan_disbursements (
+              id,
+              disbursement_amount,
+              disbursement_date
+            )
+          `)
+          .eq("org_id", orgId)
+          .eq("loan_applicants.applicant_type", "primary")
+          .neq("status", "draft")
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
 
-      if (error) throw error;
+        if (error) throw error;
+
+        allData = allData.concat(batch || []);
+        hasMore = (batch?.length || 0) === PAGE_SIZE;
+        from += PAGE_SIZE;
+      }
+
+      const data = allData;
 
       let applications: ApplicationListItem[] = (data || []).map((app: any) => {
         const applicant = app.loan_applicants?.[0];
