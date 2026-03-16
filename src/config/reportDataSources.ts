@@ -1,4 +1,4 @@
-export type DataSourceType = 'contacts' | 'call_logs' | 'activities' | 'pipeline_stages' | 'inventory' | 'data_repository';
+export type DataSourceType = 'contacts' | 'call_logs' | 'activities' | 'pipeline_stages';
 
 export type FieldType = 'text' | 'number' | 'date' | 'enum' | 'boolean';
 
@@ -86,55 +86,6 @@ export const reportDataSources: Record<DataSourceType, DataSource> = {
       { key: 'id', label: 'Count', type: 'number', aggregations: ['count'] },
     ],
     filters: ['org_id'],
-  },
-  inventory: {
-    key: 'inventory',
-    label: 'Inventory',
-    table: 'inventory_items',
-    fields: [
-      { key: 'item_id_sku', label: 'SKU', type: 'text' },
-      { key: 'item_name', label: 'Item Name', type: 'text' },
-      { key: 'brand', label: 'Brand', type: 'text' },
-      { key: 'category', label: 'Category', type: 'text' },
-      { key: 'subcategory', label: 'Subcategory', type: 'text' },
-      { key: 'available_qty', label: 'Available Quantity', type: 'number', aggregations: ['sum', 'avg', 'min', 'max'] },
-      { key: 'reorder_level', label: 'Reorder Level', type: 'number', aggregations: ['avg'] },
-      { key: 'reorder_qty', label: 'Reorder Quantity', type: 'number', aggregations: ['avg'] },
-      { key: 'selling_price', label: 'Selling Price', type: 'number', aggregations: ['sum', 'avg', 'min', 'max'] },
-      { key: 'last_purchase_price', label: 'Last Purchase Price', type: 'number', aggregations: ['avg'] },
-      { key: 'supplier_name', label: 'Supplier Name', type: 'text' },
-      { key: 'warehouse_branch', label: 'Warehouse Branch', type: 'text' },
-      { key: 'material', label: 'Material', type: 'text' },
-      { key: 'grade_class', label: 'Grade/Class', type: 'text' },
-      { key: 'inspection_status', label: 'Inspection Status', type: 'text' },
-      { key: 'storage_location', label: 'Storage Location', type: 'text' },
-      { key: 'created_at', label: 'Created Date', type: 'date' },
-      { key: 'id', label: 'Count', type: 'number', aggregations: ['count'] },
-    ],
-    filters: ['category', 'brand', 'warehouse_branch', 'inspection_status', 'supplier_name'],
-  },
-  data_repository: {
-    key: 'data_repository',
-    label: 'Data Repository',
-    table: 'redefine_data_repository',
-    fields: [
-      { key: 'name', label: 'Name', type: 'text' },
-      { key: 'designation', label: 'Designation', type: 'text' },
-      { key: 'company_name', label: 'Company', type: 'text' },
-      { key: 'industry_type', label: 'Industry', type: 'text' },
-      { key: 'state', label: 'State', type: 'text' },
-      { key: 'city', label: 'City', type: 'text' },
-      { key: 'zone', label: 'Zone', type: 'text' },
-      { key: 'mobile_number', label: 'Mobile Number', type: 'text' },
-      { key: 'email', label: 'Email', type: 'text' },
-      { key: 'website', label: 'Website', type: 'text' },
-      { key: 'linkedin_url', label: 'LinkedIn URL', type: 'text' },
-      { key: 'employee_count', label: 'Employee Count', type: 'text' },
-      { key: 'annual_revenue', label: 'Annual Revenue', type: 'text' },
-      { key: 'created_at', label: 'Created Date', type: 'date' },
-      { key: 'id', label: 'Count', type: 'number', aggregations: ['count'] },
-    ],
-    filters: ['industry_type', 'state', 'zone', 'company_name'],
   },
 };
 

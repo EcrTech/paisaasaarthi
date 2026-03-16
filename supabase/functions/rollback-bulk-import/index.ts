@@ -49,30 +49,6 @@ serve(async (req) => {
       if (deleteError) throw deleteError;
       deletedCount = count || 0;
 
-    } else if (job.import_type === 'inventory') {
-      tableName = 'inventory_items';
-      
-      // Use import_job_id for precise deletion if available
-      const { error: deleteError, count } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('import_job_id', importJobId);
-      
-      if (deleteError) throw deleteError;
-      deletedCount = count || 0;
-
-    } else if (job.import_type === 'redefine_repository') {
-      tableName = 'redefine_data_repository';
-      const { error: deleteError, count } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('org_id', job.org_id)
-        .gte('created_at', job.started_at || job.created_at)
-        .lte('created_at', job.completed_at);
-      
-      if (deleteError) throw deleteError;
-      deletedCount = count || 0;
-
     } else if (job.import_type === 'email_recipients') {
       tableName = 'email_campaign_recipients';
       const { error: deleteError, count } = await supabase

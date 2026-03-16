@@ -31,7 +31,6 @@ import Designations from "./pages/Designations";
 import Connectors from "./pages/Connectors";
 import CallingDashboard from "./pages/CallingDashboard";
 import CallLogs from "./pages/CallLogs";
-import CallingUploadLeads from "./pages/CallingUploadLeads";
 import CallingLeadDetail from "./pages/CallingLeadDetail";
 import ExotelSettings from "./pages/ExotelSettings";
 import PublicForm from "./pages/PublicForm";
@@ -55,8 +54,6 @@ import EmailAutomationSettings from "./pages/EmailAutomationSettings";
 import SMSAutomationRules from "./pages/SMSAutomationRules";
 import CampaignOverview from "./pages/Campaigns/CampaignOverview";
 import AIInsightsDashboard from "./pages/Campaigns/AIInsightsDashboard";
-import RedefineDataRepository from "./pages/RedefineDataRepository";
-import Inventory from "./pages/Inventory";
 import OutboundWebhooks from "./pages/OutboundWebhooks";
 import Tasks from "./pages/Tasks";
 import Applications from "./pages/LOS/Applications";
@@ -161,12 +158,6 @@ const App = () => {
             <Route path="/call-logs" element={
               <ProtectedRoute>
                 <CallLogs />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/calling/upload-leads" element={
-              <ProtectedRoute>
-                <CallingUploadLeads />
               </ProtectedRoute>
             } />
             
@@ -324,18 +315,6 @@ const App = () => {
               </ProtectedRoute>
             } />
             
-            
-            <Route path="/redefine-repository" element={
-              <ProtectedRoute>
-                <RedefineDataRepository />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/inventory" element={
-              <ProtectedRoute>
-                <Inventory />
-              </ProtectedRoute>
-            } />
             
             <Route path="/tasks" element={
               <ProtectedRoute>

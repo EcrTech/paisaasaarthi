@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface BulkDeleteRequest {
-  tableName: 'contacts' | 'inventory_items' | 'redefine_data_repository';
+  tableName: 'contacts';
   recordIds: string[];
 }
 
@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const validTables = ['contacts', 'inventory_items', 'redefine_data_repository'];
+    const validTables = ['contacts'];
     if (!validTables.includes(tableName)) {
       return new Response(
         JSON.stringify({ error: 'Invalid table name' }),

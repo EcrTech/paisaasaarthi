@@ -36,7 +36,7 @@ interface Connector {
   webhook_token?: string;
   webhook_config?: {
     http_method?: 'GET' | 'POST';
-    target_table?: 'contacts' | 'redefine_data_repository' | 'inventory_items' | 'contact_activities' | 'email_bulk_campaigns' | 'blog_posts' | 'whatsapp_bulk_campaigns' | 'call_logs' | 'email_conversations' | 'whatsapp_messages' | 'pipeline_stages' | 'teams' | 'profiles';
+    target_table?: 'contacts' | 'contact_activities' | 'email_bulk_campaigns' | 'blog_posts' | 'whatsapp_bulk_campaigns' | 'call_logs' | 'email_conversations' | 'whatsapp_messages' | 'pipeline_stages' | 'teams' | 'profiles';
     source_name?: string;
     field_mappings?: Record<string, string>;
   };
@@ -62,7 +62,7 @@ export default function Connectors() {
     is_active: true,
     webhook_config: {
       http_method: 'POST' as 'GET' | 'POST',
-      target_table: 'contacts' as 'contacts' | 'redefine_data_repository' | 'inventory_items' | 'contact_activities' | 'email_bulk_campaigns' | 'blog_posts' | 'whatsapp_bulk_campaigns' | 'call_logs' | 'email_conversations' | 'whatsapp_messages' | 'pipeline_stages' | 'teams' | 'profiles',
+      target_table: 'contacts' as 'contacts' | 'contact_activities' | 'email_bulk_campaigns' | 'blog_posts' | 'whatsapp_bulk_campaigns' | 'call_logs' | 'email_conversations' | 'whatsapp_messages' | 'pipeline_stages' | 'teams' | 'profiles',
       source_name: "" as string | undefined,
       field_mappings: {} as Record<string, string> | undefined,
     },

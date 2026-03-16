@@ -422,8 +422,6 @@ export default function CustomFields() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="contacts">Contacts</SelectItem>
-                <SelectItem value="redefine_data_repository">Data Repository</SelectItem>
-                <SelectItem value="inventory_items">Inventory</SelectItem>
                 <SelectItem value="all">All Tables</SelectItem>
               </SelectContent>
             </Select>

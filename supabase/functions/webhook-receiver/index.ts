@@ -17,7 +17,7 @@ interface FormWithConfig {
   webhook_token: string;
   webhook_config: {
     http_method?: 'GET' | 'POST';
-    target_table?: 'contacts' | 'redefine_data_repository' | 'inventory_items';
+    target_table?: 'contacts';
     source_name?: string;
     field_mappings?: Record<string, string>;
   };
@@ -146,10 +146,6 @@ Deno.serve(async (req) => {
     
     if (targetTable === 'contacts') {
       responseData = await handleContactInsertion(supabase, typedForm, payload, requestId, clientIp);
-    } else if (targetTable === 'redefine_data_repository') {
-      responseData = await handleRepositoryInsertion(supabase, typedForm, payload, requestId, clientIp);
-    } else if (targetTable === 'inventory_items') {
-      responseData = await handleInventoryInsertion(supabase, typedForm, payload, requestId, clientIp);
     } else {
       throw new Error('Unknown target table: ' + targetTable);
     }
@@ -294,171 +290,6 @@ async function handleContactInsertion(
   return responseData;
 }
 
-// Handler for Redefine Data Repository table
-async function handleRepositoryInsertion(
-  supabase: any,
-  form: FormWithConfig,
-  payload: WebhookPayload,
-  requestId: string,
-  clientIp: string
-) {
-  console.log('Handling repository insertion...');
-  
-  const mappedRepository = mapRepositoryFields(payload, form.webhook_config?.field_mappings || {});
-  console.log('Mapped repository:', mappedRepository);
-
-  const errors = validateRepository(mappedRepository);
-  if (errors.length > 0) {
-    console.error('Validation failed:', errors);
-    await logWebhook(supabase, form.id, form.org_id, requestId, 'error', 400, payload, `Validation failed: ${errors.join(', ')}`, clientIp);
-    throw new Error('Validation failed: ' + errors.join(', '));
-  }
-
-  // Check for duplicate by company_name
-  const { data: existingRepo } = await supabase
-    .from('redefine_data_repository')
-    .select('id, company_name')
-    .eq('org_id', form.org_id)
-    .eq('company_name', mappedRepository.company_name)
-    .maybeSingle();
-
-  let repoId: string;
-  let isDuplicate = false;
-
-  if (existingRepo) {
-    isDuplicate = true;
-    repoId = existingRepo.id;
-    
-    await supabase
-      .from('redefine_data_repository')
-      .update({
-        ...mappedRepository,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', repoId);
-
-    const responseData = {
-      success: true,
-      message: 'Repository record updated (duplicate company name)',
-      record_id: repoId,
-      status: 'duplicate',
-      request_id: requestId,
-      timestamp: new Date().toISOString()
-    };
-
-    await logWebhook(supabase, form.id, form.org_id, requestId, 'duplicate', 200, payload, null, clientIp, null, responseData);
-    return responseData;
-  }
-
-  // Create new repository record
-  const { data: newRepo, error: insertError } = await supabase
-    .from('redefine_data_repository')
-    .insert({
-      org_id: form.org_id,
-      ...mappedRepository,
-      source: form.webhook_config?.source_name || form.name
-    })
-    .select()
-    .single();
-
-  if (insertError) throw insertError;
-  repoId = newRepo.id;
-
-  const responseData = {
-    success: true,
-    message: 'Repository record created successfully',
-    record_id: repoId,
-    status: 'created',
-    request_id: requestId,
-    timestamp: new Date().toISOString()
-  };
-
-  await logWebhook(supabase, form.id, form.org_id, requestId, 'success', 200, payload, null, clientIp, null, responseData);
-  return responseData;
-}
-
-// Handler for Inventory Items table
-async function handleInventoryInsertion(
-  supabase: any,
-  form: FormWithConfig,
-  payload: WebhookPayload,
-  requestId: string,
-  clientIp: string
-) {
-  console.log('Handling inventory insertion...');
-  
-  const mappedInventory = mapInventoryFields(payload, form.webhook_config?.field_mappings || {});
-  console.log('Mapped inventory:', mappedInventory);
-
-  const errors = validateInventory(mappedInventory);
-  if (errors.length > 0) {
-    console.error('Validation failed:', errors);
-    await logWebhook(supabase, form.id, form.org_id, requestId, 'error', 400, payload, `Validation failed: ${errors.join(', ')}`, clientIp);
-    throw new Error('Validation failed: ' + errors.join(', '));
-  }
-
-  // Check for duplicate by item_id_sku
-  const { data: existingItem } = await supabase
-    .from('inventory_items')
-    .select('id, item_id_sku, item_name')
-    .eq('org_id', form.org_id)
-    .eq('item_id_sku', mappedInventory.item_id_sku)
-    .maybeSingle();
-
-  let itemId: string;
-  let isDuplicate = false;
-
-  if (existingItem) {
-    isDuplicate = true;
-    itemId = existingItem.id;
-    
-    await supabase
-      .from('inventory_items')
-      .update({
-        ...mappedInventory,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', itemId);
-
-    const responseData = {
-      success: true,
-      message: 'Inventory item updated (duplicate SKU)',
-      item_id: itemId,
-      status: 'duplicate',
-      request_id: requestId,
-      timestamp: new Date().toISOString()
-    };
-
-    await logWebhook(supabase, form.id, form.org_id, requestId, 'duplicate', 200, payload, null, clientIp, null, responseData);
-    return responseData;
-  }
-
-  // Create new inventory item
-  const { data: newItem, error: insertError } = await supabase
-    .from('inventory_items')
-    .insert({
-      org_id: form.org_id,
-      ...mappedInventory
-    })
-    .select()
-    .single();
-
-  if (insertError) throw insertError;
-  itemId = newItem.id;
-
-  const responseData = {
-    success: true,
-    message: 'Inventory item created successfully',
-    item_id: itemId,
-    status: 'created',
-    request_id: requestId,
-    timestamp: new Date().toISOString()
-  };
-
-  await logWebhook(supabase, form.id, form.org_id, requestId, 'success', 200, payload, null, clientIp, null, responseData);
-  return responseData;
-}
-
 // Field mapping functions
 function mapContactFields(payload: WebhookPayload, fieldMappings: Record<string, string>): any {
   const mapped: any = {};
@@ -487,51 +318,6 @@ function mapContactFields(payload: WebhookPayload, fieldMappings: Record<string,
   return mapped;
 }
 
-function mapRepositoryFields(payload: WebhookPayload, fieldMappings: Record<string, string>): any {
-  const mapped: any = {};
-
-  for (const [incomingField, targetField] of Object.entries(fieldMappings)) {
-    const value = payload[incomingField];
-    if (value !== undefined && value !== null) {
-      mapped[targetField] = String(value).trim();
-    }
-  }
-
-  // Default mappings
-  if (!mapped.company_name && payload.company_name) mapped.company_name = String(payload.company_name).trim();
-  if (!mapped.company_name && payload.company) mapped.company_name = String(payload.company).trim();
-  if (!mapped.industry_type && payload.industry_type) mapped.industry_type = String(payload.industry_type).trim();
-  if (!mapped.company_size && payload.company_size) mapped.company_size = String(payload.company_size).trim();
-  if (!mapped.website && payload.website) mapped.website = String(payload.website).trim();
-
-  return mapped;
-}
-
-function mapInventoryFields(payload: WebhookPayload, fieldMappings: Record<string, string>): any {
-  const mapped: any = {};
-
-  for (const [incomingField, targetField] of Object.entries(fieldMappings)) {
-    const value = payload[incomingField];
-    if (value !== undefined && value !== null) {
-      // Handle numeric fields
-      if (['available_qty', 'reorder_level', 'reorder_qty'].includes(targetField)) {
-        mapped[targetField] = parseFloat(value) || 0;
-      } else {
-        mapped[targetField] = String(value).trim();
-      }
-    }
-  }
-
-  // Default mappings
-  if (!mapped.item_id_sku && payload.item_id_sku) mapped.item_id_sku = String(payload.item_id_sku).trim();
-  if (!mapped.item_id_sku && payload.sku) mapped.item_id_sku = String(payload.sku).trim();
-  if (!mapped.item_name && payload.item_name) mapped.item_name = String(payload.item_name).trim();
-  if (!mapped.available_qty && payload.available_qty) mapped.available_qty = parseFloat(payload.available_qty) || 0;
-  if (!mapped.available_qty && payload.quantity) mapped.available_qty = parseFloat(payload.quantity) || 0;
-
-  return mapped;
-}
-
 // Validation functions
 function validateContact(contact: any): string[] {
   const errors: string[] = [];
@@ -553,29 +339,6 @@ function validateContact(contact: any): string[] {
     if (digits.length < 10) {
       errors.push('phone number must have at least 10 digits');
     }
-  }
-
-  return errors;
-}
-
-function validateRepository(repo: any): string[] {
-  const errors: string[] = [];
-  
-  if (!repo.company_name || repo.company_name.trim() === '') {
-    errors.push('company_name is required');
-  }
-
-  return errors;
-}
-
-function validateInventory(item: any): string[] {
-  const errors: string[] = [];
-  
-  if (!item.item_id_sku || item.item_id_sku.trim() === '') {
-    errors.push('item_id_sku is required');
-  }
-  if (!item.item_name || item.item_name.trim() === '') {
-    errors.push('item_name is required');
   }
 
   return errors;

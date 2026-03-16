@@ -41,7 +41,6 @@ const MODULE_MAP: Record<string, { key: string; name: string; icon: string; feat
   '/forms': { key: 'forms', name: 'Forms', icon: 'FileText', featureKey: 'forms' },
   '/users': { key: 'users', name: 'Users', icon: 'Users', featureKey: 'users' },
   '/teams': { key: 'teams', name: 'Teams', icon: 'Users', featureKey: 'teams' },
-  '/inventory': { key: 'inventory', name: 'Inventory', icon: 'Package', featureKey: 'inventory' },
   '/call-logs': { key: 'call_logs', name: 'Call Logs', icon: 'Phone', featureKey: 'calling' },
   '/whatsapp-dashboard': { key: 'whatsapp_dashboard', name: 'WhatsApp', icon: 'MessageCircle', featureKey: 'whatsapp' },
   '/api-keys': { key: 'api_keys', name: 'API Keys', icon: 'Key', featureKey: 'api_management' },

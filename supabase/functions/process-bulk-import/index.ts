@@ -77,51 +77,6 @@ function normalizeHeader(header: string): string {
     .replace(/[^a-z0-9_]/g, '');
 }
 
-// Special mapping for inventory columns to handle variations in CSV headers
-function mapInventoryColumn(normalizedHeader: string): string {
-  const inventoryColumnMap: Record<string, string> = {
-    'item_id__sku': 'item_id_sku',
-    'item_name__description': 'item_name',
-    'grade__class': 'grade_class',
-    'finish__coating': 'finish_coating',
-    'diameter_mm': 'diameter_mm',
-    'length_mm': 'length_mm',
-    'head_type': 'head_type',
-    'drive_type': 'drive_type',
-    'standard__specification': 'standard_spec',
-    'available_quantity': 'available_qty',
-    'reorder_level': 'reorder_level',
-    'reorder_quantity': 'reorder_qty',
-    'unit_of_measure_uom': 'uom',
-    'storage_location__bin_no': 'storage_location',
-    'warehouse__branch': 'warehouse_branch',
-    'supplier_name': 'supplier_name',
-    'supplier_code__id': 'supplier_code',
-    'last_purchase_date': 'last_purchase_date',
-    'last_purchase_price_inr': 'last_purchase_price',
-    'lead_time_days': 'lead_time_days',
-    'purchase_order_no': 'purchase_order_no',
-    'selling_price_inr': 'selling_price',
-    'discount_': 'discount_pct',
-    'customer__project_name': 'customer_project',
-    'last_sale_date': 'last_sale_date',
-    'gst_': 'gst_pct',
-    'hsn_code': 'hsn_code',
-    'batch_no__lot_no': 'batch_no',
-    'heat_no': 'heat_no',
-    'inspection_status': 'inspection_status',
-    'date_of_entry': 'date_of_entry',
-    'remarks__notes': 'remarks_notes',
-    'weight_per_unit_g__kg': 'weight_per_unit',
-    'image__drawing_reference': 'image_ref',
-    'certificate_no': 'certificate_no',
-    'expiry__review_date': 'expiry_review_date',
-    'issued_to__department': 'issued_to'
-  };
-  
-  return inventoryColumnMap[normalizedHeader] || normalizedHeader;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -180,49 +135,20 @@ serve(async (req) => {
       throw new Error('CSV file is empty');
     }
 
-    // Validate row count for redefine_repository before processing
-    const dataRowCount = lines.length - 1; // Exclude header row
-    if (importJob.import_type === 'redefine_repository' && dataRowCount > 5000) {
-      throw new Error('CSV file contains too many rows. Maximum allowed is 5,000 records.');
-    }
-
     // Parse headers
     await updateJobStage(supabase, importJobId, 'validating', {
       message: 'Validating CSV structure...',
       file_size_kb: fileSizeKB
     });
 
-    const headers = parseCSVLine(lines[0]).map(h => {
-      const normalized = normalizeHeader(h);
-      return importJob.import_type === 'inventory' ? mapInventoryColumn(normalized) : normalized;
-    });
+    const headers = parseCSVLine(lines[0]).map(h => normalizeHeader(h));
     console.log('[PARSE] Headers detected:', headers);
     
-    // Validate org for redefine_repository ONCE before processing
-    if (importJob.import_type === 'redefine_repository') {
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('slug')
-        .eq('id', importJob.org_id)
-        .single();
-      
-      if (org?.slug !== 'redefine-marcom-pvt-ltd') {
-        throw new Error('This import type is exclusive to Redefine organization');
-      }
-      console.log('[VALIDATE] Organization validated for redefine repository');
-    }
-
     // Validate required columns based on import type
     let requiredColumns: string[];
     switch (importJob.import_type) {
       case 'contacts':
         requiredColumns = ['first_name'];
-        break;
-      case 'redefine_repository':
-        requiredColumns = ['name'];
-        break;
-      case 'inventory':
-        requiredColumns = ['item_id_sku'];
         break;
       case 'email_recipients':
       case 'whatsapp_recipients':
@@ -663,114 +589,12 @@ async function processBatch(
         onConflict: 'phone_number',
         ignoreDuplicates: false
       };
-    } else if (importJob.import_type === 'redefine_repository') {
-      tableName = 'redefine_data_repository';
-      
-      // Collect both official_email and personal_email for duplicate checking
-      const officialEmails = batch
-        .map(r => r.official_email)
-        .filter(email => email && email.trim() !== '');
-      
-      const personalEmails = batch
-        .map(r => r.personal_email)
-        .filter(email => email && email.trim() !== '');
-      
-      const allEmails = [...new Set([...officialEmails, ...personalEmails])];
-      
-      if (allEmails.length > 0) {
-        // Check which emails already exist in the database (both fields)
-        const { data: existingByOfficial } = await supabase
-          .from('redefine_data_repository')
-          .select('official_email')
-          .eq('org_id', importJob.org_id)
-          .in('official_email', allEmails);
-
-        const { data: existingByPersonal } = await supabase
-          .from('redefine_data_repository')
-          .select('personal_email')
-          .eq('org_id', importJob.org_id)
-          .in('personal_email', allEmails);
-
-        const existingOfficialEmails = new Set(
-          (existingByOfficial || []).map((r: any) => r.official_email?.toLowerCase())
-        );
-        
-        const existingPersonalEmails = new Set(
-          (existingByPersonal || []).map((r: any) => r.personal_email?.toLowerCase())
-        );
-
-        // Track emails in current batch to detect within-batch duplicates
-        const batchOfficialEmails = new Set<string>();
-        const batchPersonalEmails = new Set<string>();
-        
-        const originalLength = batch.length;
-        batch = batch.filter(record => {
-          const officialEmail = record.official_email?.toLowerCase();
-          const personalEmail = record.personal_email?.toLowerCase();
-          
-          // Check official_email duplicates
-          if (officialEmail && officialEmail !== '') {
-            if (existingOfficialEmails.has(officialEmail) || batchOfficialEmails.has(officialEmail)) {
-              return false; // Skip duplicate official email
-            }
-            batchOfficialEmails.add(officialEmail);
-          }
-          
-          // Check personal_email duplicates
-          if (personalEmail && personalEmail !== '') {
-            if (existingPersonalEmails.has(personalEmail) || batchPersonalEmails.has(personalEmail)) {
-              return false; // Skip duplicate personal email
-            }
-            batchPersonalEmails.add(personalEmail);
-          }
-          
-          return true;
-        });
-
-        skippedCount = originalLength - batch.length;
-        
-        if (batch.length === 0) {
-          console.log(`[DB] Batch ${batchNumber}: All ${originalLength} records are duplicates, skipping`);
-          return { inserted: 0, skipped: originalLength };
-        }
-
-        if (skippedCount > 0) {
-          console.log(`[DB] Batch ${batchNumber}: Filtered ${skippedCount} duplicates (by official_email and personal_email), inserting ${batch.length} records`);
-        }
-      }
-      
-      upsertOptions = {};
-    } else if (importJob.import_type === 'inventory') {
-      tableName = 'inventory_items';
-      
-      // Deduplicate by SKU within the batch
-      const deduped = [];
-      const seen = new Set();
-      for (let i = batch.length - 1; i >= 0; i--) {
-        const record = batch[i];
-        if (!seen.has(record.item_id_sku)) {
-          seen.add(record.item_id_sku);
-          deduped.unshift(record);
-        }
-      }
-      batch = deduped;
-      
-      // Use composite key for upsert (org_id + item_id_sku - column order matters!)
-      upsertOptions = {
-        onConflict: 'org_id,item_id_sku',
-        ignoreDuplicates: false
-      };
     } else {
       throw new Error(`Unknown import type: ${importJob.import_type}`);
     }
 
-    // Add import_job_id to inventory items for precise rollback tracking
-    if (importJob.import_type === 'inventory') {
-      batch = batch.map(record => ({ ...record, import_job_id: importJob.id }));
-    }
-
-    // Use insert for redefine_repository and contacts, upsert for campaign recipients
-    const { error } = (importJob.import_type === 'redefine_repository' || importJob.import_type === 'contacts')
+    // Use insert for contacts, upsert for campaign recipients
+    const { error } = (importJob.import_type === 'contacts')
       ? await supabase.from(tableName).insert(batch)
       : await supabase.from(tableName).upsert(batch, upsertOptions);
 

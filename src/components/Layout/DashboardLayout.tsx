@@ -20,7 +20,6 @@ import {
   UsersRound,
   Layers,
   PhoneCall,
-  Package,
   CheckSquare,
   Award,
   FileText,
@@ -31,7 +30,6 @@ import {
   MessageSquare,
   Mail,
   Send,
-  Database,
   CreditCard,
   Activity,
   Key,
@@ -41,7 +39,6 @@ import {
   Sparkles,
   MapPinOff,
   IndianRupee,
-  Upload,
   Shield,
 } from "lucide-react";
 import { useNotification } from "@/hooks/useNotification";
@@ -94,7 +91,7 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
     canAccessFeature("campaigns_email") || canAccessFeature("campaigns_whatsapp") || canAccessFeature("ai_insights");
   
   const showOperationsSection = canAccessFeature("campaigns_email") || canAccessFeature("contacts") || 
-    canAccessFeature("pipeline_stages") || canAccessFeature("calling") || canAccessFeature("redefine_data_repository");
+    canAccessFeature("pipeline_stages") || canAccessFeature("calling");
   
   
   const showManagementSection = isAdmin && (
@@ -301,38 +298,6 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               )}
 
-              {canAccessFeature("calling") && (
-                <Link
-                  to="/calling/upload-leads"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Upload size={18} />
-                  <span>Upload Leads</span>
-                </Link>
-              )}
-
-              {canAccessFeature("redefine_data_repository") && orgName.includes("Redefine") && (
-                <Link
-                  to="/redefine-repository"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Database size={18} />
-                  <span>Data Repository</span>
-                </Link>
-              )}
-
-              {canAccessFeature("inventory") && orgName === "C.Parekh & Co" && (
-                <Link
-                  to="/inventory"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Package size={18} />
-                  <span>Inventory</span>
-                </Link>
-              )}
 
               {showManagementSection && (
                 <>
