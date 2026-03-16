@@ -31,6 +31,7 @@ import { AssignmentDialog } from "@/components/LOS/AssignmentDialog";
 import { CaseHistoryDialog } from "@/components/LOS/CaseHistoryDialog";
 import { MandateStatusCard } from "@/components/LOS/Mandate/MandateStatusCard";
 import { RepeatLoanDialog } from "@/components/LOS/RepeatLoanDialog";
+import VerificationDashboard from "@/components/LOS/VerificationDashboard";
 
 const STAGE_LABELS: Record<string, string> = {
   application_login: "Application Login",
@@ -118,6 +119,19 @@ export default function ApplicationDetail() {
       return data;
     },
     enabled: !!id && !!orgId,
+  });
+
+  // Fetch decrypted applicant PII (mobile, email, etc.)
+  const { data: decryptedApplicant } = useQuery({
+    queryKey: ["decrypted-applicant", id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_decrypted_applicant", {
+        p_application_id: id,
+      });
+      if (error) return null;
+      return data?.[0] || null;
+    },
+    enabled: !!id,
   });
 
   // Fetch parsed document data
@@ -426,7 +440,13 @@ export default function ApplicationDetail() {
       extractAddressString(aadhaarVerData?.address)
   } : null;
 
-  const primaryApplicant = application?.loan_applicants?.[0];
+  const rawApplicant = application?.loan_applicants?.[0];
+  // Overlay decrypted PII fields (mobile, email) on applicant data
+  const primaryApplicant = rawApplicant && decryptedApplicant ? {
+    ...rawApplicant,
+    mobile: decryptedApplicant.mobile || rawApplicant.mobile,
+    email: decryptedApplicant.email || rawApplicant.email,
+  } : rawApplicant;
   const tenureDays = application?.tenure_days;
 
   // Initialize applicant data when primaryApplicant changes
@@ -878,6 +898,12 @@ export default function ApplicationDetail() {
             applicationId={application.id}
             orgId={orgId!}
             applicantId={primaryApplicant?.id}
+          />
+
+          {/* Verification Dashboard - PAN, Aadhaar, Bank, Employment, etc. */}
+          <VerificationDashboard
+            applicationId={application.id}
+            orgId={orgId!}
           />
 
           {/* Parsed Document Data Card */}
