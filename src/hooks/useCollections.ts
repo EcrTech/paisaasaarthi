@@ -45,9 +45,9 @@ export function useCollections() {
           loan_applications:loan_application_id(
             application_number,
             loan_id,
-            loan_amount,
+            requested_amount,
             contact_id,
-            loan_applicants(first_name, last_name, phone),
+            loan_applicants(first_name, last_name, mobile),
             loan_disbursements(disbursement_date)
           ),
           loan_payments(transaction_reference)
@@ -71,14 +71,14 @@ export function useCollections() {
           applicant_name: applicant 
             ? `${applicant.first_name} ${applicant.last_name || ""}`.trim() 
             : "N/A",
-          applicant_phone: applicant?.phone || "",
+          applicant_phone: applicant?.mobile || "",
           due_date: item.due_date,
           total_emi: item.total_emi,
           principal: item.principal_amount,
           interest: item.interest_amount,
           amount_paid: item.amount_paid || 0,
           status: item.status,
-          loan_amount: item.loan_applications?.loan_amount || 0,
+          loan_amount: item.loan_applications?.requested_amount || 0,
           disbursement_date: disbursement?.disbursement_date || "",
           contact_id: item.loan_applications?.contact_id,
           utr_number: payment?.transaction_reference || undefined,
