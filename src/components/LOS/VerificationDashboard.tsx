@@ -121,10 +121,18 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
   // Fetch Aadhaar verification results directly from dashboard
   const [fetchingAadhaarResults, setFetchingAadhaarResults] = useState(false);
   const fetchAadhaarResults = async () => {
-    const aadhaarVerification = getVerification("aadhaar");
-    const uniqueRequestNumber = (aadhaarVerification?.request_data as Record<string, any>)?.unique_request_number;
+    // Search all aadhaar verifications for one with unique_request_number (newest first)
+    const aadhaarVerifications = verifications.filter(v => v.verification_type === "aadhaar");
+    let uniqueRequestNumber: string | null = null;
+    for (const v of aadhaarVerifications) {
+      const reqNum = (v.request_data as Record<string, any>)?.unique_request_number;
+      if (reqNum) {
+        uniqueRequestNumber = reqNum;
+        break;
+      }
+    }
     if (!uniqueRequestNumber) {
-      toast({ variant: "destructive", title: "No request number", description: "Aadhaar verification was not initiated via DigiLocker." });
+      toast({ variant: "destructive", title: "No request number", description: "Could not find a DigiLocker request number. Please open the Aadhaar dialog and initiate a new verification." });
       return;
     }
     setFetchingAadhaarResults(true);
