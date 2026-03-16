@@ -40,6 +40,7 @@ export default function CreditBureauDialog({
     existingVerification?.response_data?.is_live_fetch ? "live" : "upload"
   );
   const [consentChecked, setConsentChecked] = useState(false);
+  const [liveBureau, setLiveBureau] = useState<"equifax" | "experian">("experian");
   const [isFetchingLive, setIsFetchingLive] = useState(false);
   const [liveReportData, setLiveReportData] = useState<any>(
     existingVerification?.response_data?.is_live_fetch ? existingVerification?.response_data : null
@@ -137,15 +138,35 @@ export default function CreditBureauDialog({
 
     setIsFetchingLive(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const { data, error } = await supabase.functions.invoke("equifax-credit-report", {
-        body: {
-          applicantId: applicant.id,
-          applicationId,
-          orgId,
-        },
-      });
+      let data: any;
+      let error: any;
+
+      if (liveBureau === "experian") {
+        // Fetch via VerifiedU Experian API
+        const result = await supabase.functions.invoke("verifiedu-credit-report", {
+          body: {
+            applicantId: applicant.id,
+            applicationId,
+            orgId,
+            name: applicantName,
+            pan: applicantPAN,
+            mobile: applicantMobile,
+          },
+        });
+        data = result.data;
+        error = result.error;
+      } else {
+        // Fetch via Equifax API
+        const result = await supabase.functions.invoke("equifax-credit-report", {
+          body: {
+            applicantId: applicant.id,
+            applicationId,
+            orgId,
+          },
+        });
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) throw error;
 
@@ -154,27 +175,43 @@ export default function CreditBureauDialog({
       }
 
       setLiveReportData(data.data);
-      
+
       // Update form data with live report results
       const reportData = data.data;
-      setFormData(prev => ({
-        ...prev,
-        bureau_type: "equifax",
-        credit_score: reportData.creditScore?.toString() || "",
-        active_accounts: reportData.summary?.activeAccounts?.toString() || "0",
-        total_outstanding: reportData.summary?.totalOutstanding?.toString() || "",
-        total_overdue: reportData.summary?.totalPastDue?.toString() || "",
-        enquiry_count_30d: reportData.enquiries?.total30Days?.toString() || "0",
-        enquiry_count_90d: reportData.enquiries?.total90Days?.toString() || "0",
-        name_on_report: reportData.personalInfo?.name || "",
-        pan_on_report: reportData.personalInfo?.pan || "",
-        status: "success",
-        remarks: `Live fetch from Equifax. Score: ${reportData.creditScore} (${reportData.scoreType} ${reportData.scoreVersion || "4.0"})`,
-      }));
 
+      if (liveBureau === "experian") {
+        setFormData(prev => ({
+          ...prev,
+          bureau_type: "experian",
+          credit_score: reportData.credit_score?.toString() || "",
+          name_on_report: reportData.name_on_report || "",
+          pan_on_report: reportData.pan_on_report || "",
+          status: reportData.credit_score ? "success" : "failed",
+          remarks: reportData.credit_score
+            ? `Live fetch from Experian via VerifiedU. Score: ${reportData.credit_score}`
+            : "Experian report fetched but no score extracted",
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          bureau_type: "equifax",
+          credit_score: reportData.creditScore?.toString() || "",
+          active_accounts: reportData.summary?.activeAccounts?.toString() || "0",
+          total_outstanding: reportData.summary?.totalOutstanding?.toString() || "",
+          total_overdue: reportData.summary?.totalPastDue?.toString() || "",
+          enquiry_count_30d: reportData.enquiries?.total30Days?.toString() || "0",
+          enquiry_count_90d: reportData.enquiries?.total90Days?.toString() || "0",
+          name_on_report: reportData.personalInfo?.name || "",
+          pan_on_report: reportData.personalInfo?.pan || "",
+          status: "success",
+          remarks: `Live fetch from Equifax. Score: ${reportData.creditScore} (${reportData.scoreType} ${reportData.scoreVersion || "4.0"})`,
+        }));
+      }
+
+      const score = liveBureau === "experian" ? reportData.credit_score : reportData.creditScore;
       toast({
         title: "Credit report fetched successfully",
-        description: `Credit score: ${reportData.creditScore}`,
+        description: `Credit score: ${score || "N/A"}`,
       });
 
       // Invalidate queries to refresh verification status
@@ -506,7 +543,7 @@ export default function CreditBureauDialog({
         <DialogHeader>
           <DialogTitle>Credit Bureau Check</DialogTitle>
           <DialogDescription>
-            Fetch credit report from Equifax or upload report for AI parsing
+            Fetch credit report from Experian/Equifax or upload report for AI parsing
           </DialogDescription>
         </DialogHeader>
 
@@ -565,20 +602,43 @@ export default function CreditBureauDialog({
               )}
             </div>
 
+            {/* Bureau Selection */}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">Select Bureau</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={liveBureau === "experian" ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => setLiveBureau("experian")}
+                >
+                  Experian
+                </Button>
+                <Button
+                  type="button"
+                  variant={liveBureau === "equifax" ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => setLiveBureau("equifax")}
+                >
+                  Equifax
+                </Button>
+              </div>
+            </div>
+
             {/* Consent Checkbox */}
             <div className="flex items-start space-x-3 p-4 border rounded-lg">
-              <Checkbox 
-                id="consent" 
-                checked={consentChecked} 
+              <Checkbox
+                id="consent"
+                checked={consentChecked}
                 onCheckedChange={(checked) => setConsentChecked(checked === true)}
               />
               <label htmlFor="consent" className="text-sm leading-tight cursor-pointer">
-                I confirm that consent has been obtained from the applicant to fetch their credit report from Equifax Credit Bureau.
+                I confirm that consent has been obtained from the applicant to fetch their credit report from {liveBureau === "experian" ? "Experian" : "Equifax"} Credit Bureau.
               </label>
             </div>
 
             {/* Fetch Button */}
-            <Button 
+            <Button
               onClick={handleFetchLiveReport}
               disabled={isFetchingLive || !consentChecked || (!applicantPAN && !applicant?.aadhaar_number)}
               className="w-full"
@@ -587,12 +647,12 @@ export default function CreditBureauDialog({
               {isFetchingLive ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Fetching Credit Report...
+                  Fetching from {liveBureau === "experian" ? "Experian" : "Equifax"}...
                 </>
               ) : (
                 <>
                   <Zap className="h-4 w-4 mr-2" />
-                  Fetch Credit Report from Equifax
+                  Fetch Credit Report from {liveBureau === "experian" ? "Experian" : "Equifax"}
                 </>
               )}
             </Button>
