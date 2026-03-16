@@ -26,9 +26,8 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -129,9 +128,8 @@ serve(async (req) => {
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
       );
 
-      await adminClient.from("loan_verifications").insert({
+      const { error: insertError } = await adminClient.from("loan_verifications").insert({
         loan_application_id: applicationId,
-        org_id: orgId,
         verification_type: "bank_account",
         verification_source: "verifiedu",
         status: responseData.data?.is_valid ? "success" : "failed",
@@ -147,6 +145,10 @@ serve(async (req) => {
         },
         verified_at: new Date().toISOString(),
       });
+
+      if (insertError) {
+        console.error("Failed to save bank verification:", insertError);
+      }
     }
 
     return new Response(JSON.stringify({

@@ -26,9 +26,8 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -111,9 +110,8 @@ serve(async (req) => {
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
       );
 
-      await adminClient.from("loan_verifications").insert({
+      const { error: insertError } = await adminClient.from("loan_verifications").insert({
         loan_application_id: applicationId,
-        org_id: orgId,
         verification_type: "pan",
         verification_source: "verifiedu",
         status: responseData.data?.is_valid ? "success" : "failed",
@@ -121,6 +119,10 @@ serve(async (req) => {
         response_data: responseData.data,
         verified_at: new Date().toISOString(),
       });
+
+      if (insertError) {
+        console.error("Failed to save PAN verification:", insertError);
+      }
 
       // Update applicant DOB if we have a valid date from PAN verification
       if (responseData.data?.dob) {
@@ -147,6 +149,11 @@ serve(async (req) => {
         dob: responseData.data?.dob,
         name: responseData.data?.name,
         is_valid: responseData.data?.is_valid,
+      },
+      debug: {
+        raw_request: { url: `${baseUrl}/api/verifiedu/VerifyPAN`, body: { PanNumber: panNumber.toUpperCase() } },
+        raw_response: responseData,
+        http_status: response.status,
       },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

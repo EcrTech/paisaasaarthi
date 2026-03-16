@@ -67,6 +67,8 @@ export default function PANVerificationDialog({
     }
   }, [panDocOcr, existingVerification]);
 
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+
   // Verify PAN via VerifiedU API (no separate auth needed)
   const verifyMutation = useMutation({
     mutationFn: async () => {
@@ -82,15 +84,19 @@ export default function PANVerificationDialog({
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        setDebugInfo({ error: error.message, context: error.context });
+        throw error;
+      }
+      setDebugInfo(data?.debug || null);
       if (!data.success) throw new Error(data.error || "PAN verification failed");
       return data;
     },
     onSuccess: (data) => {
       toast({
         title: "PAN Verified",
-        description: data.is_mock 
-          ? "PAN verified in mock mode (configure VerifiedU credentials for live verification)" 
+        description: data.is_mock
+          ? "PAN verified in mock mode (configure VerifiedU credentials for live verification)"
           : "PAN details have been verified successfully",
       });
       // Update form with verified data
@@ -196,6 +202,16 @@ export default function PANVerificationDialog({
               <CheckCircle className="h-4 w-4 text-green-600" />
               <span className="text-green-800">Verified: {formData.name_on_pan}</span>
             </div>
+          )}
+
+          {/* Debug: Raw Request/Response */}
+          {debugInfo && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground font-medium">Raw API Request & Response</summary>
+              <pre className="mt-2 p-3 bg-muted rounded-md overflow-auto max-h-48 whitespace-pre-wrap break-all">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            </details>
           )}
 
           <div className="border-t pt-4">
