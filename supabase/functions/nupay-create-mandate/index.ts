@@ -140,6 +140,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Sanitize input values - trim whitespace from bank details
+    const sanitizedAccountNo = requestData.bank_account_no.trim();
+    const sanitizedAccountNoConfirm = requestData.bank_account_no_confirmation.trim();
+    const sanitizedIfsc = requestData.ifsc_code?.trim().replace(/[^A-Z0-9]/gi, "").toUpperCase() || "";
+
     // Build Nupay API payload (field mapping as per API doc - EXACT field names)
     // Nupay expects full word: "Savings", "Current", "CC", "OTHER"
     const nupayPayload: Record<string, any> = {
@@ -151,9 +156,9 @@ Deno.serve(async (req) => {
       debit_type: requestData.debit_type || false,
       frst_colltn_dt: requestData.first_collection_date,
       colltn_until_cncl: requestData.collection_until_cancel || false,
-      account_holder_name: requestData.account_holder_name,
-      bank_account_no: requestData.bank_account_no,
-      bank_account_no_confirmation: requestData.bank_account_no_confirmation,
+      account_holder_name: requestData.account_holder_name.trim(),
+      bank_account_no: sanitizedAccountNo,
+      bank_account_no_confirmation: sanitizedAccountNoConfirm,
       bank_id: requestData.bank_id,
       account_type: requestData.account_type, // Use full word: Savings, Current, CC, OTHER
       mobile_no: requestData.mobile_no,
@@ -168,8 +173,8 @@ Deno.serve(async (req) => {
     if (requestData.final_collection_date) {
       nupayPayload.fnl_colltn_dt = requestData.final_collection_date;
     }
-    if (requestData.ifsc_code) {
-      nupayPayload.ifsc_code = requestData.ifsc_code; // Exact field name per spec
+    if (sanitizedIfsc && sanitizedIfsc.length === 11) {
+      nupayPayload.ifsc_code = sanitizedIfsc;
     }
     if (requestData.email) {
       nupayPayload.email = requestData.email;
@@ -221,12 +226,53 @@ Deno.serve(async (req) => {
 
     console.log(`[Nupay-CreateMandate] Response:`, JSON.stringify(responseData));
 
+    // Check for NuPay API-level errors (HTTP 200 but StatusCode != NP000)
+    const statusCode = responseData.StatusCode || responseData.statusCode;
+    if (statusCode && statusCode !== "NP000") {
+      const statusDesc = responseData.StatusDesc || responseData.statusDesc || "Unknown NuPay error";
+      console.error(`[Nupay-CreateMandate] NuPay API error: ${statusCode} - ${statusDesc}`);
+
+      // Still save the failed attempt to DB for audit
+      await supabase.from("nupay_mandates").insert({
+        org_id: requestData.org_id,
+        loan_application_id: requestData.loan_application_id,
+        contact_id: requestData.contact_id,
+        loan_no: requestData.loan_no,
+        status: "failed",
+        seq_type: requestData.seq_type,
+        frequency: requestData.frequency,
+        collection_amount: requestData.collection_amount,
+        first_collection_date: requestData.first_collection_date,
+        account_holder_name: requestData.account_holder_name.trim(),
+        bank_account_no: sanitizedAccountNo,
+        ifsc_code: sanitizedIfsc || null,
+        bank_id: requestData.bank_id,
+        bank_name: requestData.bank_name,
+        account_type: requestData.account_type,
+        auth_type: requestData.auth_type || "",
+        mobile_no: requestData.mobile_no,
+        email: requestData.email,
+        request_payload: nupayPayload,
+        response_payload: responseData,
+        created_by: user.id,
+      });
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: statusDesc,
+          nupay_status_code: statusCode,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Extract Nupay mandate details - API returns nested structure under data.customer and data.url
     const customerData = responseData.data?.customer;
     const nupayId = customerData?.id || responseData.id || responseData.Id;
     const nupayRefNo = customerData?.nupay_ref_no || responseData.ref_no || responseData.RefNo;
-    const registrationUrl = responseData.data?.url || responseData.url || responseData.registration_url;
-    
+    const registrationUrl = responseData.data?.url || responseData.data?.registration_url || responseData.url || responseData.registration_url;
+
     console.log(`[Nupay-CreateMandate] Extracted - nupayId: ${nupayId}, refNo: ${nupayRefNo}, url: ${registrationUrl}`);
 
     // Store mandate in database
@@ -248,9 +294,9 @@ Deno.serve(async (req) => {
         first_collection_date: requestData.first_collection_date,
         final_collection_date: requestData.final_collection_date,
         collection_until_cancel: requestData.collection_until_cancel || false,
-        account_holder_name: requestData.account_holder_name,
-        bank_account_no: requestData.bank_account_no,
-        ifsc_code: requestData.ifsc_code,
+        account_holder_name: requestData.account_holder_name.trim(),
+        bank_account_no: sanitizedAccountNo,
+        ifsc_code: sanitizedIfsc || null,
         bank_id: requestData.bank_id,
         bank_name: requestData.bank_name,
         account_type: requestData.account_type,

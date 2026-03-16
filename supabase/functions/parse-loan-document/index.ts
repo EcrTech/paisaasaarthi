@@ -1,14 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
-import { 
-  safeBase64Encode, 
-  getPdfPageCount, 
-  extractPdfPages, 
-  getChunkConfig, 
-  mergeOcrData, 
+import {
+  safeBase64Encode,
+  getPdfPageCount,
+  extractPdfPages,
+  getChunkConfig,
+  mergeOcrData,
   getChunkPrompt,
   calculateProgress,
-  type ParsingProgress 
+  type ParsingProgress
 } from "../_shared/pdfUtils.ts";
 
 const corsHeaders = {
@@ -213,11 +213,11 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+  const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
 
-  if (!lovableApiKey) {
+  if (!anthropicApiKey) {
     return new Response(
-      JSON.stringify({ success: false, error: "LOVABLE_API_KEY is not configured" }),
+      JSON.stringify({ success: false, error: "ANTHROPIC_API_KEY is not configured" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -227,16 +227,16 @@ serve(async (req) => {
 
   try {
     const reqBody = await req.json();
-    const { 
-      documentId, 
-      documentType, 
+    const {
+      documentId,
+      documentType,
       filePath,
       // Chunking parameters (optional - for continuation invocations)
       currentPage = 1,
       totalPages = 0,
       accumulatedData = null,
     } = reqBody;
-    
+
     const isFirstChunk = currentPage === 1 && totalPages === 0;
     console.log(`[ParseDocument] Processing: ${documentType}, ID: ${documentId}, Page: ${currentPage}/${totalPages || 'unknown'}`);
 
@@ -270,17 +270,15 @@ serve(async (req) => {
 
     if (!fileData || fileData.size === 0) {
       console.warn(`[ParseDocument] First download returned empty. Retrying...`);
-      // Retry once after a short delay
       await new Promise(r => setTimeout(r, 1500));
       const { data: retryData, error: retryError } = await supabase.storage
         .from("loan-documents")
         .download(filePath);
-      
+
       if (retryError || !retryData || retryData.size === 0) {
         console.error(`[ParseDocument] Retry also failed. Blob size: ${retryData?.size}`);
         throw new Error("Downloaded file is empty (0 bytes). Please re-upload the document.");
       }
-      // Use retry data - reassign to work with downstream code
       Object.defineProperty(fileData, 'size', { value: retryData.size });
       var fileDataToUse = retryData;
     } else {
@@ -288,25 +286,25 @@ serve(async (req) => {
     }
 
     const arrayBuffer = await fileDataToUse.arrayBuffer();
-    
+
     if (!arrayBuffer || arrayBuffer.byteLength === 0) {
       console.error(`[ParseDocument] ArrayBuffer is empty after conversion. Blob size was: ${fileDataToUse.size}`);
       throw new Error("File data is empty after conversion. Please re-upload the document.");
     }
-    
+
     const fileBytes = new Uint8Array(arrayBuffer);
-    
+
     // Detect file type from path or content
     const fileExtension = filePath.split('.').pop()?.toLowerCase() || '';
     const isPdf = fileExtension === 'pdf' || fileDataToUse.type === 'application/pdf';
     const isChunkable = isPdf && CHUNKABLE_DOC_TYPES.includes(documentType);
-    
+
     console.log(`[ParseDocument] File size: ${arrayBuffer.byteLength}, isPDF: ${isPdf}, isChunkable: ${isChunkable}`);
 
     let actualTotalPages = totalPages;
     let pdfBytesToParse = fileBytes;
     const chunkConfig = getChunkConfig(documentType);
-    
+
     // For all PDFs, try to validate/decrypt the PDF to strip restrictions
     if (isPdf) {
       try {
@@ -314,25 +312,21 @@ serve(async (req) => {
         const pdfDoc = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
         const pageCount = pdfDoc.getPageCount();
         console.log(`[ParseDocument] PDF validated: ${pageCount} pages`);
-        
-        // Re-save the PDF to strip encryption/restrictions
+
         const cleanedPdfBytes = await pdfDoc.save();
         pdfBytesToParse = new Uint8Array(cleanedPdfBytes);
         console.log(`[ParseDocument] PDF re-saved (stripped encryption), new size: ${cleanedPdfBytes.byteLength}`);
       } catch (pdfError) {
         console.warn(`[ParseDocument] PDF validation/cleanup failed:`, pdfError);
-        // Continue with original bytes
       }
     }
 
     // For PDFs, determine if we need chunked processing
     if (isPdf && isChunkable) {
-      // Get total page count if this is the first chunk
       if (isFirstChunk) {
         actualTotalPages = await getPdfPageCount(fileBytes);
         console.log(`[ParseDocument] PDF has ${actualTotalPages} pages`);
-        
-        // Update status to processing if we're starting
+
         await supabase
           .from("loan_documents")
           .update({
@@ -347,7 +341,6 @@ serve(async (req) => {
           .eq("id", documentId);
       }
 
-      // Extract page range if needed
       const endPage = Math.min(currentPage + chunkConfig.pagesPerChunk - 1, actualTotalPages);
       if (actualTotalPages > chunkConfig.pagesPerChunk) {
         console.log(`[ParseDocument] Extracting pages ${currentPage}-${endPage} of ${actualTotalPages}`);
@@ -366,7 +359,7 @@ serve(async (req) => {
 
     // Get the appropriate prompt for this document type
     const basePrompt = DOCUMENT_PROMPTS[documentType] || `Extract all relevant information from this document and return as JSON.`;
-    
+
     // Adjust prompt for chunked processing
     const prompt = isPdf && isChunkable && actualTotalPages > chunkConfig.pagesPerChunk
       ? getChunkPrompt(
@@ -380,152 +373,60 @@ serve(async (req) => {
         )
       : basePrompt;
 
-    let aiResponse: Response;
+    // Build content blocks for Anthropic API
+    const contentBlocks: any[] = [];
 
     if (isPdf) {
-      const dataUrl = `data:application/pdf;base64,${base64}`;
-      const filename = filePath.split('/').pop() || "document.pdf";
-      console.log(`[ParseDocument] Using Gemini Flash for PDF parsing, filename: ${filename}, base64 length: ${base64.length}, first 50 chars of base64: ${base64.substring(0, 50)}`);
-      
-      aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
+      contentBlocks.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: base64,
         },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "file",
-                  file: {
-                    filename: filename,
-                    file_data: dataUrl,
-                  },
-                },
-                {
-                  type: "text",
-                  text: prompt + "\n\nCRITICAL: Respond with ONLY the raw JSON object. No text before or after. No markdown. No code fences. No explanation.",
-                },
-              ],
-            },
-          ],
-          max_tokens: chunkConfig.maxTokens,
-        }),
       });
-      
-      // If type: "file" fails with 400 (e.g. encrypted PDFs), retry with image_url format
-      if (!aiResponse.ok && aiResponse.status === 400) {
-        const errorBody = await aiResponse.text();
-        console.warn(`[ParseDocument] type:file failed (400): ${errorBody}. Retrying with image_url format...`);
-        
-        aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${lovableApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: dataUrl,
-                    },
-                  },
-                  {
-                    type: "text",
-                    text: prompt + "\n\nCRITICAL: Respond with ONLY the raw JSON object. No text before or after. No markdown. No code fences. No explanation.",
-                  },
-                ],
-              },
-            ],
-            max_tokens: chunkConfig.maxTokens,
-          }),
-        });
-
-        // If image_url also fails, try with openai/gpt-5-mini as last resort
-        if (!aiResponse.ok && aiResponse.status === 400) {
-          const errorBody2 = await aiResponse.text();
-          console.warn(`[ParseDocument] image_url also failed (400): ${errorBody2}. Trying with GPT-5-mini...`);
-          
-          aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${lovableApiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "openai/gpt-5-mini",
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "file",
-                      file: {
-                        filename: filename,
-                        file_data: dataUrl,
-                      },
-                    },
-                    {
-                      type: "text",
-                      text: prompt + "\n\nCRITICAL: Respond with ONLY the raw JSON object. No text before or after. No markdown. No code fences. No explanation.",
-                    },
-                  ],
-                },
-              ],
-              max_completion_tokens: chunkConfig.maxTokens,
-            }),
-          });
-        }
-      }
     } else {
       const mimeType = fileDataToUse.type || "image/jpeg";
-      console.log(`[ParseDocument] Using Gemini Flash for image parsing, MIME: ${mimeType}`);
-      
-      aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
+      contentBlocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: mimeType,
+          data: base64,
         },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:${mimeType};base64,${base64}`,
-                  },
-                },
-                {
-                  type: "text",
-                  text: prompt + "\n\nCRITICAL: Respond with ONLY the raw JSON object. No text before or after. No markdown. No code fences. No explanation.",
-                },
-              ],
-            },
-          ],
-          max_tokens: chunkConfig.maxTokens,
-        }),
       });
     }
+
+    contentBlocks.push({
+      type: "text",
+      text: prompt + "\n\nCRITICAL: Respond with ONLY the raw JSON object. No text before or after. No markdown. No code fences. No explanation.",
+    });
+
+    console.log(`[ParseDocument] Calling Claude Haiku for ${isPdf ? 'PDF' : 'image'} parsing`);
+
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: chunkConfig.maxTokens,
+        messages: [
+          {
+            role: "user",
+            content: contentBlocks,
+          },
+        ],
+      }),
+    });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error(`[ParseDocument] AI API error: ${aiResponse.status}`, errorText);
-      
-      // Mark as failed
+
       await supabase
         .from("loan_documents")
         .update({
@@ -537,7 +438,7 @@ serve(async (req) => {
           },
         })
         .eq("id", documentId);
-      
+
       if (aiResponse.status === 429) {
         throw new Error("Rate limit exceeded. Please try again later.");
       }
@@ -548,53 +449,43 @@ serve(async (req) => {
     }
 
     const aiResult = await aiResponse.json();
-    const content = aiResult.choices?.[0]?.message?.content || "";
+    const content = aiResult.content?.[0]?.text || "";
     console.log(`[ParseDocument] AI response received, length: ${content.length}`);
 
     // Parse the JSON from the response
     let parsedData: Record<string, any> = {};
     try {
-      // Try multiple extraction strategies
       let jsonStr = content.trim();
-      
-      // Strategy 1: Extract from code fences
+
       const codeFenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (codeFenceMatch) {
         jsonStr = codeFenceMatch[1].trim();
       } else {
-        // Strategy 2: Find the first { and last } to extract JSON object
         const firstBrace = content.indexOf('{');
         const lastBrace = content.lastIndexOf('}');
         if (firstBrace !== -1 && lastBrace > firstBrace) {
           jsonStr = content.substring(firstBrace, lastBrace + 1);
         }
       }
-      
+
       try {
         parsedData = JSON.parse(jsonStr);
       } catch (firstParseError) {
-        // Strategy 3: Try to repair truncated JSON by removing trailing incomplete entries
         console.warn(`[ParseDocument] First parse failed, attempting JSON repair...`);
-        
-        // Remove any trailing incomplete array entries or properties
+
         let repaired = jsonStr;
-        
-        // Remove truncated trailing content after last complete property
-        // Find the last complete "key": value pair
         const lastCompleteComma = repaired.lastIndexOf(',\n');
         if (lastCompleteComma > 0) {
           const afterComma = repaired.substring(lastCompleteComma + 2).trim();
-          // If what's after the comma doesn't end with a proper closing, truncate there
           if (!afterComma.endsWith('}')) {
             repaired = repaired.substring(0, lastCompleteComma);
-            // Close any open arrays and objects
             const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
             const openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
             for (let i = 0; i < openBrackets; i++) repaired += ']';
             for (let i = 0; i < openBraces; i++) repaired += '}';
           }
         }
-        
+
         try {
           parsedData = JSON.parse(repaired);
           console.log(`[ParseDocument] JSON repair successful`);
@@ -604,7 +495,7 @@ serve(async (req) => {
           parsedData = { raw_text: content, parse_error: true };
         }
       }
-      
+
       console.log(`[ParseDocument] Parsed data keys:`, Object.keys(parsedData).join(', '));
     } catch (parseError) {
       console.error(`[ParseDocument] JSON parse error:`, parseError);
@@ -617,35 +508,40 @@ serve(async (req) => {
       console.log(`[ParseDocument] UTR is null for image-based ${documentType}, retrying with focused prompt...`);
       try {
         const retryPrompt = `Look at this bank transaction receipt/screenshot carefully. Find the main transaction reference number or ID shown on the document. It may be labeled as "Transaction ID", "UTR", "Reference Number", "Ref No", "NEFT Ref", "RTGS Ref", "IMPS Ref", "CMS Ref", or similar. Return ONLY a JSON object like: {"utr_number": "THE_REFERENCE_NUMBER_HERE"}. If you truly cannot find any reference number, return {"utr_number": null}.\n\nCRITICAL: Respond with ONLY the raw JSON object. No text before or after. No markdown. No code fences.`;
-        
+
         const mimeType = fileDataToUse?.type || "image/jpeg";
-        const retryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const retryResponse = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${lovableApiKey}`,
+            "x-api-key": anthropicApiKey,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-pro",
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 500,
             messages: [
               {
                 role: "user",
                 content: [
                   {
-                    type: "image_url",
-                    image_url: { url: `data:${mimeType};base64,${base64}` },
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: mimeType,
+                      data: base64,
+                    },
                   },
                   { type: "text", text: retryPrompt },
                 ],
               },
             ],
-            max_tokens: 500,
           }),
         });
 
         if (retryResponse.ok) {
           const retryResult = await retryResponse.json();
-          const retryContent = retryResult.choices?.[0]?.message?.content || "";
+          const retryContent = retryResult.content?.[0]?.text || "";
           const firstBrace = retryContent.indexOf('{');
           const lastBrace = retryContent.lastIndexOf('}');
           if (firstBrace !== -1 && lastBrace > firstBrace) {
@@ -668,7 +564,6 @@ serve(async (req) => {
     let mergedData = parsedData;
     if (accumulatedData) {
       if (parsedData.parse_error) {
-        // Don't let a failed chunk wipe out good accumulated data
         console.warn(`[ParseDocument] Chunk parse failed, keeping accumulated data`);
         mergedData = accumulatedData;
       } else {
@@ -682,14 +577,12 @@ serve(async (req) => {
     const hasMorePages = isPdf && isChunkable && actualTotalPages > 1 && nextPage <= actualTotalPages;
 
     if (hasMorePages) {
-      // Strip transactions from intermediate saves too
       if (documentType === 'bank_statement' && mergedData.transactions) {
         delete mergedData.transactions;
       }
 
-      // Update progress and save partial results
       const progress = calculateProgress(nextPage - 1, actualTotalPages, chunkConfig.pagesPerChunk);
-      
+
       await supabase
         .from("loan_documents")
         .update({
@@ -704,9 +597,8 @@ serve(async (req) => {
         })
         .eq("id", documentId);
 
-      // Trigger self-invocation for next chunk (fire-and-forget)
       console.log(`[ParseDocument] Triggering continuation for pages ${nextPage}-${Math.min(nextPage + chunkConfig.pagesPerChunk - 1, actualTotalPages)}`);
-      
+
       fetch(`${supabaseUrl}/functions/v1/parse-loan-document`, {
         method: 'POST',
         headers: {
@@ -727,7 +619,6 @@ serve(async (req) => {
         console.error(`[ParseDocument] Failed to trigger continuation:`, err);
       });
 
-      // Return immediately with processing status
       return new Response(
         JSON.stringify({
           success: true,
@@ -740,13 +631,11 @@ serve(async (req) => {
     }
 
     // This is the final chunk or a single-page document
-    // Strip transactions array for bank statements (saves storage, not needed)
     if (documentType === 'bank_statement' && mergedData.transactions) {
       console.log(`[ParseDocument] Stripping transactions array (${mergedData.transactions.length} entries) from bank statement`);
       delete mergedData.transactions;
     }
 
-    // Update the document with final parsed data
     const finalData: Record<string, any> = {
       ...mergedData,
       parsed_at: new Date().toISOString(),
@@ -762,7 +651,7 @@ serve(async (req) => {
         ocr_data: finalData,
         parsing_status: 'completed',
         parsing_completed_at: new Date().toISOString(),
-        parsing_progress: actualTotalPages > 1 
+        parsing_progress: actualTotalPages > 1
           ? calculateProgress(actualTotalPages, actualTotalPages, chunkConfig.pagesPerChunk)
           : { current_page: 1, total_pages: 1, chunks_completed: 1, total_chunks: 1 },
         updated_at: new Date().toISOString(),
@@ -786,7 +675,7 @@ serve(async (req) => {
           verified_at: new Date().toISOString(),
         })
         .eq("id", documentId);
-      
+
       if (verifyError) {
         console.warn(`[ParseDocument] Failed to auto-verify ${documentType}:`, verifyError);
       } else {
@@ -796,34 +685,31 @@ serve(async (req) => {
 
     // === Sync date_of_joining from salary slips to loan_employment_details ===
     const isSalarySlip = documentType.startsWith('salary_slip');
-    
+
     if (isSalarySlip && !mergedData.parse_error && loanApplicationId && mergedData.date_of_joining) {
       console.log(`[ParseDocument] Syncing date_of_joining from salary slip: ${mergedData.date_of_joining}`);
-      
-      // Find the primary applicant
+
       const { data: applicant } = await supabase
         .from("loan_applicants")
         .select("id")
         .eq("loan_application_id", loanApplicationId)
         .eq("applicant_type", "primary")
         .maybeSingle();
-      
+
       if (applicant) {
-        // Find existing employment record
         const { data: employment } = await supabase
           .from("loan_employment_details")
           .select("id, date_of_joining")
           .eq("applicant_id", applicant.id)
           .maybeSingle();
-        
+
         if (employment) {
-          // Only update if currently null or different
           if (!employment.date_of_joining || employment.date_of_joining !== mergedData.date_of_joining) {
             const { error: empUpdateError } = await supabase
               .from("loan_employment_details")
               .update({ date_of_joining: mergedData.date_of_joining })
               .eq("id", employment.id);
-            
+
             if (empUpdateError) {
               console.warn(`[ParseDocument] Failed to sync date_of_joining:`, empUpdateError);
             } else {
@@ -831,7 +717,6 @@ serve(async (req) => {
             }
           }
         } else {
-          // Create employment record with data from salary slip
           const { error: empInsertError } = await supabase
             .from("loan_employment_details")
             .insert({
@@ -842,7 +727,7 @@ serve(async (req) => {
               date_of_joining: mergedData.date_of_joining,
               employee_id: mergedData.employee_id || null,
             });
-          
+
           if (empInsertError) {
             console.warn(`[ParseDocument] Failed to create employment record:`, empInsertError);
           } else {
@@ -854,25 +739,23 @@ serve(async (req) => {
 
 
     const isAadhaarOrPan = documentType === 'aadhaar_card' || documentType === 'aadhar_card' || documentType === 'pan_card';
-    
+
     if (isAadhaarOrPan && !mergedData.parse_error && loanApplicationId) {
       console.log(`[ParseDocument] Syncing OCR data to loan_applicants for ${documentType}`);
-      
+
       const { data: applicant, error: applicantFetchError } = await supabase
         .from("loan_applicants")
         .select("id, dob, current_address, gender")
         .eq("loan_application_id", loanApplicationId)
         .eq("applicant_type", "primary")
         .maybeSingle();
-      
+
       if (applicant && !applicantFetchError) {
         const updateData: Record<string, unknown> = {};
-        
-        // Update DOB if we have new data and it differs from current value
+
         if (mergedData.dob) {
           const newDob = mergedData.dob;
           const currentDob = applicant.dob;
-          // Update if current is default OR if new value differs from current
           if (currentDob === '1990-01-01' || newDob !== currentDob) {
             const dobDate = new Date(newDob);
             if (!isNaN(dobDate.getTime())) {
@@ -881,9 +764,16 @@ serve(async (req) => {
             }
           }
         }
-        
+
         if (documentType === 'aadhaar_card' || documentType === 'aadhar_card') {
-          // Update gender if we have new data and current is empty or different
+          if (mergedData.aadhaar_number) {
+            const cleanAadhaar = mergedData.aadhaar_number.replace(/\s/g, '');
+            if (/^\d{12}$/.test(cleanAadhaar)) {
+              updateData.aadhaar_number = cleanAadhaar;
+              console.log(`[ParseDocument] Updating aadhaar_number from OCR`);
+            }
+          }
+
           if (mergedData.gender) {
             const normalizedGender = mergedData.gender.toLowerCase();
             const currentGender = (applicant.gender || '').toLowerCase();
@@ -892,14 +782,13 @@ serve(async (req) => {
               console.log(`[ParseDocument] Updating gender: ${applicant.gender} -> ${mergedData.gender}`);
             }
           }
-          
-          // Always update address from Aadhaar OCR (authoritative source for address)
+
           if (mergedData.address) {
             const addressStr = mergedData.address;
-            
+
             const pincodeMatch = addressStr.match(/(\d{6})\s*$/);
             const pincode = pincodeMatch ? pincodeMatch[1] : '';
-            
+
             const statePatterns = [
               'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
               'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
@@ -915,7 +804,7 @@ serve(async (req) => {
                 break;
               }
             }
-            
+
             updateData.current_address = {
               line1: addressStr,
               line2: '',
@@ -923,17 +812,17 @@ serve(async (req) => {
               state: state,
               pincode: pincode
             };
-            
+
             console.log(`[ParseDocument] Updating address - state: ${state}, pincode: ${pincode}`);
           }
         }
-        
+
         if (Object.keys(updateData).length > 0) {
           const { error: syncError } = await supabase
             .from("loan_applicants")
             .update(updateData)
             .eq("id", applicant.id);
-          
+
           if (syncError) {
             console.warn(`[ParseDocument] Failed to sync OCR to applicant:`, syncError);
           } else {
@@ -957,8 +846,7 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error(`[ParseDocument] Error:`, error);
-    
-    // Try to update status to failed
+
     try {
       const docId = parsedDocumentId;
       if (docId) {
@@ -975,7 +863,7 @@ serve(async (req) => {
     } catch (e) {
       console.error(`[ParseDocument] Failed to update error status:`, e);
     }
-    
+
     return new Response(
       JSON.stringify({
         success: false,

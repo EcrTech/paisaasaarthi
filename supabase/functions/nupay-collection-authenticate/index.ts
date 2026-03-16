@@ -66,11 +66,15 @@ serve(async (req) => {
       );
     }
 
-    if (!config.access_key || !config.access_secret) {
+    // Use env vars as fallback if DB config doesn't have the keys
+    const accessKey = config.access_key || Deno.env.get("NUPAY_ACCESS_KEY");
+    const accessSecret = config.access_secret || Deno.env.get("NUPAY_ACCESS_SECRET");
+
+    if (!accessKey || !accessSecret) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Collection 360 credentials (access_key/access_secret) not configured" 
+        JSON.stringify({
+          success: false,
+          error: "Collection 360 credentials not configured (set in nupay_config or NUPAY_ACCESS_KEY/NUPAY_ACCESS_SECRET secrets)"
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -94,8 +98,8 @@ serve(async (req) => {
         "NP-Request-ID": requestId,
       },
       body: JSON.stringify({
-        access_key: config.access_key,
-        access_secret: config.access_secret,
+        access_key: accessKey,
+        access_secret: accessSecret,
       }),
     });
 

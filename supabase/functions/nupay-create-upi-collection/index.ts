@@ -98,13 +98,13 @@ serve(async (req) => {
     // Generate request ID
     const requestId = `COL-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // Build request payload
+    // Build request payload (field names per Collection 360 API v1.1 spec)
     const requestPayload = {
       client_reference_id: clientReferenceId,
       customer_unique_id: customerUniqueId,
-      amount: amount.toString(),
+      request_amount: amount.toString(),
       payer_name: payer_name || "Customer",
-      payer_mobile: payer_mobile,
+      payer_mobile_no: payer_mobile,
       payer_email: payer_email || "",
       mode: "DYNAMIC_QR", // Dynamic QR for flexibility
       expiry_minutes: 30, // 30 min expiry
@@ -118,13 +118,16 @@ serve(async (req) => {
 
     console.log("Creating UPI collection:", requestPayload);
 
+    // Use env var as fallback for access key
+    const accessKey = config.access_key || Deno.env.get("NUPAY_ACCESS_KEY");
+
     // Call Nupay API
     const collectionResponse = await fetch(`${baseUrl}/collect360/v1/initiate_transaction`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "NP-Request-ID": requestId,
-        "x-api-key": config.access_key,
+        "x-api-key": accessKey || "",
         "Authorization": `Bearer ${authData.token}`,
       },
       body: JSON.stringify(requestPayload),

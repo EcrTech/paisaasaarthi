@@ -31,10 +31,10 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -77,7 +77,7 @@ serve(async (req) => {
             loan_application_id: applicationId,
             verification_type: "document_fraud_check",
             status: "in_progress",
-            verification_source: "ai_gemini",
+            verification_source: "ai_claude",
             response_data: progressData,
             verified_at: new Date().toISOString(),
             remarks: `Fraud check started: 0/${docIds.length} documents analyzed`,
@@ -96,7 +96,7 @@ serve(async (req) => {
             loan_application_id: applicationId,
             verification_type: "document_fraud_check",
             status: "in_progress",
-            verification_source: "ai_gemini",
+            verification_source: "ai_claude",
             response_data: progressData,
             verified_at: new Date().toISOString(),
             remarks: `Fraud check started: 0/${docIds.length} documents analyzed`,
@@ -159,7 +159,7 @@ serve(async (req) => {
       // Try to analyze this document
       let finding: any;
       try {
-        finding = await analyzeDocument(supabase, doc, LOVABLE_API_KEY);
+        finding = await analyzeDocument(supabase, doc, ANTHROPIC_API_KEY);
       } catch (err) {
         console.error(`[FraudDetection] Error analyzing ${doc.document_type}:`, err);
         finding = {
@@ -316,7 +316,7 @@ async function analyzeDocument(supabase: any, doc: any, apiKey: string): Promise
 
   const arrayBuffer = await fileData.arrayBuffer();
 
-  // Check file size - note as large but still attempt if possible
+  // Check file size
   if (arrayBuffer.byteLength > MAX_FILE_SIZE) {
     return {
       document_type: doc.document_type,
@@ -327,25 +327,12 @@ async function analyzeDocument(supabase: any, doc: any, apiKey: string): Promise
     };
   }
 
-  // Native base64 encoding - no stack overflow risk
+  // Native base64 encoding
   const base64 = base64Encode(new Uint8Array(arrayBuffer));
   const mimeType = doc.mime_type || "image/jpeg";
+  const isPdf = mimeType === "application/pdf" || doc.file_path?.endsWith('.pdf');
 
-  // Call Gemini with retry on 429
-  let aiResponse: Response | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You are a document fraud detection expert for Indian financial documents. Analyze the provided document image for signs of tampering, forgery, or manipulation. Look for:
+  const systemPrompt = `You are a document fraud detection expert for Indian financial documents. Analyze the provided document image for signs of tampering, forgery, or manipulation. Look for:
 1. Font inconsistencies - different fonts/sizes for key fields vs headers
 2. Pixel artifacts - signs of digital editing, blur patches, misaligned elements
 3. Color/lighting inconsistencies - different brightness/contrast in edited areas
@@ -360,22 +347,53 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks):
   "confidence": 0-100,
   "issues": ["list of specific issues found, empty if none"],
   "details": "brief explanation of findings"
-}`,
-          },
+}`;
+
+  const contentBlocks: any[] = [
+    {
+      type: "text",
+      text: `Analyze this ${doc.document_type.replace(/_/g, " ")} document for signs of fraud or tampering.`,
+    },
+  ];
+
+  if (isPdf) {
+    contentBlocks.push({
+      type: "document",
+      source: {
+        type: "base64",
+        media_type: "application/pdf",
+        data: base64,
+      },
+    });
+  } else {
+    contentBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: mimeType,
+        data: base64,
+      },
+    });
+  }
+
+  // Call Claude Haiku with retry on 429
+  let aiResponse: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Analyze this ${doc.document_type.replace(/_/g, " ")} document for signs of fraud or tampering.`,
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64}`,
-                },
-              },
-            ],
+            content: contentBlocks,
           },
         ],
       }),
@@ -401,7 +419,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks):
   }
 
   const aiData = await aiResponse.json();
-  const content = aiData.choices?.[0]?.message?.content || "";
+  const content = aiData.content?.[0]?.text || "";
 
   let parsed;
   try {

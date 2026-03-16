@@ -19,9 +19,9 @@ Deno.serve(async (req) => {
 
     const supabase = getSupabaseClient();
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
     // Fetch recent campaign data
@@ -115,27 +115,27 @@ Deno.serve(async (req) => {
     }) || [];
 
     // Build context summary
-    const emailSummary = emailCampaigns?.map(c => 
+    const emailSummary = emailCampaigns?.map(c =>
       `${c.name}: ${c.status}, ${c.sent_count} sent, ${c.failed_count} failed`
     ).join('\n') || 'No email campaigns';
 
-    const whatsappSummary = whatsappCampaigns?.map(c => 
+    const whatsappSummary = whatsappCampaigns?.map(c =>
       `${c.name}: ${c.status}, ${c.sent_count} sent, ${c.failed_count} failed`
     ).join('\n') || 'No WhatsApp campaigns';
 
-    const analyticsSummary = analytics 
+    const analyticsSummary = analytics
       ? `Total campaigns tracked: ${new Set(analytics.map(a => a.campaign_id)).size}, Total conversions: ${analytics.reduce((sum, a) => sum + (a.conversions || 0), 0)}`
       : 'No analytics data';
 
-    const insightsSummary = insights?.map(i => 
+    const insightsSummary = insights?.map(i =>
       `${i.priority.toUpperCase()}: ${i.title}`
     ).join('\n') || 'No active insights';
 
-    const pipelineSummary = pipelineMetrics.map(m => 
+    const pipelineSummary = pipelineMetrics.map(m =>
       `${m.name}: ${m.count} contacts (${m.probability}% prob), Avg Score: ${m.avgScore}, Hot: ${m.scoreBreakdown.hot}, Warm: ${m.scoreBreakdown.warm}`
     ).join('\n');
 
-    const recentMovementsSummary = recentMovements?.slice(0, 5).map(m => 
+    const recentMovementsSummary = recentMovements?.slice(0, 5).map(m =>
       `${m.from_stage?.name || 'Unknown'} → ${m.to_stage?.name || 'Unknown'} (${m.days_in_previous_stage} days in prev stage)`
     ).join('\n') || 'No recent movements';
 
@@ -165,20 +165,21 @@ Provide helpful, data-driven answers about campaign performance, pipeline health
 Be conversational but precise. Use specific numbers when available.
 If the user asks about specific campaigns, reference the data above.`;
 
-    // Call Lovable AI
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call Anthropic Claude Haiku
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2048,
+        system: context,
         messages: [
-          { role: 'system', content: context },
           { role: 'user', content: query }
         ],
-        temperature: 0.7,
       }),
     });
 
@@ -189,7 +190,7 @@ If the user asks about specific campaigns, reference the data above.`;
     }
 
     const aiData = await aiResponse.json();
-    const response = aiData.choices[0].message.content;
+    const response = aiData.content[0].text;
 
     return new Response(JSON.stringify({ response }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

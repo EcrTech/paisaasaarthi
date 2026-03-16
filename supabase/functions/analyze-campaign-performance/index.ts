@@ -13,9 +13,9 @@ Deno.serve(async (req) => {
   try {
     const supabase = getSupabaseClient();
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
     // Get all organizations
@@ -116,21 +116,22 @@ Respond ONLY with valid JSON in this exact format:
   "suggestedAction": "Specific action to take"
 }`;
 
-        // Call Lovable AI
+        // Call Anthropic Claude Haiku
         try {
-          const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+              'x-api-key': ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 1024,
+              system: 'You are an expert marketing analyst. Always respond with valid JSON only.',
               messages: [
-                { role: 'system', content: 'You are an expert marketing analyst. Always respond with valid JSON only.' },
                 { role: 'user', content: prompt }
               ],
-              temperature: 0.7,
             }),
           });
 
@@ -140,8 +141,8 @@ Respond ONLY with valid JSON in this exact format:
           }
 
           const aiData = await aiResponse.json();
-          const responseText = aiData.choices[0].message.content;
-          
+          const responseText = aiData.content[0].text;
+
           // Extract JSON from response
           let insights;
           try {

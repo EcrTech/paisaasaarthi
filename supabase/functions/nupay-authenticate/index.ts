@@ -67,14 +67,23 @@ serve(async (req) => {
       );
     }
 
+    // Use env var as fallback if DB config doesn't have the key
+    const apiKey = config.api_key || Deno.env.get("NUPAY_API_KEY");
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: "Nupay API key not configured (set in nupay_config or NUPAY_API_KEY secret)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Call Nupay Auth endpoint - only api-key header needed
     const authEndpoint = `${config.api_endpoint}/Auth/token`;
-    console.log(`[Nupay-Auth] Requesting token from ${authEndpoint} with api-key: ${config.api_key.substring(0, 8)}...`);
+    console.log(`[Nupay-Auth] Requesting token from ${authEndpoint} with api-key: ${apiKey.substring(0, 8)}...`);
 
     const authResponse = await fetch(authEndpoint, {
       method: "GET",
       headers: {
-        "api-key": config.api_key,
+        "api-key": apiKey,
       },
     });
 

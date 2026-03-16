@@ -214,13 +214,40 @@ Deno.serve(async (req) => {
       const lastName = nameParts.slice(1).join(' ') || '';
 
       // Check if we have a draft application to update (preserves Video KYC link)
-      const draftApplicationId = body.draftApplicationId;
+      let draftApplicationId = body.draftApplicationId;
       let application: any;
       let applicationNumber: string = '';
 
+      // If no draftApplicationId provided, look for existing draft by phone number to prevent duplicates
+      if (!draftApplicationId && applicant.phone) {
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('org_id', formConfig.org_id)
+          .eq('phone', applicant.phone)
+          .maybeSingle();
+
+        if (existingContact) {
+          const { data: existingDraftByContact } = await supabase
+            .from('loan_applications')
+            .select('id')
+            .eq('contact_id', existingContact.id)
+            .eq('status', 'draft')
+            .eq('org_id', formConfig.org_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existingDraftByContact) {
+            draftApplicationId = existingDraftByContact.id;
+            console.log(`[submit-loan-application] Found existing draft by phone lookup: ${draftApplicationId}`);
+          }
+        }
+      }
+
       if (draftApplicationId) {
         console.log(`[submit-loan-application] Checking for existing draft: ${draftApplicationId}`);
-        
+
         const { data: existingDraft, error: draftError } = await supabase
           .from('loan_applications')
           .select('*')
@@ -290,6 +317,39 @@ Deno.serve(async (req) => {
 
       // Create new application if no draft was found/updated
       if (!application) {
+        // Check if an in_progress application already exists for this phone to prevent duplicates
+        const { data: existingContactForDedup } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('org_id', formConfig.org_id)
+          .eq('phone', applicant.phone)
+          .maybeSingle();
+
+        if (existingContactForDedup) {
+          const { data: existingApp } = await supabase
+            .from('loan_applications')
+            .select('id, application_number')
+            .eq('contact_id', existingContactForDedup.id)
+            .eq('org_id', formConfig.org_id)
+            .neq('status', 'rejected')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existingApp) {
+            console.log(`[submit-loan-application] Application already exists for this contact: ${existingApp.application_number}`);
+            return new Response(
+              JSON.stringify({
+                success: true,
+                applicationNumber: existingApp.application_number,
+                applicationId: existingApp.id,
+                message: 'Application already exists for this applicant'
+              }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+
         applicationNumber = await generateApplicationNumber(supabase);
         console.log(`[submit-loan-application] Creating new referral application: ${applicationNumber}`);
 

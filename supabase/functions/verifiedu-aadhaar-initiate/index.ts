@@ -26,9 +26,8 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -109,17 +108,20 @@ serve(async (req) => {
     );
 
     // Create a pending verification record
-    await adminClient.from("loan_verifications").insert({
+    const { error: insertError } = await adminClient.from("loan_verifications").insert({
       loan_application_id: applicationId,
-      org_id: orgId,
       verification_type: "aadhaar",
       verification_source: "verifiedu",
       status: "in_progress",
-      request_data: { 
+      request_data: {
         unique_request_number: responseData.data?.unique_request_number,
         initiated_at: new Date().toISOString(),
       },
     });
+
+    if (insertError) {
+      console.error("Error inserting verification record:", insertError);
+    }
 
     return new Response(JSON.stringify({
       success: true,

@@ -74,7 +74,7 @@ serve(async (req) => {
 
     const arrayBuffer = await fileData.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
-    
+
     // Convert to base64 safely
     let binaryString = "";
     for (let i = 0; i < bytes.length; i++) {
@@ -82,35 +82,56 @@ serve(async (req) => {
     }
     const base64Data = btoa(binaryString);
 
-    const mimeType = filePath.endsWith(".pdf") ? "application/pdf" : 
-                     filePath.endsWith(".png") ? "image/png" : 
-                     filePath.endsWith(".jpg") || filePath.endsWith(".jpeg") ? "image/jpeg" : 
+    const isPdf = filePath.endsWith(".pdf");
+    const mimeType = isPdf ? "application/pdf" :
+                     filePath.endsWith(".png") ? "image/png" :
+                     filePath.endsWith(".jpg") || filePath.endsWith(".jpeg") ? "image/jpeg" :
                      "application/pdf";
 
-    // Call Lovable AI for quick analysis
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    // Call Anthropic Claude Haiku
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error("ANTHROPIC_API_KEY is not configured");
     }
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const contentBlocks: any[] = [
+      { type: "text", text: ANALYSIS_PROMPT },
+    ];
+
+    if (isPdf) {
+      contentBlocks.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: base64Data,
+        },
+      });
+    } else {
+      contentBlocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: mimeType,
+          data: base64Data,
+        },
+      });
+    }
+
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 4096,
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: ANALYSIS_PROMPT },
-              {
-                type: "image_url",
-                image_url: { url: `data:${mimeType};base64,${base64Data}` },
-              },
-            ],
+            content: contentBlocks,
           },
         ],
       }),
@@ -130,12 +151,12 @@ serve(async (req) => {
         });
       }
       const errText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errText);
+      console.error("Anthropic API error:", aiResponse.status, errText);
       throw new Error(`AI analysis failed: ${aiResponse.status}`);
     }
 
     const aiResult = await aiResponse.json();
-    const content = aiResult.choices?.[0]?.message?.content || "";
+    const content = aiResult.content[0].text;
 
     // Parse JSON from AI response
     let analysis;

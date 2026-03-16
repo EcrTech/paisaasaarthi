@@ -13,10 +13,10 @@ serve(async (req) => {
 
   try {
     const { contact, searchQuery, contacts } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
     // Handle search query - filter contacts based on criteria
@@ -68,23 +68,24 @@ Examples:
 Contacts to filter:
 ${JSON.stringify(contactsSummary, null, 2)}
 
-Return the IDs of contacts that match the search criteria.`;
+Return the IDs of contacts that match the search criteria. Return ONLY valid JSON.`;
 
       console.log('Filtering contacts with query:', searchQuery);
 
-      const searchResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      const searchResponse = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 4096,
+          system: searchSystemPrompt,
           messages: [
-            { role: 'system', content: searchSystemPrompt },
             { role: 'user', content: searchUserPrompt }
           ],
-          response_format: { type: "json_object" }
         }),
       });
 
@@ -93,8 +94,8 @@ Return the IDs of contacts that match the search criteria.`;
       }
 
       const searchData = await searchResponse.json();
-      const searchResult = JSON.parse(searchData.choices[0].message.content);
-      
+      const searchResult = JSON.parse(searchData.content[0].text);
+
       console.log('Search result:', searchResult);
 
       return new Response(
@@ -122,7 +123,7 @@ SCORING FRAMEWORK (Total: 100 points):
    - Contacted/Initial Discussion: 15 points (probability 15%)
    - New/Uncontacted: 10 points (probability 10%)
    - Lost/Disqualified: 0 points
-   
+
    Probability Bonus (applied based on stage probability field):
    - If probability ≥ 80%: +10 points
    - If probability ≥ 60%: +5 points
@@ -134,7 +135,7 @@ SCORING FRAMEWORK (Total: 100 points):
    - Activity within 14 days: 5 points
    - Activity within 30 days: 2 points
    - No activity in 30+ days: 0 points
-   
+
    Communication Quality (0-12 points):
    - Meetings/demos completed: +4 points per type with activity
    - Emails exchanged: +4 points
@@ -146,7 +147,7 @@ SCORING FRAMEWORK (Total: 100 points):
    - Known company with complete info: 8 points
    - Medium business: 5 points
    - Basic company info: 3 points
-   
+
    Decision-Making Level (0-7 points):
    - C-Suite (CEO, CFO, CTO, Owner, Partner): 7 points
    - VP/Director/Manager level: 4 points
@@ -158,7 +159,7 @@ SCORING FRAMEWORK (Total: 100 points):
    - Website inquiry/demo request: 6 points
    - Event/webinar: 4 points
    - Cold outreach/unknown: 2 points
-   
+
    Information Completeness (0-7 points):
    - Complete profile (company, role, email, phone): 7 points
    - Basic information: 4 points
@@ -230,19 +231,20 @@ Focus heavily on the pipeline_stage (especially stage_order) and engagement_metr
 
     console.log('Scoring lead:', contactData.name);
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        response_format: { type: "json_object" }
       }),
     });
 
@@ -260,15 +262,15 @@ Focus heavily on the pipeline_stage (especially stage_order) and engagement_metr
         );
       }
       const errorText = await response.text();
-      console.error('AI Gateway error:', response.status, errorText);
+      console.error('Anthropic API error:', response.status, errorText);
       throw new Error('Failed to score lead');
     }
 
     const data = await response.json();
-    const aiResponse = data.choices[0].message.content;
-    
+    const aiResponse = data.content[0].text;
+
     console.log('AI Response:', aiResponse);
-    
+
     try {
       const scoreReport = JSON.parse(aiResponse);
       return new Response(
