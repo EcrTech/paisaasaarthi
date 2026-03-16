@@ -64,7 +64,8 @@ export function useCollections() {
       // Transform data for table display
       const records: CollectionRecord[] = (data || []).map((item: any) => {
         const applicant = item.loan_applications?.loan_applicants?.[0];
-        const disbursement = item.loan_applications?.loan_disbursements?.[0];
+        const disbData = item.loan_applications?.loan_disbursements;
+        const disbursement = Array.isArray(disbData) ? disbData[0] : disbData;
         const payment = item.loan_payments?.[0];
         
         return {
