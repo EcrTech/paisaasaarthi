@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/common/LoadingState";
 import { useNotification } from "@/hooks/useNotification";
-import { Search, FileCheck, FileX, Phone, Mail, UserPlus, Upload } from "lucide-react";
+import { Search, FileCheck, FileX, Phone, Mail, UserPlus, Upload, Calendar } from "lucide-react";
 import { BulkLeadUploadDialog } from "@/components/Pipeline/BulkLeadUploadDialog";
 import { useNavigate } from "react-router-dom";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -557,6 +557,7 @@ export default function PipelineBoard() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-xs font-medium py-2 px-3">Date</TableHead>
                     <TableHead className="text-xs font-medium py-2 px-3">Name</TableHead>
                     <TableHead className="text-xs font-medium py-2 px-3">Phone</TableHead>
                     <TableHead className="text-xs font-medium py-2 px-3">Email</TableHead>
@@ -581,6 +582,12 @@ export default function PipelineBoard() {
                         className="hover:bg-muted/50 cursor-pointer"
                         onClick={() => navigate(`/los/applications/${app.id}`)}
                       >
+                        <TableCell className="py-2 px-3">
+                          <div className="text-xs text-muted-foreground whitespace-nowrap">
+                            <div>{new Date(app.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
+                            <div>{new Date(app.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
+                          </div>
+                        </TableCell>
                         <TableCell className="py-2 px-3">
                           <span className="text-sm font-medium">{info.name}</span>
                         </TableCell>
@@ -677,7 +684,7 @@ export default function PipelineBoard() {
                   })}
                   {filteredApplications.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground text-sm">
+                      <TableCell colSpan={12} className="text-center py-8 text-muted-foreground text-sm">
                         No leads found
                       </TableCell>
                     </TableRow>
