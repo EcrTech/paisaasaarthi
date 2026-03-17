@@ -264,10 +264,11 @@ export default function VideoKYC() {
       formData.append("token", token!);
       formData.append("video", blob, "video.webm");
 
-      console.log('[VideoKYC] Uploading to:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/videokyc-upload-recording`);
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co";
+      console.log('[VideoKYC] Uploading to:', `${supabaseUrl}/functions/v1/videokyc-upload-recording`);
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/videokyc-upload-recording`,
+        `${supabaseUrl}/functions/v1/videokyc-upload-recording`,
         {
           method: "POST",
           body: formData,
