@@ -285,12 +285,14 @@ export default function Users() {
           headers: {
             'Authorization': `Bearer ${session?.access_token}`,
             'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
           body: JSON.stringify({ userId }),
         });
 
-        const result = await response.json();
-        
+        const text = await response.text();
+        const result = text ? JSON.parse(text) : {};
+
         if (!response.ok) {
           throw new Error(result.error || 'Failed to delete user');
         }
