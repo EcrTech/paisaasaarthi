@@ -94,8 +94,9 @@ Deno.serve(async (req) => {
     const capsSummary = profile?.TotalCAPS_Summary;
 
     // Extract credit score - Experian nests it at INProfileResponse.SCORE.BureauScore
+    // Valid Indian credit scores are 300-900; anything below 300 is a "no hit" placeholder
     const bureauScore = parseInt(scoreSection?.BureauScore, 10);
-    const creditScore = !isNaN(bureauScore) && bureauScore > 0 ? bureauScore : null;
+    const creditScore = !isNaN(bureauScore) && bureauScore >= 300 ? bureauScore : null;
     const scoreConfidence = scoreSection?.BureauScoreConfidLevel || null;
 
     // Extract account summary
@@ -108,10 +109,21 @@ Deno.serve(async (req) => {
     // Extract enquiry summary
     const totalEnquiries = parseInt(capsSummary?.TotalCAPSLast180Days, 10) || 0;
 
-    // Extract name from response
-    const applicantName = currentApp?.Current_Applicant_Details?.First_Name
-      || currentApp?.Current_Application_Details?.First_Name
-      || name;
+    // Extract name from response — Experian nests it at
+    // Current_Application.Current_Application_Details.Current_Applicant_Details
+    const currentApplicant = currentApp?.Current_Application_Details?.Current_Applicant_Details;
+    const experianFirstName = currentApplicant?.First_Name;
+    const experianMiddleName = currentApplicant?.Middle_Name1 || currentApplicant?.Middle_Name;
+    const experianLastName = currentApplicant?.Last_Name || currentApplicant?.Surname;
+    const experianFullName = [experianFirstName, experianMiddleName, experianLastName]
+      .filter((n) => n && typeof n === 'string' && n.trim())
+      .join(' ')
+      .trim();
+    // Use Experian name if it looks valid, otherwise fall back to input name
+    const applicantName = experianFullName || name;
+
+    // Extract PAN from response (if available)
+    const panOnReport = currentApplicant?.IncomeTaxPan || pan.toUpperCase();
 
     const reportData: Record<string, any> = {
       bureau_type: 'experian',
@@ -124,7 +136,7 @@ Deno.serve(async (req) => {
       total_enquiries_180days: totalEnquiries,
       raw_response: responseData,
       name_on_report: applicantName,
-      pan_on_report: pan.toUpperCase(),
+      pan_on_report: panOnReport,
       mobile_on_report: mobile,
       transaction_id: responseData?.Header?.ReportOrderNO || null,
       report_date: new Date().toISOString(),

@@ -346,17 +346,29 @@ export function transformExperianToViewerFormat(rawResponse: any) {
   const addresses: string[] = [];
   const phones: string[] = [];
 
-  // Try Current_Application first
-  const currentApplicant = currentApp?.Current_Applicant_Details;
+  // Try Current_Application first — Experian nests it at
+  // Current_Application.Current_Application_Details.Current_Applicant_Details
+  const currentAppDetails = currentApp?.Current_Application_Details;
+  const currentApplicant = currentAppDetails?.Current_Applicant_Details;
   if (currentApplicant?.First_Name) {
     name = [
       currentApplicant.First_Name,
-      currentApplicant.Middle_Name,
-      currentApplicant.Surname,
+      currentApplicant.Middle_Name1 || currentApplicant.Middle_Name,
+      currentApplicant.Last_Name || currentApplicant.Surname,
     ]
       .filter(Boolean)
       .join(" ")
       .trim();
+    // Also extract PAN, DOB, gender from Current_Applicant_Details as fallback
+    if (currentApplicant.IncomeTaxPan) {
+      pan = currentApplicant.IncomeTaxPan;
+    }
+    if (currentApplicant.Date_Of_Birth_Applicant) {
+      dob = formatDate(String(currentApplicant.Date_Of_Birth_Applicant));
+    }
+    if (currentApplicant.Gender_Code) {
+      gender = GENDER_MAP[String(currentApplicant.Gender_Code)] || "";
+    }
   }
 
   // Then supplement / override from first account's CAIS_Holder_Details

@@ -495,7 +495,7 @@ export default function CreditBureauDialog({
             summary: liveReportData.summary,
             accounts: liveReportData.accounts,
             enquiries: liveReportData.enquiries,
-            personal_info: liveReportData.personalInfo,
+            personalInfo: liveReportData.personalInfo,
             ...(liveReportData.raw_response ? { raw_response: liveReportData.raw_response } : {}),
           } : {}),
         },
