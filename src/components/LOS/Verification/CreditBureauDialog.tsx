@@ -37,9 +37,9 @@ export default function CreditBureauDialog({
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Only default to "live" tab if there's actual live data (score or raw_response)
+  // Only default to "live" tab if there's actual live data with a valid credit score
   const hasRealLiveData = existingVerification?.response_data?.is_live_fetch &&
-    (existingVerification?.response_data?.credit_score > 0 || existingVerification?.response_data?.raw_response);
+    existingVerification?.response_data?.credit_score > 0;
   const [activeTab, setActiveTab] = useState<string>(
     hasRealLiveData ? "live" : "upload"
   );
@@ -88,7 +88,7 @@ export default function CreditBureauDialog({
       if (rd.quick_analysis) {
         setQuickAnalysisData(rd.quick_analysis);
       }
-      if (rd.is_live_fetch && (rd.credit_score > 0 || rd.raw_response)) {
+      if (rd.is_live_fetch && rd.credit_score > 0) {
         setLiveReportData(rd);
         setActiveTab("live");
       }
