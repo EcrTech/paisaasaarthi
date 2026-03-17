@@ -12,11 +12,30 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 
 console.log('[Login] Module loaded');
 
+const WIDGET_SCRIPT_ID = "help-widget-script";
+const WIDGET_SRC = "https://crm.in-sync.co.in/help-widget.js";
+
 type LoginStep = 'credentials' | 'otp';
 
 export default function Login() {
   console.log('[Login] Component rendering...');
-  
+
+  // Load help widget on login page
+  useEffect(() => {
+    if (document.getElementById(WIDGET_SCRIPT_ID)) return;
+
+    const script = document.createElement("script");
+    script.id = WIDGET_SCRIPT_ID;
+    script.src = WIDGET_SRC;
+    script.setAttribute("data-source", "paisaa_saarthi");
+    document.body.appendChild(script);
+
+    return () => {
+      document.getElementById(WIDGET_SCRIPT_ID)?.remove();
+      document.querySelectorAll('[id*="help-widget"], [class*="help-widget"]').forEach((el) => el.remove());
+    };
+  }, []);
+
   const navigate = useNavigate();
   const notify = useNotification();
   const [loading, setLoading] = useState(false);
@@ -384,12 +403,6 @@ export default function Login() {
           )}
         </Button>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
-          <Link to="/signup" className="text-primary hover:underline">
-            Sign up
-          </Link>
-        </p>
       </form>
 
       <ForgotPasswordDialog
