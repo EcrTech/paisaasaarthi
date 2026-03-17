@@ -1,11 +1,14 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const MAX_PDF_PAGES = 95; // Anthropic limit is 100, keep some margin
 
 const ANALYSIS_PROMPT = `You are a senior credit analyst. Analyze this credit bureau report and provide a concise one-page executive summary in JSON format.
 
@@ -72,17 +75,42 @@ serve(async (req) => {
       throw new Error(`Failed to download file: ${downloadError?.message}`);
     }
 
-    const arrayBuffer = await fileData.arrayBuffer();
+    let arrayBuffer = await fileData.arrayBuffer();
+    const isPdf = filePath.endsWith(".pdf");
+
+    // Truncate large PDFs to stay within Anthropic's 100-page limit
+    if (isPdf) {
+      try {
+        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        const pageCount = pdfDoc.getPageCount();
+        console.log(`[quick-credit-analysis] PDF has ${pageCount} pages`);
+
+        if (pageCount > MAX_PDF_PAGES) {
+          console.log(`[quick-credit-analysis] Truncating from ${pageCount} to ${MAX_PDF_PAGES} pages`);
+          const truncatedDoc = await PDFDocument.create();
+          const pages = await truncatedDoc.copyPages(pdfDoc, Array.from({ length: MAX_PDF_PAGES }, (_, i) => i));
+          for (const page of pages) {
+            truncatedDoc.addPage(page);
+          }
+          arrayBuffer = await truncatedDoc.save();
+        }
+      } catch (pdfErr) {
+        console.error("[quick-credit-analysis] PDF processing error:", pdfErr);
+        // Continue with original file if pdf-lib fails
+      }
+    }
+
     const bytes = new Uint8Array(arrayBuffer);
 
-    // Convert to base64 safely
+    // Convert to base64 safely using chunks to avoid stack overflow on large files
+    const CHUNK_SIZE = 8192;
     let binaryString = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binaryString += String.fromCharCode(bytes[i]);
+    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+      const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.length));
+      binaryString += String.fromCharCode(...chunk);
     }
     const base64Data = btoa(binaryString);
 
-    const isPdf = filePath.endsWith(".pdf");
     const mimeType = isPdf ? "application/pdf" :
                      filePath.endsWith(".png") ? "image/png" :
                      filePath.endsWith(".jpg") || filePath.endsWith(".jpeg") ? "image/jpeg" :
@@ -138,6 +166,9 @@ serve(async (req) => {
     });
 
     if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error("Anthropic API error:", aiResponse.status, errText);
+
       if (aiResponse.status === 429) {
         return new Response(JSON.stringify({ success: false, error: "Rate limit exceeded, please try again later." }), {
           status: 429,
@@ -150,9 +181,7 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const errText = await aiResponse.text();
-      console.error("Anthropic API error:", aiResponse.status, errText);
-      throw new Error(`AI analysis failed: ${aiResponse.status}`);
+      throw new Error(`AI analysis failed (${aiResponse.status}): ${errText.slice(0, 200)}`);
     }
 
     const aiResult = await aiResponse.json();
