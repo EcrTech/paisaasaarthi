@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IndianRupee, Search, Eye, Filter, Smartphone, ArrowUpDown, CalendarIcon, HandCoins, RefreshCw } from "lucide-react";
+import { IndianRupee, Search, Eye, Filter, Smartphone, ArrowUpDown, CalendarIcon, HandCoins, RefreshCw, ChevronDown, ChevronUp, History } from "lucide-react";
 import { CollectionRecord } from "@/hooks/useCollections";
 import { useNavigate } from "react-router-dom";
 import { ClickToCall } from "@/components/Contact/ClickToCall";
@@ -61,9 +61,19 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
   const [settleRecord, setSettleRecord] = useState<CollectionRecord | null>(null);
   const [settleNotes, setSettleNotes] = useState("");
   const [reloanRecord, setReloanRecord] = useState<CollectionRecord | null>(null);
+  const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
   const { isCollectionEnabled } = useUPICollection();
   const { orgId } = useOrgContext();
   const pageSize = 25;
+
+  const togglePaymentExpand = (id: string) => {
+    setExpandedPayments(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -290,7 +300,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                 <TableHead className="py-2 text-xs font-semibold text-right">Due Amount</TableHead>
                 <TableHead className="py-2 text-xs font-semibold text-right">Paid</TableHead>
                 <TableHead className="py-2 text-xs font-semibold text-right">Balance</TableHead>
-                <TableHead className="py-2 text-xs font-semibold">UTR Number</TableHead>
+                <TableHead className="py-2 text-xs font-semibold">Payments</TableHead>
                 <TableHead className="py-2 text-xs font-semibold">Status</TableHead>
                 <TableHead className="py-2 text-xs font-semibold text-center">Actions</TableHead>
               </TableRow>
@@ -344,8 +354,39 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                     <TableCell className="py-2 text-xs text-right font-medium text-primary">
                       {formatCurrency(Math.max(0, getAdjustedDue(record) - record.amount_paid))}
                     </TableCell>
-                    <TableCell className="py-2 text-xs text-muted-foreground">
-                      {record.utr_number || "—"}
+                    <TableCell className="py-2 text-xs">
+                      {record.payments.length === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : record.payments.length === 1 ? (
+                        <div className="text-muted-foreground">
+                          <div className="font-mono text-[11px]">{record.payments[0].transaction_reference || "No UTR"}</div>
+                          <div className="text-[10px]">{formatCurrency(record.payments[0].payment_amount)} · {formatDate(record.payments[0].payment_date)}</div>
+                        </div>
+                      ) : (
+                        <div>
+                          <button
+                            onClick={() => togglePaymentExpand(record.id)}
+                            className="flex items-center gap-1 text-primary hover:underline font-medium"
+                          >
+                            <History className="h-3 w-3" />
+                            {record.payments.length} payments
+                            {expandedPayments.has(record.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </button>
+                          {expandedPayments.has(record.id) && (
+                            <div className="mt-1 space-y-1 border-l-2 border-primary/20 pl-2">
+                              {record.payments.map((p, i) => (
+                                <div key={p.id} className="text-[11px] text-muted-foreground">
+                                  <span className="font-mono">{p.transaction_reference || "No UTR"}</span>
+                                  <span className="mx-1">·</span>
+                                  <span className="text-green-600">{formatCurrency(p.payment_amount)}</span>
+                                  <span className="mx-1">·</span>
+                                  <span>{formatDate(p.payment_date)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="py-2">
                       {getStatusBadge(record.status, record.due_date)}

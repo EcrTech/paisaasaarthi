@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CollectionRecord } from "@/hooks/useCollections";
-import { IndianRupee } from "lucide-react";
+import { IndianRupee, History } from "lucide-react";
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -167,6 +167,31 @@ export function RecordPaymentDialog({
                 </div>
               )}
             </div>
+
+            {/* Payment History */}
+            {record.payments && record.payments.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <History className="h-3.5 w-3.5" />
+                  Previous Payments ({record.payments.length})
+                </div>
+                <div className="bg-muted/50 rounded-lg divide-y divide-border overflow-hidden">
+                  {record.payments.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                      <div>
+                        <span className="font-mono text-[11px]">{p.transaction_reference || "No UTR"}</span>
+                        <span className="mx-1.5 text-muted-foreground">·</span>
+                        <span className="text-muted-foreground">{p.payment_method?.toUpperCase() || "—"}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-green-600 font-medium">{formatCurrency(p.payment_amount)}</span>
+                        <span className="text-muted-foreground">{new Date(p.payment_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Payment Date */}
             <div className="space-y-2">

@@ -3,6 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "./useOrgContext";
 import { useToast } from "./use-toast";
 
+export interface PaymentRecord {
+  id: string;
+  transaction_reference: string | null;
+  payment_amount: number;
+  payment_date: string;
+  payment_method: string | null;
+}
+
 export interface CollectionRecord {
   id: string;
   loan_application_id: string;
@@ -21,7 +29,7 @@ export interface CollectionRecord {
   interest_rate: number;
   tenure_days: number;
   contact_id?: string;
-  utr_number?: string;
+  payments: PaymentRecord[];
 }
 
 export function useCollections() {
@@ -54,7 +62,7 @@ export function useCollections() {
             loan_applicants(first_name, last_name, mobile),
             loan_disbursements(disbursement_date, disbursement_amount)
           ),
-          loan_payments(transaction_reference)
+          loan_payments(id, transaction_reference, payment_amount, payment_date, payment_method)
         `)
         .eq("org_id", orgId!)
         .order("due_date", { ascending: true });
@@ -66,15 +74,22 @@ export function useCollections() {
         const applicant = item.loan_applications?.loan_applicants?.[0];
         const disbData = item.loan_applications?.loan_disbursements;
         const disbursement = Array.isArray(disbData) ? disbData[0] : disbData;
-        const payment = item.loan_payments?.[0];
-        
+        const rawPayments = Array.isArray(item.loan_payments) ? item.loan_payments : [];
+        const payments: PaymentRecord[] = rawPayments.map((p: any) => ({
+          id: p.id,
+          transaction_reference: p.transaction_reference || null,
+          payment_amount: p.payment_amount || 0,
+          payment_date: p.payment_date || "",
+          payment_method: p.payment_method || null,
+        }));
+
         return {
           id: item.id,
           loan_application_id: item.loan_application_id,
           application_number: item.loan_applications?.application_number || "N/A",
           loan_id: item.loan_applications?.loan_id || null,
-          applicant_name: applicant 
-            ? `${applicant.first_name} ${applicant.last_name || ""}`.trim() 
+          applicant_name: applicant
+            ? `${applicant.first_name} ${applicant.last_name || ""}`.trim()
             : "N/A",
           applicant_phone: applicant?.mobile || "",
           due_date: item.due_date,
@@ -88,7 +103,7 @@ export function useCollections() {
           interest_rate: item.loan_applications?.interest_rate || 0,
           tenure_days: item.loan_applications?.tenure_days || 0,
           contact_id: item.loan_applications?.contact_id,
-          utr_number: payment?.transaction_reference || undefined,
+          payments,
         };
       });
 
