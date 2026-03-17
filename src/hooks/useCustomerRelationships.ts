@@ -46,36 +46,48 @@ export function useCustomerRelationships(searchTerm?: string) {
     queryFn: async (): Promise<CustomerRelationship[]> => {
       if (!orgId) return [];
 
-      const { data: applicants, error } = await supabase
-        .from("loan_applicants")
-        .select(`
-          pan_number,
-          mobile,
-          first_name,
-          middle_name,
-          last_name,
-          email,
-          aadhaar_number,
-          loan_application_id,
-          loan_applications!inner (
-            id,
-            loan_id,
-            application_number,
-            status,
-            current_stage,
-            requested_amount,
-            approved_amount,
-            tenure_days,
-            created_at,
-            loan_sanctions ( sanctioned_amount ),
-            loan_disbursements ( disbursement_amount, disbursement_date ),
-            loan_repayment_schedule ( total_emi, due_date, status, amount_paid )
-          )
-        `)
-        .eq("loan_applications.org_id", orgId)
-        .eq("applicant_type", "primary");
+      // Paginate to fetch all rows (PostgREST caps at 1000 per request)
+      const PAGE_SIZE = 1000;
+      let applicants: any[] = [];
+      let from = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data: batch, error } = await supabase
+          .from("loan_applicants")
+          .select(`
+            pan_number,
+            mobile,
+            first_name,
+            middle_name,
+            last_name,
+            email,
+            aadhaar_number,
+            loan_application_id,
+            loan_applications!inner (
+              id,
+              loan_id,
+              application_number,
+              status,
+              current_stage,
+              requested_amount,
+              approved_amount,
+              tenure_days,
+              created_at,
+              loan_sanctions ( sanctioned_amount ),
+              loan_disbursements ( disbursement_amount, disbursement_date ),
+              loan_repayment_schedule ( total_emi, due_date, status, amount_paid )
+            )
+          `)
+          .eq("loan_applications.org_id", orgId)
+          .eq("applicant_type", "primary")
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (error) throw error;
+        applicants = applicants.concat(batch || []);
+        hasMore = (batch?.length || 0) === PAGE_SIZE;
+        from += PAGE_SIZE;
+      }
 
       // Group by PAN or mobile
       const customerMap = new Map<string, {

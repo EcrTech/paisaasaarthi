@@ -36,56 +36,67 @@ export function useLoansList(searchTerm?: string) {
     queryFn: async (): Promise<LoanListItem[]> => {
       if (!orgId) return [];
 
-      // Fetch only disbursed loans (applications with loan_id and disbursement)
-      const { data, error } = await supabase
-        .from("loan_applications")
-        .select(`
-          id,
-          contact_id,
-          loan_id,
-          application_number,
-          current_stage,
-          tenure_days,
-          loan_applicants!inner (
-            first_name,
-            middle_name,
-            last_name,
-            pan_number,
-            mobile,
-            email,
-            applicant_type
-          ),
-          loan_sanctions (
-            id,
-            sanctioned_amount,
-            created_at
-          ),
-          loan_disbursements (
-            id,
-            disbursement_amount,
-            disbursement_date
-          ),
-          loan_repayment_schedule (
-            id,
-            emi_number,
-            total_emi,
-            due_date,
-            status,
-            payment_date,
-            amount_paid
-          ),
-          loan_payments (
-            id,
-            payment_amount,
-            payment_date
-          )
-        `)
-        .eq("org_id", orgId)
-        .eq("loan_applicants.applicant_type", "primary")
-        .not("loan_id", "is", null)
-        .order("created_at", { ascending: false });
+      // Fetch all disbursed loans with pagination (PostgREST caps at 1000 per request)
+      const PAGE_SIZE = 1000;
+      let data: any[] = [];
+      let from = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data: batch, error } = await supabase
+          .from("loan_applications")
+          .select(`
+            id,
+            contact_id,
+            loan_id,
+            application_number,
+            current_stage,
+            tenure_days,
+            loan_applicants!inner (
+              first_name,
+              middle_name,
+              last_name,
+              pan_number,
+              mobile,
+              email,
+              applicant_type
+            ),
+            loan_sanctions (
+              id,
+              sanctioned_amount,
+              created_at
+            ),
+            loan_disbursements (
+              id,
+              disbursement_amount,
+              disbursement_date
+            ),
+            loan_repayment_schedule (
+              id,
+              emi_number,
+              total_emi,
+              due_date,
+              status,
+              payment_date,
+              amount_paid
+            ),
+            loan_payments (
+              id,
+              payment_amount,
+              payment_date
+            )
+          `)
+          .eq("org_id", orgId)
+          .eq("loan_applicants.applicant_type", "primary")
+          .not("loan_id", "is", null)
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (error) throw error;
+        data = data.concat(batch || []);
+        hasMore = (batch?.length || 0) === PAGE_SIZE;
+        from += PAGE_SIZE;
+      }
 
       let loans: LoanListItem[] = (data || [])
         .filter((app: any) => ['disbursed', 'closed'].includes(app.current_stage))
