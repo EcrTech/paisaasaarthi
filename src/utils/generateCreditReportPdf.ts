@@ -114,6 +114,12 @@ function getStatusBgColor(status: string): string {
 }
 
 function buildHtml(data: CreditReportData): string {
+  // Normalise: handle snake_case keys from DB storage
+  const pi = data.personalInfo || (data as any).personal_info || { name: "", dob: "", pan: "", gender: "" };
+  const sum = data.summary || { totalAccounts: 0, activeAccounts: 0, closedAccounts: 0, writeOffAccounts: 0, totalOutstanding: 0, totalPastDue: 0, totalSanctioned: 0 };
+  const accts = data.accounts || [];
+  const enq = data.enquiries || { total30Days: 0, total90Days: 0, totalAll: 0, list: [] };
+
   const scoreColor = getScoreColor(data.creditScore);
   const scoreLabel = getScoreLabel(data.creditScore);
 
@@ -123,10 +129,10 @@ function buildHtml(data: CreditReportData): string {
       <div style="flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
         <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Applicant Details</h3>
         <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
-          <tr><td style="color: #6b7280; padding: 3px 0; width: 120px;">Name</td><td style="font-weight: 600;">${data.personalInfo.name || "N/A"}</td></tr>
-          <tr><td style="color: #6b7280; padding: 3px 0;">PAN</td><td style="font-weight: 600; font-family: monospace;">${data.personalInfo.pan || "N/A"}</td></tr>
-          <tr><td style="color: #6b7280; padding: 3px 0;">Date of Birth</td><td style="font-weight: 600;">${formatDate(data.personalInfo.dob)}</td></tr>
-          <tr><td style="color: #6b7280; padding: 3px 0;">Gender</td><td style="font-weight: 600;">${data.personalInfo.gender || "N/A"}</td></tr>
+          <tr><td style="color: #6b7280; padding: 3px 0; width: 120px;">Name</td><td style="font-weight: 600;">${pi.name || "N/A"}</td></tr>
+          <tr><td style="color: #6b7280; padding: 3px 0;">PAN</td><td style="font-weight: 600; font-family: monospace;">${pi.pan || "N/A"}</td></tr>
+          <tr><td style="color: #6b7280; padding: 3px 0;">Date of Birth</td><td style="font-weight: 600;">${formatDate(pi.dob)}</td></tr>
+          <tr><td style="color: #6b7280; padding: 3px 0;">Gender</td><td style="font-weight: 600;">${pi.gender || "N/A"}</td></tr>
           <tr><td style="color: #6b7280; padding: 3px 0;">Report Date</td><td style="font-weight: 600;">${formatDate(data.reportDate)}</td></tr>
           <tr><td style="color: #6b7280; padding: 3px 0;">Report No</td><td style="font-weight: 600; font-family: monospace; font-size: 11px;">${data.reportOrderNo || "N/A"}</td></tr>
         </table>
@@ -142,21 +148,21 @@ function buildHtml(data: CreditReportData): string {
 
   // Addresses & Phones
   let contactHtml = "";
-  if ((data.personalInfo.addresses && data.personalInfo.addresses.length > 0) ||
-      (data.personalInfo.phones && data.personalInfo.phones.length > 0)) {
+  if ((pi.addresses && pi.addresses.length > 0) ||
+      (pi.phones && pi.phones.length > 0)) {
     contactHtml = `
       <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
         <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Contact Information</h3>
-        ${data.personalInfo.addresses ? data.personalInfo.addresses.map((addr, i) => `
+        ${pi.addresses ? pi.addresses.map((addr, i) => `
           <div style="font-size: 12px; margin-bottom: 6px;">
             <span style="color: #6b7280;">Address ${i + 1}:</span>
             <span style="margin-left: 8px;">${addr}</span>
           </div>
         `).join("") : ""}
-        ${data.personalInfo.phones ? `
+        ${pi.phones ? `
           <div style="font-size: 12px; margin-top: 8px;">
             <span style="color: #6b7280;">Phone/Email:</span>
-            <span style="margin-left: 8px;">${data.personalInfo.phones.join(", ")}</span>
+            <span style="margin-left: 8px;">${pi.phones.join(", ")}</span>
           </div>
         ` : ""}
       </div>
@@ -169,20 +175,20 @@ function buildHtml(data: CreditReportData): string {
       <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Account Summary</h3>
       <div style="display: flex; gap: 12px; margin-bottom: 16px;">
         <div style="flex: 1; text-align: center; padding: 12px; background: #f9fafb; border-radius: 6px;">
-          <div style="font-size: 24px; font-weight: 700;">${data.summary.totalAccounts}</div>
+          <div style="font-size: 24px; font-weight: 700;">${sum.totalAccounts}</div>
           <div style="font-size: 11px; color: #6b7280;">Total Accounts</div>
         </div>
         <div style="flex: 1; text-align: center; padding: 12px; background: #f0fdf4; border-radius: 6px;">
-          <div style="font-size: 24px; font-weight: 700; color: #16a34a;">${data.summary.activeAccounts}</div>
+          <div style="font-size: 24px; font-weight: 700; color: #16a34a;">${sum.activeAccounts}</div>
           <div style="font-size: 11px; color: #6b7280;">Active</div>
         </div>
         <div style="flex: 1; text-align: center; padding: 12px; background: #f9fafb; border-radius: 6px;">
-          <div style="font-size: 24px; font-weight: 700;">${data.summary.closedAccounts}</div>
+          <div style="font-size: 24px; font-weight: 700;">${sum.closedAccounts}</div>
           <div style="font-size: 11px; color: #6b7280;">Closed</div>
         </div>
-        ${data.summary.writeOffAccounts > 0 ? `
+        ${sum.writeOffAccounts > 0 ? `
           <div style="flex: 1; text-align: center; padding: 12px; background: #fef2f2; border-radius: 6px;">
-            <div style="font-size: 24px; font-weight: 700; color: #dc2626;">${data.summary.writeOffAccounts}</div>
+            <div style="font-size: 24px; font-weight: 700; color: #dc2626;">${sum.writeOffAccounts}</div>
             <div style="font-size: 11px; color: #6b7280;">Write-offs</div>
           </div>
         ` : ""}
@@ -190,22 +196,22 @@ function buildHtml(data: CreditReportData): string {
       <div style="display: flex; gap: 12px;">
         <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px;">
           <div style="font-size: 11px; color: #6b7280;">Total Outstanding</div>
-          <div style="font-size: 16px; font-weight: 700;">${formatCurrency(data.summary.totalOutstanding)}</div>
+          <div style="font-size: 16px; font-weight: 700;">${formatCurrency(sum.totalOutstanding)}</div>
         </div>
         <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px;">
           <div style="font-size: 11px; color: #6b7280;">Total Past Due</div>
-          <div style="font-size: 16px; font-weight: 700; ${data.summary.totalPastDue > 0 ? "color: #dc2626;" : ""}">${formatCurrency(data.summary.totalPastDue)}</div>
+          <div style="font-size: 16px; font-weight: 700; ${sum.totalPastDue > 0 ? "color: #dc2626;" : ""}">${formatCurrency(sum.totalPastDue)}</div>
         </div>
         <div style="flex: 1; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px;">
           <div style="font-size: 11px; color: #6b7280;">Total Sanctioned</div>
-          <div style="font-size: 16px; font-weight: 700;">${formatCurrency(data.summary.totalSanctioned)}</div>
+          <div style="font-size: 16px; font-weight: 700;">${formatCurrency(sum.totalSanctioned)}</div>
         </div>
       </div>
     </div>
   `;
 
   // Account Details
-  const accountsHtml = data.accounts.map((acct, idx) => {
+  const accountsHtml = accts.map((acct, idx) => {
     const historyBars = acct.paymentHistory.slice(0, 24).map(h =>
       `<div style="width: 10px; height: 14px; border-radius: 2px; background: ${getSeverityColor(h.severity)};" title="${h.label}"></div>`
     ).join("");
@@ -263,21 +269,21 @@ function buildHtml(data: CreditReportData): string {
   const enquirySummaryHtml = `
     <div style="display: flex; gap: 12px; margin-bottom: 16px;">
       <div style="flex: 1; text-align: center; padding: 10px; background: #f9fafb; border-radius: 6px;">
-        <div style="font-size: 20px; font-weight: 700;">${data.enquiries.total30Days}</div>
+        <div style="font-size: 20px; font-weight: 700;">${enq.total30Days}</div>
         <div style="font-size: 11px; color: #6b7280;">Last 30 Days</div>
       </div>
       <div style="flex: 1; text-align: center; padding: 10px; background: #f9fafb; border-radius: 6px;">
-        <div style="font-size: 20px; font-weight: 700;">${data.enquiries.total90Days}</div>
+        <div style="font-size: 20px; font-weight: 700;">${enq.total90Days}</div>
         <div style="font-size: 11px; color: #6b7280;">Last 90 Days</div>
       </div>
       <div style="flex: 1; text-align: center; padding: 10px; background: #f9fafb; border-radius: 6px;">
-        <div style="font-size: 20px; font-weight: 700;">${data.enquiries.totalAll}</div>
+        <div style="font-size: 20px; font-weight: 700;">${enq.totalAll}</div>
         <div style="font-size: 11px; color: #6b7280;">Total</div>
       </div>
     </div>
   `;
 
-  const enquiryListHtml = data.enquiries.list.length > 0 ? `
+  const enquiryListHtml = enq.list.length > 0 ? `
     <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
       <thead>
         <tr style="background: #f9fafb;">
@@ -288,7 +294,7 @@ function buildHtml(data: CreditReportData): string {
         </tr>
       </thead>
       <tbody>
-        ${data.enquiries.list.map(enq => `
+        ${enq.list.map(enq => `
           <tr>
             <td style="padding: 5px 8px; border-bottom: 1px solid #f3f4f6;">${formatDate(enq.date)}</td>
             <td style="padding: 5px 8px; border-bottom: 1px solid #f3f4f6;">${enq.institution}</td>
@@ -325,7 +331,7 @@ function buildHtml(data: CreditReportData): string {
 
       <!-- Account Details -->
       <div style="margin-bottom: 24px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Account Details (${data.accounts.length})</h3>
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Account Details (${accts.length})</h3>
         ${accountsHtml}
       </div>
 
@@ -348,7 +354,8 @@ export function downloadCreditReportPdf(data: CreditReportData) {
   container.style.width = "794px"; // A4 width at 96dpi
   document.body.appendChild(container);
 
-  const filename = `Credit-Report-${data.personalInfo.name?.replace(/\s+/g, "-") || "Applicant"}-${data.personalInfo.pan || "NA"}.pdf`;
+  const personalInfo = data.personalInfo || (data as any).personal_info || { name: "", pan: "" };
+  const filename = `Credit-Report-${personalInfo.name?.replace(/\s+/g, "-") || "Applicant"}-${personalInfo.pan || "NA"}.pdf`;
 
   const opt = {
     margin: [10, 12, 10, 12],

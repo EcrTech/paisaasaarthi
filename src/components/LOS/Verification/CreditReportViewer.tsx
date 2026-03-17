@@ -285,6 +285,12 @@ function AccountCard({ account }: { account: CreditReportViewerProps["data"]["ac
 export function CreditReportViewer({ data }: CreditReportViewerProps) {
   const [showAllEnquiries, setShowAllEnquiries] = useState(false);
 
+  // Normalise data: handle snake_case keys from DB storage
+  const personalInfo = data.personalInfo || (data as any).personal_info || { name: "", dob: "", pan: "", gender: "" };
+  const summary = data.summary || { totalAccounts: 0, activeAccounts: 0, closedAccounts: 0, writeOffAccounts: 0, totalOutstanding: 0, totalPastDue: 0, totalSanctioned: 0 };
+  const accounts = data.accounts || [];
+  const enquiries = data.enquiries || { total30Days: 0, total90Days: 0, totalAll: 0, list: [] };
+
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "N/A";
     try {
@@ -335,15 +341,15 @@ export function CreditReportViewer({ data }: CreditReportViewerProps) {
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Name</span>
-                <span className="font-medium">{data.personalInfo.name}</span>
+                <span className="font-medium">{personalInfo.name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">PAN</span>
-                <span className="font-medium">{data.personalInfo.pan || "N/A"}</span>
+                <span className="font-medium">{personalInfo.pan || "N/A"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">DOB</span>
-                <span className="font-medium">{formatDate(data.personalInfo.dob)}</span>
+                <span className="font-medium">{formatDate(personalInfo.dob)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Report Date</span>
@@ -385,20 +391,20 @@ export function CreditReportViewer({ data }: CreditReportViewerProps) {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <p className="text-2xl font-bold">{data.summary.totalAccounts}</p>
+                <p className="text-2xl font-bold">{summary.totalAccounts}</p>
                 <p className="text-sm text-muted-foreground">Total Accounts</p>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">{data.summary.activeAccounts}</p>
+                <p className="text-2xl font-bold text-green-600">{summary.activeAccounts}</p>
                 <p className="text-sm text-muted-foreground">Active</p>
               </div>
               <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <p className="text-2xl font-bold">{data.summary.closedAccounts}</p>
+                <p className="text-2xl font-bold">{summary.closedAccounts}</p>
                 <p className="text-sm text-muted-foreground">Closed</p>
               </div>
-              {data.summary.writeOffAccounts > 0 && (
+              {summary.writeOffAccounts > 0 && (
                 <div className="text-center p-3 bg-red-50 rounded-lg">
-                  <p className="text-2xl font-bold text-red-600">{data.summary.writeOffAccounts}</p>
+                  <p className="text-2xl font-bold text-red-600">{summary.writeOffAccounts}</p>
                   <p className="text-sm text-muted-foreground">Write-offs</p>
                 </div>
               )}
@@ -407,17 +413,17 @@ export function CreditReportViewer({ data }: CreditReportViewerProps) {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
               <div className="p-3 border rounded-lg">
                 <p className="text-sm text-muted-foreground">Total Outstanding</p>
-                <p className="text-lg font-bold">₹{data.summary.totalOutstanding.toLocaleString()}</p>
+                <p className="text-lg font-bold">₹{summary.totalOutstanding.toLocaleString()}</p>
               </div>
               <div className="p-3 border rounded-lg">
                 <p className="text-sm text-muted-foreground">Total Past Due</p>
-                <p className={cn("text-lg font-bold", data.summary.totalPastDue > 0 ? "text-red-600" : "")}>
-                  ₹{data.summary.totalPastDue.toLocaleString()}
+                <p className={cn("text-lg font-bold", summary.totalPastDue > 0 ? "text-red-600" : "")}>
+                  ₹{summary.totalPastDue.toLocaleString()}
                 </p>
               </div>
               <div className="p-3 border rounded-lg">
                 <p className="text-sm text-muted-foreground">Total Sanctioned</p>
-                <p className="text-lg font-bold">₹{data.summary.totalSanctioned.toLocaleString()}</p>
+                <p className="text-lg font-bold">₹{summary.totalSanctioned.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
@@ -432,7 +438,7 @@ export function CreditReportViewer({ data }: CreditReportViewerProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {data.accounts.map((account, idx) => (
+            {accounts.map((account, idx) => (
               <AccountCard key={idx} account={account} />
             ))}
           </CardContent>
@@ -449,22 +455,22 @@ export function CreditReportViewer({ data }: CreditReportViewerProps) {
           <CardContent>
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <p className="text-xl font-bold">{data.enquiries.total30Days}</p>
+                <p className="text-xl font-bold">{enquiries.total30Days}</p>
                 <p className="text-xs text-muted-foreground">Last 30 Days</p>
               </div>
               <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <p className="text-xl font-bold">{data.enquiries.total90Days}</p>
+                <p className="text-xl font-bold">{enquiries.total90Days}</p>
                 <p className="text-xs text-muted-foreground">Last 90 Days</p>
               </div>
               <div className="text-center p-3 bg-muted/50 rounded-lg">
-                <p className="text-xl font-bold">{data.enquiries.totalAll}</p>
+                <p className="text-xl font-bold">{enquiries.totalAll}</p>
                 <p className="text-xs text-muted-foreground">Total</p>
               </div>
             </div>
 
-            {data.enquiries.list.length > 0 && (
+            {enquiries.list.length > 0 && (
               <div className="space-y-2">
-                {(showAllEnquiries ? data.enquiries.list : data.enquiries.list.slice(0, 5)).map((enq, idx) => (
+                {(showAllEnquiries ? enquiries.list : enquiries.list.slice(0, 5)).map((enq, idx) => (
                   <div key={idx} className="flex items-center justify-between p-2 border rounded-lg text-sm">
                     <div className="flex items-center gap-3">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -482,14 +488,14 @@ export function CreditReportViewer({ data }: CreditReportViewerProps) {
                   </div>
                 ))}
                 
-                {data.enquiries.list.length > 5 && (
+                {enquiries.list.length > 5 && (
                   <Button 
                     variant="ghost" 
                     size="sm" 
                     className="w-full"
                     onClick={() => setShowAllEnquiries(!showAllEnquiries)}
                   >
-                    {showAllEnquiries ? "Show Less" : `Show ${data.enquiries.list.length - 5} More`}
+                    {showAllEnquiries ? "Show Less" : `Show ${enquiries.list.length - 5} More`}
                   </Button>
                 )}
               </div>
