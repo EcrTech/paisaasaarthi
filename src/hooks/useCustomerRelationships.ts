@@ -14,6 +14,8 @@ export interface LoanApplicationSummary {
   tenureDays: number;
   createdAt: string;
   disbursementDate: string | null;
+  dueDate: string | null;
+  daysOverdue: number;
 }
 
 export interface CustomerRelationship {
@@ -27,8 +29,8 @@ export interface CustomerRelationship {
   totalLoans: number;
   disbursedAmount: number;
   outstandingAmount: number;
-  delayedPayments: number;
-  maxDaysDelayed: number;
+  overdueLoans: number;
+  maxDaysOverdue: number;
   lastActivityDate: string;
   applications: LoanApplicationSummary[];
 }
@@ -46,50 +48,55 @@ export function useCustomerRelationships(searchTerm?: string) {
     queryFn: async (): Promise<CustomerRelationship[]> => {
       if (!orgId) return [];
 
-      // Paginate to fetch all rows (PostgREST caps at 1000 per request)
       const PAGE_SIZE = 1000;
-      let applicants: any[] = [];
+      let allApps: any[] = [];
       let from = 0;
       let hasMore = true;
 
       while (hasMore) {
         const { data: batch, error } = await supabase
-          .from("loan_applicants")
+          .from("loan_applications")
           .select(`
-            pan_number,
-            mobile,
-            first_name,
-            middle_name,
-            last_name,
-            email,
-            aadhaar_number,
-            loan_application_id,
-            loan_applications!inner (
-              id,
-              loan_id,
-              application_number,
-              status,
-              current_stage,
-              requested_amount,
-              approved_amount,
-              tenure_days,
-              created_at,
-              loan_sanctions ( sanctioned_amount ),
-              loan_disbursements ( disbursement_amount, disbursement_date ),
-              loan_repayment_schedule ( total_emi, due_date, status, amount_paid )
-            )
+            id,
+            loan_id,
+            application_number,
+            status,
+            current_stage,
+            requested_amount,
+            approved_amount,
+            tenure_days,
+            created_at,
+            loan_applicants!inner (
+              first_name,
+              middle_name,
+              last_name,
+              pan_number,
+              mobile,
+              email,
+              aadhaar_number,
+              applicant_type
+            ),
+            loan_sanctions ( sanctioned_amount ),
+            loan_disbursements ( disbursement_amount, disbursement_date )
           `)
-          .eq("loan_applications.org_id", orgId)
-          .eq("applicant_type", "primary")
+          .eq("org_id", orgId)
+          .eq("loan_applicants.applicant_type", "primary")
+          .not("loan_id", "is", null)
+          .order("created_at", { ascending: false })
           .range(from, from + PAGE_SIZE - 1);
 
         if (error) throw error;
-        applicants = applicants.concat(batch || []);
+        allApps = allApps.concat(batch || []);
         hasMore = (batch?.length || 0) === PAGE_SIZE;
         from += PAGE_SIZE;
       }
 
-      // Group by PAN or mobile
+      // Keep only disbursed/closed loans
+      const disbursedApps = allApps.filter((app: any) =>
+        ['disbursed', 'closed'].includes(app.current_stage)
+      );
+
+      // Group by PAN (fallback to mobile) to deduplicate customers
       const customerMap = new Map<string, {
         pan_number: string;
         mobile: string;
@@ -101,41 +108,36 @@ export function useCustomerRelationships(searchTerm?: string) {
         apps: any[];
       }>();
 
-      (applicants || []).forEach((row: any) => {
-        const key = row.pan_number || row.mobile;
-        if (!key) return;
+      for (const app of disbursedApps) {
+        const applicant = Array.isArray(app.loan_applicants)
+          ? app.loan_applicants[0]
+          : app.loan_applicants;
+        if (!applicant) continue;
+
+        const key = applicant.pan_number || applicant.mobile;
+        if (!key) continue;
 
         if (!customerMap.has(key)) {
           customerMap.set(key, {
-            pan_number: row.pan_number,
-            mobile: row.mobile,
-            first_name: row.first_name,
-            middle_name: row.middle_name,
-            last_name: row.last_name,
-            email: row.email,
-            aadhaar_number: row.aadhaar_number,
+            pan_number: applicant.pan_number,
+            mobile: applicant.mobile,
+            first_name: applicant.first_name,
+            middle_name: applicant.middle_name,
+            last_name: applicant.last_name,
+            email: applicant.email,
+            aadhaar_number: applicant.aadhaar_number,
             apps: [],
           });
         }
 
-        const app = Array.isArray(row.loan_applications)
-          ? row.loan_applications[0]
-          : row.loan_applications;
-
-        if (app) {
-          const entry = customerMap.get(key)!;
-          if (!entry.apps.some((a: any) => a.id === app.id)) {
-            entry.apps.push(app);
-          }
+        const entry = customerMap.get(key)!;
+        if (!entry.apps.some((a: any) => a.id === app.id)) {
+          entry.apps.push(app);
         }
-      });
-
-      // Filter: only customers with at least one disbursed/closed loan
-      let customers = Array.from(customerMap.entries()).filter(([_, c]) =>
-        c.apps.some((a: any) => ['disbursed', 'closed'].includes(a.current_stage))
-      );
+      }
 
       // Search filter
+      let customers = Array.from(customerMap.entries());
       if (searchTerm) {
         const s = searchTerm.toLowerCase();
         customers = customers.filter(([_, c]) => {
@@ -159,33 +161,46 @@ export function useCustomerRelationships(searchTerm?: string) {
         );
 
         let totalDisbursed = 0;
-        let totalEmiAmount = 0;
-        let totalAmountPaid = 0;
-        let delayedPayments = 0;
-        let maxDaysDelayed = 0;
+        let outstandingAmount = 0;
+        let overdueLoans = 0;
+        let maxDaysOverdue = 0;
 
         const appSummaries: LoanApplicationSummary[] = sortedApps.map((app: any) => {
-          // PostgREST returns objects (not arrays) for 1-to-1 FK relationships
           const rawDisb = app.loan_disbursements;
           const disbursements = Array.isArray(rawDisb) ? rawDisb : rawDisb ? [rawDisb] : [];
           const totalDisb = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
+
           const rawSanction = app.loan_sanctions;
           const sanction = Array.isArray(rawSanction) ? rawSanction[0] : rawSanction;
-          const rawEmis = app.loan_repayment_schedule;
-          const emis = Array.isArray(rawEmis) ? rawEmis : rawEmis ? [rawEmis] : [];
 
           totalDisbursed += totalDisb;
-          totalEmiAmount += emis.reduce((sum: number, e: any) => sum + (e.total_emi || 0), 0);
-          totalAmountPaid += emis.reduce((sum: number, e: any) => sum + (e.amount_paid || 0), 0);
 
-          // Count delayed/overdue EMIs and max days
-          emis.forEach((emi: any) => {
-            if (emi.status === 'overdue' || (emi.status === 'pending' && new Date(emi.due_date) < today)) {
-              delayedPayments++;
-              const daysLate = Math.floor((today.getTime() - new Date(emi.due_date).getTime()) / (1000 * 60 * 60 * 24));
-              if (daysLate > maxDaysDelayed) maxDaysDelayed = daysLate;
+          // Bullet payment: due date = disbursement_date + tenure_days
+          const firstDisbDate = disbursements[0]?.disbursement_date;
+          let dueDate: string | null = null;
+          if (firstDisbDate && app.tenure_days) {
+            const d = new Date(firstDisbDate);
+            d.setDate(d.getDate() + app.tenure_days);
+            dueDate = d.toISOString().split('T')[0];
+          }
+
+          const isClosed = app.current_stage === 'closed';
+
+          // Outstanding = disbursed amount if not closed
+          if (!isClosed) {
+            outstandingAmount += totalDisb;
+          }
+
+          // Overdue = not closed and past due date
+          let daysOverdue = 0;
+          if (!isClosed && dueDate) {
+            const diff = Math.floor((today.getTime() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24));
+            if (diff > 0) {
+              daysOverdue = diff;
+              overdueLoans++;
+              if (diff > maxDaysOverdue) maxDaysOverdue = diff;
             }
-          });
+          }
 
           return {
             applicationId: app.id,
@@ -198,14 +213,11 @@ export function useCustomerRelationships(searchTerm?: string) {
             disbursedAmount: totalDisb || null,
             tenureDays: app.tenure_days,
             createdAt: app.created_at,
-            disbursementDate: disbursements[0]?.disbursement_date || null,
+            disbursementDate: firstDisbDate || null,
+            dueDate,
+            daysOverdue,
           };
         });
-
-        const outstandingAmount = Math.max(0, totalEmiAmount - totalAmountPaid);
-        const totalLoans = appSummaries.filter(a =>
-          ['disbursed', 'closed'].includes(a.currentStage)
-        ).length;
 
         return {
           customerId: c.pan_number || c.mobile,
@@ -215,11 +227,11 @@ export function useCustomerRelationships(searchTerm?: string) {
           panNumber: c.pan_number || 'N/A',
           aadhaarNumber: maskAadhaar(c.aadhaar_number),
           totalApplications: appSummaries.length,
-          totalLoans,
+          totalLoans: appSummaries.length,
           disbursedAmount: totalDisbursed,
           outstandingAmount,
-          delayedPayments,
-          maxDaysDelayed: Math.max(0, maxDaysDelayed),
+          overdueLoans,
+          maxDaysOverdue: Math.max(0, maxDaysOverdue),
           lastActivityDate: sortedApps[0]?.created_at || '',
           applications: appSummaries,
         };

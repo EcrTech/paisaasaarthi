@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { useLoansList, LoanListItem } from "@/hooks/useLoansList";
 import { LoanDetailDialog } from "./LoanDetailDialog";
@@ -21,7 +21,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { LoadingState } from "@/components/common/LoadingState";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Search, Banknote, Download, TrendingUp, AlertCircle, CheckCircle, IndianRupee, Eye } from "lucide-react";
@@ -29,54 +28,36 @@ import { Search, Banknote, Download, TrendingUp, AlertCircle, CheckCircle, India
 const paymentStatusConfig: Record<string, { label: string; color: string }> = {
   on_track: { label: "On Track", color: "bg-green-500" },
   overdue: { label: "Overdue", color: "bg-red-500" },
-  completed: { label: "Completed", color: "bg-blue-500" },
+  completed: { label: "Settled", color: "bg-blue-500" },
 };
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
 
 export function LoansTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [selectedLoan, setSelectedLoan] = useState<LoanListItem | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const { data: loans, isLoading } = useLoansList(debouncedSearch);
 
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    const timer = setTimeout(() => {
-      setDebouncedSearch(value);
-    }, 300);
-    return () => clearTimeout(timer);
-  };
-
-  // Filter loans
-  const filteredLoans = loans?.filter((loan) => {
-    if (statusFilter === "active" && loan.paymentStatus === "completed") {
-      return false;
-    }
-    if (statusFilter === "closed" && loan.paymentStatus !== "completed") {
-      return false;
-    }
-    if (paymentFilter === "on_track" && loan.paymentStatus !== "on_track") {
-      return false;
-    }
-    if (paymentFilter === "overdue" && loan.paymentStatus !== "overdue") {
-      return false;
-    }
-    if (paymentFilter === "completed" && loan.paymentStatus !== "completed") {
-      return false;
-    }
+  const filteredLoans = (loans || []).filter((loan) => {
+    if (statusFilter === "on_track") return loan.paymentStatus === "on_track";
+    if (statusFilter === "overdue") return loan.paymentStatus === "overdue";
+    if (statusFilter === "completed") return loan.paymentStatus === "completed";
     return true;
-  }) || [];
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  });
 
   const handleViewDetails = (loan: LoanListItem) => {
     setSelectedLoan(loan);
@@ -86,54 +67,23 @@ export function LoansTab() {
   const handleExportCSV = () => {
     if (!filteredLoans.length) return;
 
-    // Build filename with filter info
-    let filename = `loans-${format(new Date(), "yyyy-MM-dd")}`;
-    if (statusFilter !== "all") filename += `_${statusFilter}`;
-    if (paymentFilter !== "all") filename += `_payment-${paymentFilter}`;
-    if (debouncedSearch) filename += `_search`;
-
-    // Build filter metadata row
-    const filterParts = [];
-    filterParts.push(`Loan Status: ${statusFilter === "all" ? "All" : statusFilter}`);
-    filterParts.push(`Payment Status: ${paymentFilter === "all" ? "All" : paymentFilter}`);
-    if (debouncedSearch) filterParts.push(`Search: "${debouncedSearch}"`);
-    const filterInfo = [`"Filters Applied: ${filterParts.join(", ")}"`];
+    const filename = `loans-${format(new Date(), "yyyy-MM-dd")}${statusFilter !== "all" ? `_${statusFilter}` : ""}`;
 
     const headers = [
-      "Loan ID",
-      "Application Number",
-      "Applicant Name",
-      "PAN",
-      "Mobile",
-      "Disbursed Amount",
-      "Total Paid",
-      "Outstanding",
-      "EMI Count",
-      "Paid EMIs",
-      "Overdue EMIs",
-      "Payment Status",
-      "On-Time %",
-      "Disbursement Date",
+      "Loan ID", "Application #", "Customer", "PAN", "Mobile",
+      "Disbursed", "Outstanding", "Disbursement Date", "Due Date",
+      "Days Overdue", "Status",
     ];
 
-    const rows = filteredLoans.map((loan) => [
-      loan.loanId,
-      loan.applicationNumber,
-      loan.applicantName,
-      loan.panNumber,
-      loan.mobile,
-      loan.disbursedAmount,
-      loan.totalPaid,
-      loan.outstandingAmount,
-      loan.emiCount,
-      loan.paidEmiCount,
-      loan.overdueEmiCount,
-      loan.paymentStatus,
-      loan.onTimePaymentPercent,
-      loan.disbursementDate ? format(new Date(loan.disbursementDate), "dd/MM/yyyy") : "",
+    const rows = filteredLoans.map((l) => [
+      l.loanId, l.applicationNumber, `"${l.applicantName}"`, l.panNumber, l.mobile,
+      l.disbursedAmount, l.outstandingAmount,
+      l.disbursementDate ? format(new Date(l.disbursementDate), "dd/MM/yyyy") : "",
+      l.dueDate ? format(new Date(l.dueDate), "dd/MM/yyyy") : "",
+      l.daysOverdue, l.paymentStatus,
     ]);
 
-    const csvContent = [filterInfo, headers, ...rows].map((row) => row.join(",")).join("\n");
+    const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -143,26 +93,25 @@ export function LoansTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Summary stats — each contact counted once at their highest lifecycle stage
-  // Priority: Overdue > On Track > Completed (overdue is most urgent to surface)
-  const computeLoanStats = () => {
-    if (!loans || loans.length === 0) return { total: 0, active: 0, onTrack: 0, overdue: 0, completed: 0, totalDisbursed: 0, totalOutstanding: 0 };
+  // Summary stats — deduplicate by contactId
+  const computeStats = () => {
+    if (!loans || loans.length === 0) return { total: 0, onTrack: 0, overdue: 0, completed: 0, totalDisbursed: 0, totalOutstanding: 0 };
 
     const PRIORITY: Record<string, number> = { overdue: 3, on_track: 2, completed: 1 };
     const contactHighest = new Map<string, string>();
 
     for (const loan of loans) {
-      if (!loan.contactId) continue;
-      const current = contactHighest.get(loan.contactId);
+      const key = loan.contactId || loan.id;
+      const current = contactHighest.get(key);
       if (!current || (PRIORITY[loan.paymentStatus] || 0) > (PRIORITY[current] || 0)) {
-        contactHighest.set(loan.contactId, loan.paymentStatus);
+        contactHighest.set(key, loan.paymentStatus);
       }
     }
 
-    const counts = { total: contactHighest.size, active: 0, onTrack: 0, overdue: 0, completed: 0 };
+    const counts = { total: contactHighest.size, onTrack: 0, overdue: 0, completed: 0 };
     for (const status of contactHighest.values()) {
-      if (status === "overdue") { counts.overdue++; counts.active++; }
-      else if (status === "on_track") { counts.onTrack++; counts.active++; }
+      if (status === "overdue") counts.overdue++;
+      else if (status === "on_track") counts.onTrack++;
       else if (status === "completed") counts.completed++;
     }
 
@@ -172,23 +121,12 @@ export function LoansTab() {
       totalOutstanding: loans.reduce((sum, l) => sum + l.outstandingAmount, 0),
     };
   };
-  const stats = computeLoanStats();
+  const stats = computeStats();
 
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Banknote className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-2xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total Loans</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
@@ -217,7 +155,7 @@ export function LoansTab() {
               <CheckCircle className="h-5 w-5 text-blue-500" />
               <div>
                 <p className="text-2xl font-bold">{stats.completed}</p>
-                <p className="text-xs text-muted-foreground">Completed</p>
+                <p className="text-xs text-muted-foreground">Settled</p>
               </div>
             </div>
           </CardContent>
@@ -271,29 +209,19 @@ export function LoansTab() {
               <Input
                 placeholder="Search by loan ID, application number, PAN, mobile, name..."
                 value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Loan Status" />
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Loans</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="closed">Closed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Payment Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="on_track">On Track</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="completed">Settled</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -325,34 +253,29 @@ export function LoansTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Loan ID</TableHead>
-                    <TableHead>Application #</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>PAN</TableHead>
                     <TableHead className="text-right">Disbursed</TableHead>
                     <TableHead className="text-right">Outstanding</TableHead>
-                    <TableHead>EMI Progress</TableHead>
+                    <TableHead>Disbursement</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead className="text-center">Days Overdue</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Next Due</TableHead>
-                    <TableHead className="text-center">On-Time %</TableHead>
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredLoans.map((loan) => {
                     const statusConfig = paymentStatusConfig[loan.paymentStatus] || { label: loan.paymentStatus, color: "bg-gray-500" };
-                    const emiProgress = loan.emiCount > 0 ? Math.round((loan.paidEmiCount / loan.emiCount) * 100) : 0;
-                    
+
                     return (
-                      <TableRow 
-                        key={loan.id} 
+                      <TableRow
+                        key={loan.id}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => handleViewDetails(loan)}
                       >
                         <TableCell className="font-mono text-sm font-medium">
                           {loan.loanId}
-                        </TableCell>
-                        <TableCell className="font-mono text-sm text-muted-foreground">
-                          {loan.applicationNumber}
                         </TableCell>
                         <TableCell>
                           <div>
@@ -369,38 +292,21 @@ export function LoansTab() {
                             {formatCurrency(loan.outstandingAmount)}
                           </span>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <Progress value={emiProgress} className="h-2 flex-1" />
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {loan.paidEmiCount}/{loan.emiCount}
-                            </span>
-                          </div>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {loan.disbursementDate ? format(new Date(loan.disbursementDate), "dd MMM yyyy") : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {loan.dueDate ? format(new Date(loan.dueDate), "dd MMM yyyy") : "-"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className={loan.daysOverdue > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                            {loan.daysOverdue > 0 ? loan.daysOverdue : "-"}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Badge className={`${statusConfig.color} text-white`}>
                             {statusConfig.label}
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {loan.nextDueDate ? (
-                            <div className="text-sm">
-                              <p>{format(new Date(loan.nextDueDate), "dd MMM")}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatCurrency(loan.nextDueAmount || 0)}
-                              </p>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className={`font-medium ${
-                            loan.onTimePaymentPercent >= 90 ? "text-green-600" :
-                            loan.onTimePaymentPercent >= 70 ? "text-amber-600" : "text-red-600"
-                          }`}>
-                            {loan.onTimePaymentPercent}%
-                          </span>
                         </TableCell>
                         <TableCell className="text-center">
                           <Button

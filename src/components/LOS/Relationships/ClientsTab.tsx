@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { useCustomerRelationships, CustomerRelationship } from "@/hooks/useCustomerRelationships";
 import { CustomerDetailDialog } from "./CustomerDetailDialog";
@@ -24,6 +24,13 @@ import { LoadingState } from "@/components/common/LoadingState";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Search, Users, Download, IndianRupee, AlertCircle, Eye } from "lucide-react";
 
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+
 export function ClientsTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -31,30 +38,18 @@ export function ClientsTab() {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRelationship | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const { data: customers, isLoading } = useCustomerRelationships(debouncedSearch);
 
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    const timer = setTimeout(() => {
-      setDebouncedSearch(value);
-    }, 300);
-    return () => clearTimeout(timer);
-  };
-
-  // Filter customers
-  const filteredCustomers = customers?.filter((customer) => {
-    if (statusFilter === "active" && customer.totalLoans === 0) return false;
-    if (statusFilter === "overdue" && customer.delayedPayments === 0) return false;
+  const filteredCustomers = (customers || []).filter((c) => {
+    if (statusFilter === "active") return c.outstandingAmount > 0;
+    if (statusFilter === "overdue") return c.overdueLoans > 0;
     return true;
-  }) || [];
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  });
 
   const handleViewDetails = (customer: CustomerRelationship) => {
     setSelectedCustomer(customer);
@@ -64,42 +59,27 @@ export function ClientsTab() {
   const handleExportCSV = () => {
     if (!filteredCustomers.length) return;
 
-    let filename = `clients-${format(new Date(), "yyyy-MM-dd")}`;
-    if (statusFilter !== "all") filename += `_${statusFilter}`;
-    if (debouncedSearch) filename += `_search`;
-
-    const filterParts = [];
-    filterParts.push(`Status: ${statusFilter === "all" ? "All" : statusFilter}`);
-    if (debouncedSearch) filterParts.push(`Search: "${debouncedSearch}"`);
-    const filterInfo = [`"Filters Applied: ${filterParts.join(", ")}"`];
+    const filename = `clients-${format(new Date(), "yyyy-MM-dd")}${statusFilter !== "all" ? `_${statusFilter}` : ""}`;
 
     const headers = [
-      "Customer ID",
-      "Name",
-      "Mobile",
-      "Total Applications",
-      "Total Loans",
-      "Disbursed Amount",
-      "Outstanding Amount",
-      "Delayed Payments",
-      "Max Days Delayed",
-      "Last Activity",
+      "Name", "Mobile", "PAN", "Total Loans",
+      "Disbursed Amount", "Outstanding Amount",
+      "Overdue Loans", "Max Days Overdue", "Last Activity",
     ];
 
     const rows = filteredCustomers.map((c) => [
-      c.customerId,
       `"${c.name}"`,
       c.mobile,
-      c.totalApplications,
+      c.panNumber,
       c.totalLoans,
       c.disbursedAmount,
       c.outstandingAmount,
-      c.delayedPayments,
-      c.maxDaysDelayed,
+      c.overdueLoans,
+      c.maxDaysOverdue,
       c.lastActivityDate ? format(new Date(c.lastActivityDate), "dd/MM/yyyy") : "",
     ]);
 
-    const csvContent = [filterInfo, headers, ...rows].map((row) => row.join(",")).join("\n");
+    const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -109,13 +89,10 @@ export function ClientsTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Summary stats
-  const stats = {
-    total: customers?.length || 0,
-    totalDisbursed: customers?.reduce((sum, c) => sum + c.disbursedAmount, 0) || 0,
-    totalOutstanding: customers?.reduce((sum, c) => sum + c.outstandingAmount, 0) || 0,
-    overdueClients: customers?.filter((c) => c.delayedPayments > 0).length || 0,
-  };
+  const total = customers?.length || 0;
+  const totalDisbursed = customers?.reduce((sum, c) => sum + c.disbursedAmount, 0) || 0;
+  const totalOutstanding = customers?.reduce((sum, c) => sum + c.outstandingAmount, 0) || 0;
+  const overdueClients = customers?.filter((c) => c.overdueLoans > 0).length || 0;
 
   return (
     <div className="space-y-6">
@@ -126,7 +103,7 @@ export function ClientsTab() {
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-2xl font-bold">{total}</p>
                 <p className="text-xs text-muted-foreground">Total Clients</p>
               </div>
             </div>
@@ -137,7 +114,7 @@ export function ClientsTab() {
             <div className="flex items-center gap-2">
               <IndianRupee className="h-5 w-5 text-green-600" />
               <div>
-                <p className="text-lg font-bold">{formatCurrency(stats.totalDisbursed)}</p>
+                <p className="text-lg font-bold">{formatCurrency(totalDisbursed)}</p>
                 <p className="text-xs text-muted-foreground">Total Disbursed</p>
               </div>
             </div>
@@ -148,7 +125,7 @@ export function ClientsTab() {
             <div className="flex items-center gap-2">
               <IndianRupee className="h-5 w-5 text-orange-500" />
               <div>
-                <p className="text-lg font-bold">{formatCurrency(stats.totalOutstanding)}</p>
+                <p className="text-lg font-bold">{formatCurrency(totalOutstanding)}</p>
                 <p className="text-xs text-muted-foreground">Total Outstanding</p>
               </div>
             </div>
@@ -159,7 +136,7 @@ export function ClientsTab() {
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-red-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.overdueClients}</p>
+                <p className="text-2xl font-bold">{overdueClients}</p>
                 <p className="text-xs text-muted-foreground">Overdue Clients</p>
               </div>
             </div>
@@ -167,13 +144,13 @@ export function ClientsTab() {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Search & Filter */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-lg">Search & Filter</CardTitle>
-              <CardDescription>Find clients by mobile, name, or customer ID</CardDescription>
+              <CardDescription>Find clients by name, mobile, or PAN</CardDescription>
             </div>
             <Button onClick={handleExportCSV} variant="outline" disabled={!filteredCustomers.length}>
               <Download className="h-4 w-4 mr-2" />
@@ -186,9 +163,9 @@ export function ClientsTab() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by mobile, name, or customer ID..."
+                placeholder="Search by name, mobile, or PAN..."
                 value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
@@ -198,8 +175,8 @@ export function ClientsTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Clients</SelectItem>
-                <SelectItem value="active">With Active Loans</SelectItem>
-                <SelectItem value="overdue">With Overdue EMIs</SelectItem>
+                <SelectItem value="active">With Outstanding</SelectItem>
+                <SelectItem value="overdue">With Overdue Loans</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -230,15 +207,14 @@ export function ClientsTab() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Customer ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Mobile</TableHead>
-                    <TableHead className="text-center">Applications</TableHead>
+                    <TableHead>PAN</TableHead>
                     <TableHead className="text-center">Loans</TableHead>
                     <TableHead className="text-right">Disbursed</TableHead>
                     <TableHead className="text-right">Outstanding</TableHead>
-                    <TableHead className="text-center">Delayed</TableHead>
-                    <TableHead className="text-center">Days Delayed</TableHead>
+                    <TableHead className="text-center">Overdue</TableHead>
+                    <TableHead className="text-center">Max Days</TableHead>
                     <TableHead>Last Activity</TableHead>
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
@@ -250,12 +226,9 @@ export function ClientsTab() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => handleViewDetails(customer)}
                     >
-                      <TableCell className="font-mono text-sm font-medium">
-                        {customer.customerId}
-                      </TableCell>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell className="text-sm">{customer.mobile}</TableCell>
-                      <TableCell className="text-center">{customer.totalApplications}</TableCell>
+                      <TableCell className="font-mono text-sm">{customer.panNumber}</TableCell>
                       <TableCell className="text-center">{customer.totalLoans}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(customer.disbursedAmount)}
@@ -266,20 +239,19 @@ export function ClientsTab() {
                         </span>
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className={customer.delayedPayments > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
-                          {customer.delayedPayments}
+                        <span className={customer.overdueLoans > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                          {customer.overdueLoans}
                         </span>
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className={customer.maxDaysDelayed > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
-                          {customer.maxDaysDelayed > 0 ? customer.maxDaysDelayed : "-"}
+                        <span className={customer.maxDaysOverdue > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                          {customer.maxDaysOverdue > 0 ? customer.maxDaysOverdue : "-"}
                         </span>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {customer.lastActivityDate
                           ? format(new Date(customer.lastActivityDate), "dd MMM yyyy")
-                          : "-"
-                        }
+                          : "-"}
                       </TableCell>
                       <TableCell className="text-center">
                         <Button

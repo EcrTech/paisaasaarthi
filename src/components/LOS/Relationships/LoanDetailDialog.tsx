@@ -9,9 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Progress } from "@/components/ui/progress";
-import { 
-  Banknote, 
+import {
+  Banknote,
   ExternalLink,
   TrendingUp,
   AlertCircle,
@@ -31,24 +30,22 @@ interface LoanDetailDialogProps {
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   on_track: { label: "On Track", color: "bg-green-100 text-green-800", icon: <TrendingUp className="h-3 w-3" /> },
   overdue: { label: "Overdue", color: "bg-red-100 text-red-800", icon: <AlertCircle className="h-3 w-3" /> },
-  completed: { label: "Completed", color: "bg-blue-100 text-blue-800", icon: <CheckCircle className="h-3 w-3" /> },
+  completed: { label: "Settled", color: "bg-blue-100 text-blue-800", icon: <CheckCircle className="h-3 w-3" /> },
 };
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
 
 export function LoanDetailDialog({ loan, open, onOpenChange }: LoanDetailDialogProps) {
   const navigate = useNavigate();
 
   if (!loan) return null;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
   const status = statusConfig[loan.paymentStatus];
-  const emiProgressPercent = loan.emiCount > 0 ? Math.round((loan.paidEmiCount / loan.emiCount) * 100) : 0;
 
   const handleViewApplication = () => {
     navigate(`/los/applications/${loan.applicationId}`);
@@ -80,25 +77,6 @@ export function LoanDetailDialog({ loan, open, onOpenChange }: LoanDetailDialogP
                 {status.label}
               </span>
             </Badge>
-
-            {/* EMI Progress */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">EMI Progress</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between text-sm mb-2">
-                  <span>{loan.paidEmiCount} of {loan.emiCount} EMIs paid</span>
-                  <span>{emiProgressPercent}%</span>
-                </div>
-                <Progress value={emiProgressPercent} className="h-3" />
-                {loan.overdueEmiCount > 0 && (
-                  <p className="text-sm text-red-600 mt-2">
-                    {loan.overdueEmiCount} overdue EMI{loan.overdueEmiCount > 1 ? 's' : ''}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
 
             {/* Borrower Info */}
             <Card>
@@ -143,48 +121,16 @@ export function LoanDetailDialog({ loan, open, onOpenChange }: LoanDetailDialogP
                     <p className="font-semibold text-primary">{formatCurrency(loan.disbursedAmount)}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Total EMI Amount</p>
-                    <p className="font-medium">{formatCurrency(loan.totalEmiAmount)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Total Paid</p>
-                    <p className="font-semibold text-green-600">{formatCurrency(loan.totalPaid)}</p>
-                  </div>
-                  <div>
                     <p className="text-muted-foreground">Outstanding</p>
-                    <p className={`font-semibold ${loan.outstandingAmount > 0 ? 'text-orange-600' : ''}`}>
+                    <p className={`font-semibold ${loan.outstandingAmount > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                       {formatCurrency(loan.outstandingAmount)}
                     </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">On-Time Payment</p>
-                    <p className="font-medium">{loan.onTimePaymentPercent}%</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Next Due */}
-            {loan.nextDueDate && loan.nextDueAmount && (
-              <Card className="border-amber-200 bg-amber-50/50">
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-5 w-5 text-amber-600" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Next EMI Due</p>
-                        <p className="font-medium">{format(new Date(loan.nextDueDate), "dd MMM yyyy")}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-amber-700">{formatCurrency(loan.nextDueAmount)}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Disbursement Date */}
+            {/* Loan Timeline */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Loan Details</CardTitle>
@@ -201,9 +147,40 @@ export function LoanDetailDialog({ loan, open, onOpenChange }: LoanDetailDialogP
                     <p className="text-muted-foreground">Tenure</p>
                     <p className="font-medium">{loan.tenureDays} days</p>
                   </div>
+                  <div>
+                    <p className="text-muted-foreground">Due Date</p>
+                    <p className="font-medium">
+                      {loan.dueDate ? format(new Date(loan.dueDate), "dd MMM yyyy") : "—"}
+                    </p>
+                  </div>
+                  {loan.daysOverdue > 0 && (
+                    <div>
+                      <p className="text-muted-foreground">Days Overdue</p>
+                      <p className="font-semibold text-red-600">{loan.daysOverdue}</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
+
+            {/* Overdue Warning */}
+            {loan.daysOverdue > 0 && (
+              <Card className="border-red-200 bg-red-50/50">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                    <div>
+                      <p className="font-medium text-red-800">
+                        Payment overdue by {loan.daysOverdue} days
+                      </p>
+                      <p className="text-sm text-red-600">
+                        Due date was {loan.dueDate ? format(new Date(loan.dueDate), "dd MMM yyyy") : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </ScrollArea>
       </DialogContent>

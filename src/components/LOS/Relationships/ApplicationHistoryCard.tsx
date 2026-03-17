@@ -58,7 +58,7 @@ export function ApplicationHistoryCard({ application }: ApplicationHistoryCardPr
   };
 
   return (
-    <Card className="border-l-4 border-l-primary/50">
+    <Card className={`border-l-4 ${application.daysOverdue > 0 ? 'border-l-red-500' : 'border-l-primary/50'}`}>
       <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
@@ -73,6 +73,11 @@ export function ApplicationHistoryCard({ application }: ApplicationHistoryCardPr
             <Badge variant={stageBadgeVariants[application.currentStage] || "outline"}>
               {stageLabels[application.currentStage] || application.currentStage}
             </Badge>
+            {application.daysOverdue > 0 && (
+              <Badge variant="destructive">
+                {application.daysOverdue}d overdue
+              </Badge>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -100,14 +105,20 @@ export function ApplicationHistoryCard({ application }: ApplicationHistoryCardPr
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 text-sm mt-3 pt-3 border-t">
-          <div>
-            <p className="text-muted-foreground text-xs">Application Date</p>
-            <p>{formatDate(application.createdAt)}</p>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-3 pt-3 border-t">
           <div>
             <p className="text-muted-foreground text-xs">Disbursement Date</p>
             <p>{formatDate(application.disbursementDate)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Due Date</p>
+            <p className={application.daysOverdue > 0 ? "text-red-600 font-medium" : ""}>
+              {formatDate(application.dueDate)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Tenure</p>
+            <p>{application.tenureDays} days</p>
           </div>
         </div>
       </CardContent>

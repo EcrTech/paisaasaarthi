@@ -32,6 +32,13 @@ interface CustomerDetailDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+
 export function CustomerDetailDialog({
   customer,
   open,
@@ -40,14 +47,6 @@ export function CustomerDetailDialog({
   const navigate = useNavigate();
 
   if (!customer) return null;
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
 
   const handleShareReferralLink = () => {
     navigate("/los/my-referrals");
@@ -95,10 +94,6 @@ export function CustomerDetailDialog({
                   </div>
 
                   <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Customer ID</p>
-                      <p className="font-medium">{customer.customerId}</p>
-                    </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Name</p>
                       <p className="font-medium">{customer.name}</p>
@@ -149,17 +144,6 @@ export function CustomerDetailDialog({
               <Card>
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-blue-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{customer.totalApplications}</p>
-                      <p className="text-xs text-muted-foreground">Applications</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-green-500" />
                     <div>
                       <p className="text-2xl font-bold">{customer.totalLoans}</p>
@@ -182,7 +166,7 @@ export function CustomerDetailDialog({
               <Card>
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-orange-500" />
+                    <IndianRupee className="h-5 w-5 text-orange-500" />
                     <div>
                       <p className="text-lg font-bold">{formatCurrency(customer.outstandingAmount)}</p>
                       <p className="text-xs text-muted-foreground">Outstanding</p>
@@ -190,20 +174,31 @@ export function CustomerDetailDialog({
                   </div>
                 </CardContent>
               </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-500" />
+                    <div>
+                      <p className="text-2xl font-bold">{customer.overdueLoans}</p>
+                      <p className="text-xs text-muted-foreground">Overdue Loans</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Delayed Payments Info */}
-            {customer.delayedPayments > 0 && (
+            {/* Overdue Warning */}
+            {customer.overdueLoans > 0 && (
               <Card className="border-red-200 bg-red-50/50">
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-4">
                     <AlertCircle className="h-5 w-5 text-red-600" />
                     <div>
                       <p className="font-medium text-red-800">
-                        {customer.delayedPayments} delayed payment{customer.delayedPayments > 1 ? "s" : ""}
+                        {customer.overdueLoans} overdue loan{customer.overdueLoans > 1 ? "s" : ""}
                       </p>
                       <p className="text-sm text-red-600">
-                        Max {customer.maxDaysDelayed} days overdue
+                        Max {customer.maxDaysOverdue} days overdue
                       </p>
                     </div>
                   </div>
@@ -217,7 +212,7 @@ export function CustomerDetailDialog({
             <div>
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Application History ({customer.applications.length})
+                Loan History ({customer.applications.length})
               </h3>
               <div className="space-y-3">
                 {customer.applications.map((app) => (
