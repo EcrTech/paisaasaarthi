@@ -153,10 +153,14 @@ export function useCustomerRelationships(searchTerm?: string) {
         let maxDaysDelayed = 0;
 
         const appSummaries: LoanApplicationSummary[] = sortedApps.map((app: any) => {
-          const disbursements = app.loan_disbursements || [];
+          // PostgREST returns objects (not arrays) for 1-to-1 FK relationships
+          const rawDisb = app.loan_disbursements;
+          const disbursements = Array.isArray(rawDisb) ? rawDisb : rawDisb ? [rawDisb] : [];
           const totalDisb = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
-          const sanction = app.loan_sanctions?.[0];
-          const emis = app.loan_repayment_schedule || [];
+          const rawSanction = app.loan_sanctions;
+          const sanction = Array.isArray(rawSanction) ? rawSanction[0] : rawSanction;
+          const rawEmis = app.loan_repayment_schedule;
+          const emis = Array.isArray(rawEmis) ? rawEmis : rawEmis ? [rawEmis] : [];
 
           totalDisbursed += totalDisb;
           totalEmiAmount += emis.reduce((sum: number, e: any) => sum + (e.total_emi || 0), 0);
