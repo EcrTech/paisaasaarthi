@@ -8,7 +8,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MAX_PDF_PAGES = 95; // Anthropic limit is 100, keep some margin
+const MAX_PDF_PAGES = 50; // Keep well under Anthropic's 100-page and 200k-token limits
 
 const ANALYSIS_PROMPT = `You are a senior credit analyst. Analyze this credit bureau report and provide a concise one-page executive summary in JSON format.
 
