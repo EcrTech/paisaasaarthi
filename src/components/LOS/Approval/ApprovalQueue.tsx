@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,6 +21,8 @@ interface ApprovalQueueProps {
   orgId: string;
   userId: string;
 }
+
+const PAGE_SIZE = 25;
 
 const STAGE_LABELS: Record<string, string> = {
   application_login: "Application Login",
@@ -52,7 +54,8 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
   const navigate = useNavigate();
 
   // Filter state
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
   const [selectedAssignee, setSelectedAssignee] = useState<string>("all");
   const [amountMin, setAmountMin] = useState("");
@@ -60,26 +63,168 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [selectedProductType, setSelectedProductType] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const { data: applications, isLoading } = useQuery({
-    queryKey: ["approval-queue", orgId],
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Reset page when filters change
+  const handleFilterChange = useCallback((setter: Function, value: any) => {
+    setter(value);
+    setCurrentPage(1);
+  }, []);
+
+  // Fetch filter options (all unique stages, assignees, products) — independent of pagination
+  const { data: filterOptions } = useQuery({
+    queryKey: ["approval-queue-filters", orgId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("loan_applications")
         .select(`
-          *,
-          loan_applicants(*),
+          current_stage,
+          product_type,
+          assigned_to,
           assigned_profile:profiles!assigned_to(first_name, last_name)
         `)
         .eq("org_id", orgId)
-        .eq("status", "in_progress")
-        .order("created_at", { ascending: false });
+        .eq("status", "in_progress");
 
       if (error) throw error;
-      return data;
+
+      const assigneeMap = new Map<string, string>();
+      const productSet = new Set<string>();
+      const stageSet = new Set<string>();
+
+      (data || []).forEach((app: any) => {
+        if (app.assigned_to && app.assigned_profile) {
+          const name = `${app.assigned_profile.first_name} ${app.assigned_profile.last_name || ""}`.trim();
+          assigneeMap.set(app.assigned_to, name);
+        }
+        if (app.product_type) productSet.add(app.product_type);
+        if (app.current_stage) stageSet.add(app.current_stage);
+      });
+
+      return {
+        uniqueAssignees: Array.from(assigneeMap.entries()).map(([id, name]) => ({ id, name })),
+        uniqueProductTypes: Array.from(productSet).sort(),
+        uniqueStages: Array.from(stageSet).sort(),
+      };
     },
     enabled: !!orgId,
   });
+
+  // Main paginated query with server-side filters
+  const { data: queryResult, isLoading } = useQuery({
+    queryKey: [
+      "approval-queue",
+      orgId,
+      debouncedSearch,
+      selectedStages,
+      selectedAssignee,
+      amountMin,
+      amountMax,
+      dateFrom?.toISOString(),
+      dateTo?.toISOString(),
+      selectedProductType,
+      currentPage,
+    ],
+    queryFn: async () => {
+      // Step 1: If search term, find matching applicant application IDs by name/phone
+      let nameMatchIds: string[] = [];
+      if (debouncedSearch) {
+        const { data: nameMatches } = await supabase
+          .from("loan_applicants")
+          .select("loan_application_id")
+          .or(`first_name.ilike.%${debouncedSearch}%,last_name.ilike.%${debouncedSearch}%,mobile.ilike.%${debouncedSearch}%`)
+          .eq("org_id", orgId);
+
+        nameMatchIds = (nameMatches || []).map((m: any) => m.loan_application_id);
+      }
+
+      // Step 2: Build main query
+      let query = supabase
+        .from("loan_applications")
+        .select(
+          `*,
+          loan_applicants(*),
+          assigned_profile:profiles!assigned_to(first_name, last_name)`,
+          { count: "exact" }
+        )
+        .eq("org_id", orgId)
+        .eq("status", "in_progress");
+
+      // Text search — across loan_id, application_number, and name-matched IDs
+      if (debouncedSearch) {
+        if (nameMatchIds.length > 0) {
+          query = query.or(
+            `loan_id.ilike.%${debouncedSearch}%,application_number.ilike.%${debouncedSearch}%,id.in.(${nameMatchIds.join(",")})`
+          );
+        } else {
+          query = query.or(
+            `loan_id.ilike.%${debouncedSearch}%,application_number.ilike.%${debouncedSearch}%`
+          );
+        }
+      }
+
+      // Stage filter
+      if (selectedStages.length > 0) {
+        query = query.in("current_stage", selectedStages);
+      }
+
+      // Assignee filter
+      if (selectedAssignee !== "all") {
+        query = query.eq("assigned_to", selectedAssignee);
+      }
+
+      // Amount range
+      if (amountMin) {
+        query = query.gte("requested_amount", parseFloat(amountMin));
+      }
+      if (amountMax) {
+        query = query.lte("requested_amount", parseFloat(amountMax));
+      }
+
+      // Date range
+      if (dateFrom) {
+        query = query.gte("created_at", format(dateFrom, "yyyy-MM-dd"));
+      }
+      if (dateTo) {
+        const endOfDay = new Date(dateTo);
+        endOfDay.setHours(23, 59, 59, 999);
+        query = query.lte("created_at", endOfDay.toISOString());
+      }
+
+      // Product type
+      if (selectedProductType !== "all") {
+        query = query.eq("product_type", selectedProductType);
+      }
+
+      // Ordering + pagination
+      const from = (currentPage - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      query = query.order("created_at", { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      return { applications: data || [], totalCount: count || 0 };
+    },
+    enabled: !!orgId,
+  });
+
+  const applications = queryResult?.applications || [];
+  const totalCount = queryResult?.totalCount || 0;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const uniqueAssignees = filterOptions?.uniqueAssignees || [];
+  const uniqueProductTypes = filterOptions?.uniqueProductTypes || [];
+  const uniqueStages = filterOptions?.uniqueStages || [];
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -90,7 +235,8 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
   };
 
   const getApplicantName = (app: any) => {
-    const applicant = app.loan_applicants?.[0];
+    const applicants = app.loan_applicants;
+    const applicant = Array.isArray(applicants) ? applicants[0] : applicants;
     if (!applicant) return "N/A";
     return `${applicant.first_name} ${applicant.last_name || ""}`.trim();
   };
@@ -100,84 +246,19 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
     return `${app.assigned_profile.first_name} ${app.assigned_profile.last_name || ""}`.trim();
   };
 
-  // Derive unique assignees and product types from data
-  const { uniqueAssignees, uniqueProductTypes, uniqueStages } = useMemo(() => {
-    if (!applications) return { uniqueAssignees: [], uniqueProductTypes: [], uniqueStages: [] };
-
-    const assigneeMap = new Map<string, string>();
-    const productSet = new Set<string>();
-    const stageSet = new Set<string>();
-
-    applications.forEach((app) => {
-      if (app.assigned_to && app.assigned_profile) {
-        assigneeMap.set(app.assigned_to, getAssigneeName(app));
-      }
-      if (app.product_type) productSet.add(app.product_type);
-      if (app.current_stage) stageSet.add(app.current_stage);
-    });
-
-    return {
-      uniqueAssignees: Array.from(assigneeMap.entries()).map(([id, name]) => ({ id, name })),
-      uniqueProductTypes: Array.from(productSet).sort(),
-      uniqueStages: Array.from(stageSet).sort(),
-    };
-  }, [applications]);
-
-  // Client-side filtering
-  const filteredApplications = useMemo(() => {
-    if (!applications) return [];
-
-    return applications.filter((app) => {
-      // Search
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const applicantName = getApplicantName(app).toLowerCase();
-        const loanId = (app.loan_id || "").toLowerCase();
-        const appNum = (app.application_number || "").toLowerCase();
-        if (!loanId.includes(q) && !appNum.includes(q) && !applicantName.includes(q)) return false;
-      }
-
-      // Stage
-      if (selectedStages.length > 0 && !selectedStages.includes(app.current_stage)) return false;
-
-      // Assignee
-      if (selectedAssignee !== "all" && app.assigned_to !== selectedAssignee) return false;
-
-      // Amount range
-      const minAmt = amountMin ? parseFloat(amountMin) : null;
-      const maxAmt = amountMax ? parseFloat(amountMax) : null;
-      if (minAmt !== null && app.requested_amount < minAmt) return false;
-      if (maxAmt !== null && app.requested_amount > maxAmt) return false;
-
-      // Date range
-      if (dateFrom) {
-        const created = new Date(app.created_at);
-        if (created < dateFrom) return false;
-      }
-      if (dateTo) {
-        const created = new Date(app.created_at);
-        const endOfDay = new Date(dateTo);
-        endOfDay.setHours(23, 59, 59, 999);
-        if (created > endOfDay) return false;
-      }
-
-      // Product type
-      if (selectedProductType !== "all" && app.product_type !== selectedProductType) return false;
-
-      return true;
-    });
-  }, [applications, searchQuery, selectedStages, selectedAssignee, amountMin, amountMax, dateFrom, dateTo, selectedProductType]);
-
   const toggleStage = (stage: string) => {
-    setSelectedStages((prev) =>
-      prev.includes(stage) ? prev.filter((s) => s !== stage) : [...prev, stage]
-    );
+    setSelectedStages((prev) => {
+      const next = prev.includes(stage) ? prev.filter((s) => s !== stage) : [...prev, stage];
+      setCurrentPage(1);
+      return next;
+    });
   };
 
-  const hasActiveFilters = searchQuery || selectedStages.length > 0 || selectedAssignee !== "all" || amountMin || amountMax || dateFrom || dateTo || selectedProductType !== "all";
+  const hasActiveFilters = searchInput || selectedStages.length > 0 || selectedAssignee !== "all" || amountMin || amountMax || dateFrom || dateTo || selectedProductType !== "all";
 
   const clearFilters = () => {
-    setSearchQuery("");
+    setSearchInput("");
+    setDebouncedSearch("");
     setSelectedStages([]);
     setSelectedAssignee("all");
     setAmountMin("");
@@ -185,9 +266,10 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
     setDateFrom(undefined);
     setDateTo(undefined);
     setSelectedProductType("all");
+    setCurrentPage(1);
   };
 
-  if (isLoading) {
+  if (isLoading && currentPage === 1 && !hasActiveFilters) {
     return <LoadingState message="Loading applications..." />;
   }
 
@@ -206,8 +288,8 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
           </CardTitle>
           <CardDescription>
             {hasActiveFilters
-              ? `Showing ${filteredApplications.length} of ${applications?.length || 0} application(s)`
-              : `${applications?.length || 0} application(s) requiring attention`}
+              ? `Showing ${applications.length} of ${totalCount} result(s)`
+              : `${totalCount} application(s) requiring attention`}
           </CardDescription>
         </CardHeader>
 
@@ -218,9 +300,9 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by Loan ID, App # or Name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by Loan ID, App #, Name, Phone..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9"
               />
             </div>
@@ -257,7 +339,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
             </Popover>
 
             {/* Assigned To */}
-            <Select value={selectedAssignee} onValueChange={setSelectedAssignee}>
+            <Select value={selectedAssignee} onValueChange={(v) => handleFilterChange(setSelectedAssignee, v)}>
               <SelectTrigger className="w-[160px] h-10">
                 <SelectValue placeholder="Assigned To" />
               </SelectTrigger>
@@ -271,7 +353,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
 
             {/* Product Type */}
             {uniqueProductTypes.length > 0 && (
-              <Select value={selectedProductType} onValueChange={setSelectedProductType}>
+              <Select value={selectedProductType} onValueChange={(v) => handleFilterChange(setSelectedProductType, v)}>
                 <SelectTrigger className="w-[160px] h-10">
                   <SelectValue placeholder="Product Type" />
                 </SelectTrigger>
@@ -300,7 +382,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
                 type="number"
                 placeholder="Min Amount"
                 value={amountMin}
-                onChange={(e) => setAmountMin(e.target.value)}
+                onChange={(e) => handleFilterChange(setAmountMin, e.target.value)}
                 className="w-[130px] h-9"
               />
               <span className="text-muted-foreground text-sm">–</span>
@@ -308,7 +390,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
                 type="number"
                 placeholder="Max Amount"
                 value={amountMax}
-                onChange={(e) => setAmountMax(e.target.value)}
+                onChange={(e) => handleFilterChange(setAmountMax, e.target.value)}
                 className="w-[130px] h-9"
               />
             </div>
@@ -329,7 +411,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
                 <Calendar
                   mode="single"
                   selected={dateFrom}
-                  onSelect={setDateFrom}
+                  onSelect={(d) => handleFilterChange(setDateFrom, d)}
                   initialFocus
                   className={cn("p-3 pointer-events-auto")}
                 />
@@ -352,7 +434,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
                 <Calendar
                   mode="single"
                   selected={dateTo}
-                  onSelect={setDateTo}
+                  onSelect={(d) => handleFilterChange(setDateTo, d)}
                   initialFocus
                   className={cn("p-3 pointer-events-auto")}
                 />
@@ -362,58 +444,115 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
         </div>
 
         <CardContent>
-          {filteredApplications.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+              Loading...
+            </div>
+          ) : applications.length === 0 ? (
             <EmptyState
               title={hasActiveFilters ? "No matching applications" : "No applications in queue"}
               message={hasActiveFilters ? "Try adjusting your filters." : "There are no in-progress applications at this time."}
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Loan ID</TableHead>
-                  <TableHead>Application #</TableHead>
-                  <TableHead>Applicant</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Current Stage</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Assigned To</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredApplications.map((app) => (
-                  <TableRow key={app.id}>
-                    <TableCell className="font-medium text-primary">
-                      {app.loan_id || "—"}
-                    </TableCell>
-                    <TableCell className="font-mono text-muted-foreground">
-                      {app.application_number}
-                    </TableCell>
-                    <TableCell>{getApplicantName(app)}</TableCell>
-                    <TableCell>{formatCurrency(app.requested_amount)}</TableCell>
-                    <TableCell>
-                      <Badge className={STAGE_COLORS[app.current_stage] || "bg-muted"}>
-                        {STAGE_LABELS[app.current_stage] || app.current_stage}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {format(new Date(app.created_at), "MMM dd, yyyy")}
-                    </TableCell>
-                    <TableCell>{getAssigneeName(app)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        onClick={() => navigate(`/los/applications/${app.id}?mode=review`)}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Review
-                      </Button>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Loan ID</TableHead>
+                    <TableHead>Application #</TableHead>
+                    <TableHead>Applicant</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Current Stage</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Assigned To</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {applications.map((app: any) => (
+                    <TableRow key={app.id}>
+                      <TableCell className="font-medium text-primary">
+                        {app.loan_id || "—"}
+                      </TableCell>
+                      <TableCell className="font-mono text-muted-foreground">
+                        {app.application_number}
+                      </TableCell>
+                      <TableCell>{getApplicantName(app)}</TableCell>
+                      <TableCell>{formatCurrency(app.requested_amount)}</TableCell>
+                      <TableCell>
+                        <Badge className={STAGE_COLORS[app.current_stage] || "bg-muted"}>
+                          {STAGE_LABELS[app.current_stage] || app.current_stage}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {format(new Date(app.created_at), "MMM dd, yyyy")}
+                      </TableCell>
+                      <TableCell>{getAssigneeName(app)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          onClick={() => navigate(`/los/applications/${app.id}?mode=review`)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Review
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between text-sm mt-4 pt-4 border-t">
+                  <span className="text-muted-foreground">
+                    Showing {(currentPage - 1) * PAGE_SIZE + 1} to{" "}
+                    {Math.min(currentPage * PAGE_SIZE, totalCount)} of {totalCount}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-3"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      First
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-3"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Prev
+                    </Button>
+                    <span className="px-3 text-muted-foreground">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-3"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-3"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                    >
+                      Last
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
