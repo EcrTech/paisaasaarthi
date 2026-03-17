@@ -16,9 +16,11 @@ import {
   XCircle,
   User,
   FileText,
-  Search
+  Search,
+  Download
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { downloadCreditReportPdf } from "@/utils/generateCreditReportPdf";
 
 interface CreditReportViewerProps {
   data: {
@@ -299,6 +301,18 @@ export function CreditReportViewer({ data }: CreditReportViewerProps) {
   return (
     <ScrollArea className="h-[600px] pr-4">
       <div className="space-y-6">
+        {/* Download PDF Button */}
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => downloadCreditReportPdf(data)}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Download PDF
+          </Button>
+        </div>
+
         {/* Mock data warning */}
         {data.isMock && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
