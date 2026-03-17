@@ -37,17 +37,13 @@ export default function CreditBureauDialog({
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Only default to "live" tab if there's actual live data with a valid credit score
-  const hasRealLiveData = existingVerification?.response_data?.is_live_fetch &&
-    existingVerification?.response_data?.credit_score > 0;
-  const [activeTab, setActiveTab] = useState<string>(
-    hasRealLiveData ? "live" : "upload"
-  );
+  const [activeTab, setActiveTab] = useState<string>("upload");
   const [consentChecked, setConsentChecked] = useState(false);
   const [liveBureau, setLiveBureau] = useState<"equifax" | "experian">("experian");
   const [isFetchingLive, setIsFetchingLive] = useState(false);
   const [liveReportData, setLiveReportData] = useState<any>(
-    hasRealLiveData ? existingVerification?.response_data : null
+    existingVerification?.response_data?.is_live_fetch && existingVerification?.response_data?.credit_score > 0
+      ? existingVerification?.response_data : null
   );
 
   const [formData, setFormData] = useState({
@@ -90,7 +86,6 @@ export default function CreditBureauDialog({
       }
       if (rd.is_live_fetch && rd.credit_score > 0) {
         setLiveReportData(rd);
-        setActiveTab("live");
       }
     }
   }, [existingVerification]);
