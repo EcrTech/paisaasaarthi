@@ -37,14 +37,17 @@ export default function CreditBureauDialog({
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Only default to "live" tab if there's actual live data (score or raw_response)
+  const hasRealLiveData = existingVerification?.response_data?.is_live_fetch &&
+    (existingVerification?.response_data?.credit_score > 0 || existingVerification?.response_data?.raw_response);
   const [activeTab, setActiveTab] = useState<string>(
-    existingVerification?.response_data?.is_live_fetch ? "live" : "upload"
+    hasRealLiveData ? "live" : "upload"
   );
   const [consentChecked, setConsentChecked] = useState(false);
   const [liveBureau, setLiveBureau] = useState<"equifax" | "experian">("experian");
   const [isFetchingLive, setIsFetchingLive] = useState(false);
   const [liveReportData, setLiveReportData] = useState<any>(
-    existingVerification?.response_data?.is_live_fetch ? existingVerification?.response_data : null
+    hasRealLiveData ? existingVerification?.response_data : null
   );
 
   const [formData, setFormData] = useState({
@@ -85,7 +88,7 @@ export default function CreditBureauDialog({
       if (rd.quick_analysis) {
         setQuickAnalysisData(rd.quick_analysis);
       }
-      if (rd.is_live_fetch) {
+      if (rd.is_live_fetch && (rd.credit_score > 0 || rd.raw_response)) {
         setLiveReportData(rd);
         setActiveTab("live");
       }
@@ -456,11 +459,19 @@ export default function CreditBureauDialog({
 
       return uploadData.path;
     } catch (error: any) {
+      const msg = error.message || String(error);
+      // Detect file-changed errors (browser security — file modified/moved after selection)
+      const isFileChanged = msg.includes("upload") || msg.includes("file") || msg.includes("ERR_UPLOAD");
       toast({
-        title: "Error analyzing report",
-        description: error.message,
+        title: isFileChanged ? "File upload failed" : "Error analyzing report",
+        description: isFileChanged
+          ? "The file may have been modified or moved. Please re-select the file and try again."
+          : msg,
         variant: "destructive",
       });
+      if (isFileChanged) {
+        removeFile();
+      }
       return null;
     } finally {
       setIsUploading(false);
