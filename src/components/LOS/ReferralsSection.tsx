@@ -52,7 +52,18 @@ export function ReferralsSection({
         personal_ref_address: primaryApplicant.personal_ref_address || "",
       });
     }
-  }, [primaryApplicant, setReferralData]);
+  }, [
+    primaryApplicant?.id,
+    primaryApplicant?.professional_ref_name,
+    primaryApplicant?.professional_ref_mobile,
+    primaryApplicant?.professional_ref_email,
+    primaryApplicant?.professional_ref_address,
+    primaryApplicant?.personal_ref_name,
+    primaryApplicant?.personal_ref_mobile,
+    primaryApplicant?.personal_ref_email,
+    primaryApplicant?.personal_ref_address,
+    setReferralData,
+  ]);
 
   const saveReferralsMutation = useMutation({
     mutationFn: async (data: typeof referralData) => {
