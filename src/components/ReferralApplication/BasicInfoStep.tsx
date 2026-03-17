@@ -199,132 +199,53 @@ export function BasicInfoStep({
   }, [formData.officeEmail, officeEmailOtpSent, verificationStatus.officeEmailVerified, sendingOfficeEmailOtp]);
 
   const verifyOtp = async (type: 'email' | 'phone' | 'officeEmail') => {
-    const startTime = Date.now();
-    console.log(`[OTP Verify] ========== START ==========`);
-    console.log(`[OTP Verify] Timestamp: ${new Date().toISOString()}`);
-    console.log(`[OTP Verify] Type: ${type}`);
-    console.log(`[OTP Verify] Supabase URL configured: ${!!import.meta.env.VITE_SUPABASE_URL}`);
-    
     const sessionId = type === 'email' ? emailSessionId : type === 'phone' ? phoneSessionId : officeEmailSessionId;
     const otp = type === 'email' ? emailOtp : type === 'phone' ? phoneOtp : officeEmailOtp;
     const setVerifying = type === 'email' ? setVerifyingEmail : type === 'phone' ? setVerifyingPhone : setVerifyingOfficeEmail;
 
-    console.log(`[OTP Verify] State snapshot:`, {
-      emailSessionId: emailSessionId ? `${emailSessionId.substring(0, 8)}...` : 'null',
-      phoneSessionId: phoneSessionId ? `${phoneSessionId.substring(0, 8)}...` : 'null',
-      officeEmailSessionId: officeEmailSessionId ? `${officeEmailSessionId.substring(0, 8)}...` : 'null',
-      emailOtp: emailOtp ? `length=${emailOtp.length}` : 'empty',
-      phoneOtp: phoneOtp ? `length=${phoneOtp.length}` : 'empty',
-      officeEmailOtp: officeEmailOtp ? `length=${officeEmailOtp.length}` : 'empty',
-      verifyingEmail,
-      verifyingPhone,
-      verifyingOfficeEmail,
-      emailVerified: verificationStatus.emailVerified,
-      phoneVerified: verificationStatus.phoneVerified,
-      officeEmailVerified: verificationStatus.officeEmailVerified,
-    });
-
     if (!sessionId) {
-      console.log(`[OTP Verify] Branch: No session ID - aborting`);
       toast.error("Session expired. Please request a new OTP.");
       if (type === 'email') {
         setEmailOtpSent(false);
         setEmailOtp("");
-        lastEmailSentRef.current = ""; // Reset to allow resend
+        lastEmailSentRef.current = "";
       } else if (type === 'phone') {
         setPhoneOtpSent(false);
         setPhoneOtp("");
-        lastPhoneSentRef.current = ""; // Reset to allow resend
+        lastPhoneSentRef.current = "";
       } else {
         setOfficeEmailOtpSent(false);
         setOfficeEmailOtp("");
-        lastOfficeEmailSentRef.current = ""; // Reset to allow resend
+        lastOfficeEmailSentRef.current = "";
       }
-      console.log(`[OTP Verify] ========== END (no session) ==========`);
       return;
     }
 
     if (otp.length !== 6) {
-      console.log(`[OTP Verify] Branch: Invalid OTP length (${otp.length}) - aborting`);
       toast.error("Please enter a valid 6-digit OTP");
-      console.log(`[OTP Verify] ========== END (invalid otp length) ==========`);
       return;
     }
 
-    console.log(`[OTP Verify] Validation passed, setting verifying=true at ${Date.now() - startTime}ms`);
     setVerifying(true);
-    
     try {
-      // v2 - Using direct fetch to bypass supabase.functions.invoke hanging issue
-      console.log(`[OTP Verify v2] About to invoke verify-public-otp`);
-      console.log(`[OTP Verify v2] Request body:`, { 
-        sessionId: sessionId.substring(0, 8) + '...', 
-        otpLength: otp.length 
+      const { data, error } = await supabase.functions.invoke('verify-public-otp', {
+        body: { sessionId, otp },
       });
-      
-      // Debug Supabase client state
-      console.log(`[OTP Verify] Supabase client check:`, {
-        supabaseExists: !!supabase,
-        functionsExists: !!supabase?.functions,
-        invokeExists: typeof supabase?.functions?.invoke,
-      });
-      
-      console.log(`[OTP Verify] Invoking edge function at ${Date.now() - startTime}ms`);
-      
-      // Use direct fetch instead of supabase.functions.invoke to diagnose the hanging issue
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      console.log(`[OTP Verify] Using direct fetch to: ${supabaseUrl}/functions/v1/verify-public-otp`);
-      
-      const fetchResponse = await fetch(`${supabaseUrl}/functions/v1/verify-public-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-          'apikey': supabaseKey,
-        },
-        body: JSON.stringify({ sessionId, otp }),
-      });
-      
-      console.log(`[OTP Verify] Fetch response status: ${fetchResponse.status}`);
-      const data = await fetchResponse.json();
-      const error = fetchResponse.ok ? null : { message: data.error || 'Request failed' };
-      
-      console.log(`[OTP Verify] Edge function returned at ${Date.now() - startTime}ms`);
-      console.log(`[OTP Verify] Raw response - data type: ${typeof data}, error type: ${typeof error}`);
-      console.log(`[OTP Verify] Response data:`, JSON.stringify(data, null, 2));
-      console.log(`[OTP Verify] Response error:`, error ? JSON.stringify(error, null, 2) : 'null');
 
-      if (error) {
-        console.log(`[OTP Verify] Branch: error exists`);
-        console.error(`[OTP Verify] Function error details:`, error);
-        throw new Error(error.message || 'Verification failed');
-      }
-
-      if (data?.error) {
-        console.log(`[OTP Verify] Branch: data.error exists - ${data.error}`);
-        throw new Error(data.error);
-      }
+      if (error) throw new Error(error.message || 'Verification failed');
+      if (data?.error) throw new Error(data.error);
 
       if (data?.verified) {
-        console.log(`[OTP Verify] Branch: data.verified is true - calling onVerificationComplete`);
         onVerificationComplete(type);
-        console.log(`[OTP Verify] onVerificationComplete called successfully`);
         const label = type === 'officeEmail' ? 'Office email' : type === 'email' ? 'Email' : 'Phone';
         toast.success(`${label} verified successfully`);
       } else {
-        console.log(`[OTP Verify] Branch: data.verified is falsy - value: ${data?.verified}`);
         toast.error("Verification failed. Please try again.");
       }
     } catch (error: any) {
-      console.error(`[OTP Verify] Catch block error at ${Date.now() - startTime}ms:`, error);
-      console.error(`[OTP Verify] Error name: ${error?.name}, message: ${error?.message}`);
       toast.error(error.message || 'Invalid OTP. Please try again.');
     } finally {
-      console.log(`[OTP Verify] Finally block - setting verifying to false for ${type}`);
-      console.log(`[OTP Verify] Total execution time: ${Date.now() - startTime}ms`);
       setVerifying(false);
-      console.log(`[OTP Verify] ========== END ==========`);
     }
   };
 

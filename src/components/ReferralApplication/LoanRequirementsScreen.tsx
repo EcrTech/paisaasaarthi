@@ -142,21 +142,9 @@ export function LoanRequirementsScreen({
 
     setVerifyingPhone(true);
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      
-      const fetchResponse = await fetch(`${supabaseUrl}/functions/v1/verify-public-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-          'apikey': supabaseKey,
-        },
-        body: JSON.stringify({ sessionId: phoneSessionId, otp: phoneOtp }),
+      const { data, error } = await supabase.functions.invoke('verify-public-otp', {
+        body: { sessionId: phoneSessionId, otp: phoneOtp },
       });
-      
-      const data = await fetchResponse.json();
-      const error = fetchResponse.ok ? null : { message: data.error || 'Request failed' };
 
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
