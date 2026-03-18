@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Upload, CheckCircle, XCircle, Eye, Shield, Loader2, Wand2, ChevronDown, ChevronRight, Sparkles, FileText, ShieldAlert } from "lucide-react";
+import { Upload, CheckCircle, XCircle, Eye, Shield, Loader2, Wand2, ChevronDown, ChevronRight, Sparkles, FileText, ShieldAlert, Share2, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -77,6 +77,9 @@ export default function DocumentUpload({ applicationId, orgId, applicant }: Docu
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [isRunningFraudCheck, setIsRunningFraudCheck] = useState(false);
   const [fraudProgress, setFraudProgress] = useState<{ processed: number; total: number; current: string } | null>(null);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [uploadLink, setUploadLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const { data: documents = [] } = useQuery({
     queryKey: ["loan-documents", applicationId],
@@ -852,8 +855,36 @@ export default function DocumentUpload({ applicationId, orgId, applicant }: Docu
   return (
     <TooltipProvider>
       <div className="space-y-3">
-        {/* Parse All & Fraud Check buttons */}
-        <div className="flex justify-end gap-2">
+        {/* Share Link, Parse All & Fraud Check buttons */}
+        <div className="flex justify-end gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isGeneratingLink}
+            onClick={async () => {
+              setIsGeneratingLink(true);
+              try {
+                const { data, error } = await supabase.functions.invoke("generate-document-upload-link", {
+                  body: { applicationId },
+                });
+                if (error) throw error;
+                if (!data?.success) throw new Error(data?.error || "Failed to generate link");
+                setUploadLink(data.url);
+                setLinkCopied(false);
+                toast({ title: data.is_existing ? "Existing link retrieved" : "Upload link generated", description: "Share this link with the applicant" });
+              } catch (err: any) {
+                toast({ title: "Error", description: err.message, variant: "destructive" });
+              } finally {
+                setIsGeneratingLink(false);
+              }
+            }}
+          >
+            {isGeneratingLink ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating...</>
+            ) : (
+              <><Share2 className="h-3.5 w-3.5 mr-1.5" />Share Upload Link</>
+            )}
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -953,6 +984,24 @@ export default function DocumentUpload({ applicationId, orgId, applicant }: Docu
             )}
           </Button>
         </div>
+
+        {/* Upload Link Display */}
+        {uploadLink && (
+          <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
+            <span className="text-sm truncate flex-1">{uploadLink}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                navigator.clipboard.writeText(uploadLink);
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+              }}
+            >
+              {linkCopied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+        )}
 
         {/* Fraud Check Result Card */}
         {(() => {

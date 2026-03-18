@@ -75,6 +75,7 @@ import BulkPaymentReport from "./components/LOS/Reports/BulkPaymentReport";
 import Profile from "./pages/Profile";
 
 import VideoKYC from "./pages/VideoKYC";
+import PublicDocumentUpload from "./pages/PublicDocumentUpload";
 import DigilockerSuccess from "./pages/DigilockerSuccess";
 import DigilockerFailure from "./pages/DigilockerFailure";
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
@@ -110,6 +111,7 @@ const App = () => {
             <Route path="/apply/ref/:referralCode" element={<ReferralLoanApplication />} />
             
             <Route path="/videokyc/:token" element={<VideoKYC />} />
+            <Route path="/upload-documents/:token" element={<PublicDocumentUpload />} />
             <Route path="/digilocker/success" element={<DigilockerSuccess />} />
             <Route path="/digilocker/failure" element={<DigilockerFailure />} />
             
