@@ -152,6 +152,97 @@ Deno.serve(async (req) => {
 
     console.log(`[generate-document-upload-link] Generated link for application ${applicationId}: ${uploadUrl}`);
 
+    const notifications: { whatsapp?: string; email?: string } = {};
+
+    // Auto-send WhatsApp if phone available
+    if (applicantPhone) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+        // Try template first, fall back to plain message
+        const { data: templateData } = await supabase
+          .from('communication_templates')
+          .select('template_name')
+          .eq('org_id', profile.org_id)
+          .eq('template_name', 'doc_upload_link')
+          .eq('status', 'approved')
+          .maybeSingle();
+
+        const whatsappBody: Record<string, any> = {
+          phoneNumber: applicantPhone,
+        };
+
+        if (templateData) {
+          whatsappBody.templateName = 'doc_upload_link';
+          whatsappBody.templateVariables = {
+            '1': applicantName,
+            '2': applicationId.slice(0, 8).toUpperCase(),
+            '3': uploadUrl,
+          };
+        } else {
+          whatsappBody.message = `Dear ${applicantName}, please upload your documents for your loan application using this secure link: ${uploadUrl}\n\nThis link expires in ${expiryDays} days. If you have any questions, please contact your loan officer.`;
+        }
+
+        const whatsappResp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(whatsappBody),
+        });
+
+        const whatsappResult = await whatsappResp.json();
+        notifications.whatsapp = whatsappResult.success ? 'sent' : (whatsappResult.error || 'failed');
+        console.log(`[generate-document-upload-link] WhatsApp: ${notifications.whatsapp}`);
+      } catch (waErr: any) {
+        notifications.whatsapp = waErr.message || 'failed';
+        console.error('[generate-document-upload-link] WhatsApp error:', waErr);
+      }
+    }
+
+    // Auto-send email if email available
+    if (applicantEmail) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #333;">Document Upload Required</h2>
+            <p>Dear ${applicantName},</p>
+            <p>Please upload the required documents for your loan application using the button below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${uploadUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Upload Documents</a>
+            </div>
+            <p style="color: #666; font-size: 14px;">This link will expire in ${expiryDays} days. If you have any questions, please contact your loan officer.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="color: #999; font-size: 12px;">If the button doesn't work, copy and paste this link: ${uploadUrl}</p>
+          </div>
+        `;
+
+        const emailResp = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: applicantEmail,
+            subject: 'Upload Documents for Your Loan Application',
+            htmlContent: emailHtml,
+          }),
+        });
+
+        const emailResult = await emailResp.json();
+        notifications.email = emailResult.success ? 'sent' : (emailResult.error || 'failed');
+        console.log(`[generate-document-upload-link] Email: ${notifications.email}`);
+      } catch (emErr: any) {
+        notifications.email = emErr.message || 'failed';
+        console.error('[generate-document-upload-link] Email error:', emErr);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -159,6 +250,7 @@ Deno.serve(async (req) => {
         url: uploadUrl,
         expires_at: newToken.token_expires_at,
         is_existing: false,
+        notifications,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

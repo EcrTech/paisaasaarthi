@@ -871,7 +871,14 @@ export default function DocumentUpload({ applicationId, orgId, applicant }: Docu
                 if (!data?.success) throw new Error(data?.error || "Failed to generate link");
                 setUploadLink(data.url);
                 setLinkCopied(false);
-                toast({ title: data.is_existing ? "Existing link retrieved" : "Upload link generated", description: "Share this link with the applicant" });
+                const notifs = data.notifications || {};
+                const sent: string[] = [];
+                if (notifs.whatsapp === "sent") sent.push("WhatsApp");
+                if (notifs.email === "sent") sent.push("Email");
+                toast({
+                  title: data.is_existing ? "Existing link retrieved" : "Upload link generated",
+                  description: sent.length > 0 ? `Sent via ${sent.join(" & ")}` : "Copy the link to share with the applicant",
+                });
               } catch (err: any) {
                 toast({ title: "Error", description: err.message, variant: "destructive" });
               } finally {
