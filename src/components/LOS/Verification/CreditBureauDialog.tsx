@@ -14,7 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CreditReportViewer } from "./CreditReportViewer";
 import { QuickCreditAnalysisView } from "./QuickCreditAnalysisView";
-import { transformExperianToViewerFormat } from "@/utils/transformExperianReport";
 
 interface CreditBureauDialogProps {
   open: boolean;
@@ -141,8 +140,8 @@ export default function CreditBureauDialog({
       let error: any;
 
       if (liveBureau === "experian") {
-        // Fetch via VerifiedU Experian API
-        const result = await supabase.functions.invoke("verifiedu-credit-report", {
+        // Fetch via EarlyWages Experian API (returns credit score + PDF)
+        const result = await supabase.functions.invoke("experian-credit-report", {
           body: {
             applicantId: applicant.id,
             applicationId,
@@ -185,9 +184,10 @@ export default function CreditBureauDialog({
           credit_score: reportData.credit_score?.toString() || "",
           name_on_report: reportData.name_on_report || "",
           pan_on_report: reportData.pan_on_report || "",
+          report_file_path: reportData.report_file_path || "",
           status: reportData.credit_score ? "success" : "failed",
           remarks: reportData.credit_score
-            ? `Live fetch from Experian via VerifiedU. Score: ${reportData.credit_score}`
+            ? `Live Experian fetch. Score: ${reportData.credit_score}`
             : "Experian report fetched but no score extracted",
         }));
       } else {
@@ -676,32 +676,31 @@ export default function CreditBureauDialog({
                   </Badge>
                 </div>
                 {liveReportData.bureau_type === "experian" ? (
-                  liveReportData.raw_response ? (
-                    (() => {
-                      const viewerData = transformExperianToViewerFormat(liveReportData.raw_response);
-                      return viewerData.creditScore > 0 ? (
-                        <CreditReportViewer data={viewerData} />
-                      ) : (
-                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-amber-600" />
-                          <span className="text-sm text-amber-800">No credit history found in Experian for this applicant</span>
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div><span className="text-muted-foreground">Name: </span><span className="font-medium">{liveReportData.name_on_report || "N/A"}</span></div>
-                        <div><span className="text-muted-foreground">PAN: </span><span className="font-medium">{liveReportData.pan_on_report || "N/A"}</span></div>
-                        <div><span className="text-muted-foreground">Active Accounts: </span><span className="font-medium">{liveReportData.active_accounts ?? "N/A"}</span></div>
-                        <div><span className="text-muted-foreground">Total Outstanding: </span><span className="font-medium">₹{(liveReportData.total_outstanding_balance || liveReportData.total_outstanding || 0).toLocaleString()}</span></div>
-                      </div>
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4 text-amber-600" />
-                        <span className="text-sm text-amber-800">Detailed report not available. Click "Fetch Credit Report" to get the full report.</span>
-                      </div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div><span className="text-muted-foreground">Name: </span><span className="font-medium">{liveReportData.name_on_report || "N/A"}</span></div>
+                      <div><span className="text-muted-foreground">PAN: </span><span className="font-medium">{liveReportData.pan_on_report || "N/A"}</span></div>
+                      <div><span className="text-muted-foreground">Credit Score: </span><span className="font-medium text-lg">{liveReportData.credit_score || "N/A"}</span></div>
+                      <div><span className="text-muted-foreground">Mobile: </span><span className="font-medium">{liveReportData.mobile_on_report || "N/A"}</span></div>
                     </div>
-                  )
+                    {liveReportData.report_file_path && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const { data } = await supabase.storage
+                            .from("loan-documents")
+                            .createSignedUrl(liveReportData.report_file_path, 300);
+                          if (data?.signedUrl) {
+                            window.open(data.signedUrl, "_blank");
+                          }
+                        }}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Full PDF Report
+                      </Button>
+                    )}
+                  </div>
                 ) : (
                   <CreditReportViewer data={liveReportData} />
                 )}

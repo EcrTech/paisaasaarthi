@@ -57,6 +57,8 @@ serve(async (req) => {
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
+      .eq('org_id', requestingProfile.org_id)
+      .eq('is_active', true)
       .single();
 
     if (roleError || !userRole || !['admin', 'super_admin'].includes(userRole.role)) {
