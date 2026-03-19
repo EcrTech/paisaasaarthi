@@ -22,7 +22,7 @@ import StaffPerformanceDashboard from "@/components/LOS/Reports/StaffPerformance
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { format, subDays, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from "date-fns";
+import { format, subDays, subMonths, addMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from "date-fns";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
 
@@ -326,6 +326,81 @@ export default function LOSDashboard() {
     enabled: !!orgId,
   });
 
+  // Collections cash flow — past actuals + future projections (12 months window)
+  const { data: cashFlowData } = useQuery({
+    queryKey: ["los-cashflow", orgId],
+    queryFn: async () => {
+      const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
+      const sixMonthsAhead = endOfMonth(addMonths(new Date(), 6));
+
+      // Fetch all EMIs in the 12-month window
+      const { data, error } = await supabase
+        .from("loan_repayment_schedule")
+        .select("due_date, total_emi, amount_paid, payment_date, status, principal_amount, interest_amount, late_fee")
+        .eq("org_id", orgId)
+        .gte("due_date", sixMonthsAgo.toISOString().split("T")[0])
+        .lte("due_date", sixMonthsAhead.toISOString().split("T")[0]);
+      if (error) throw error;
+
+      const today = new Date();
+      const months = eachMonthOfInterval({
+        start: sixMonthsAgo,
+        end: endOfMonth(addMonths(today, 6)),
+      });
+
+      const monthlyData = months.map((m) => {
+        const key = format(m, "yyyy-MM");
+        const monthEmis = (data || []).filter((e: any) => e.due_date.startsWith(key));
+        const isPast = m <= startOfMonth(today);
+        const isCurrent = format(m, "yyyy-MM") === format(today, "yyyy-MM");
+
+        const expected = monthEmis.reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
+        const collected = monthEmis.reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
+        const principal = monthEmis.reduce((s: number, e: any) => s + (e.principal_amount || 0), 0);
+        const interest = monthEmis.reduce((s: number, e: any) => s + (e.interest_amount || 0), 0);
+        const overdue = monthEmis
+          .filter((e: any) => e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today))
+          .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
+
+        return {
+          month: format(m, "MMM"),
+          fullMonth: format(m, "MMM yyyy"),
+          expected,
+          collected: (isPast || isCurrent) ? collected : null,
+          projected: (!isPast || isCurrent) ? expected : null,
+          principal,
+          interest,
+          overdue: (isPast || isCurrent) ? overdue : null,
+        };
+      });
+
+      // Summary stats
+      const allEmis = data || [];
+      const totalExpected = allEmis
+        .filter((e: any) => new Date(e.due_date) <= today)
+        .reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
+      const totalCollected = allEmis
+        .filter((e: any) => new Date(e.due_date) <= today)
+        .reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
+      const totalOverdue = allEmis
+        .filter((e: any) => (e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today)))
+        .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
+      const next3MonthsProjected = allEmis
+        .filter((e: any) => {
+          const d = new Date(e.due_date);
+          return d > today && d <= addMonths(today, 3);
+        })
+        .reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
+      const collectionRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0;
+
+      return {
+        monthly: monthlyData,
+        summary: { totalExpected, totalCollected, totalOverdue, next3MonthsProjected, collectionRate },
+      };
+    },
+    enabled: !!orgId,
+  });
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -583,6 +658,144 @@ export default function LOSDashboard() {
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">
                   No disbursement data yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Collections & Cash Flow */}
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-xl font-bold">Collections & Cash Flow</h2>
+            <p className="text-sm text-muted-foreground">Actual collections vs projected EMI cash flows</p>
+          </div>
+
+          {/* Summary cards */}
+          {cashFlowData?.summary && (
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+              <Card className="shadow-sm">
+                <CardContent className="p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Collection Rate</div>
+                  <div className={cn("text-xl font-bold", cashFlowData.summary.collectionRate >= 80 ? "text-green-600" : cashFlowData.summary.collectionRate >= 50 ? "text-yellow-600" : "text-red-600")}>
+                    {cashFlowData.summary.collectionRate}%
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="shadow-sm">
+                <CardContent className="p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Total Collected</div>
+                  <div className="text-xl font-bold text-green-600">
+                    {formatCurrency(cashFlowData.summary.totalCollected)}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="shadow-sm">
+                <CardContent className="p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Overdue Amount</div>
+                  <div className="text-xl font-bold text-red-600">
+                    {formatCurrency(cashFlowData.summary.totalOverdue)}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="shadow-sm">
+                <CardContent className="p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Next 3 Months Projected</div>
+                  <div className="text-xl font-bold text-blue-600">
+                    {formatCurrency(cashFlowData.summary.next3MonthsProjected)}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Cash flow chart */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Cash Flow — Actual vs Projected</CardTitle>
+              <CardDescription>Past 6 months collections and next 6 months projected EMIs</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {cashFlowData?.monthly && cashFlowData.monthly.some(d => (d.expected || 0) > 0) ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <AreaChart data={cashFlowData.monthly}>
+                    <defs>
+                      <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22C55E" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#22C55E" stopOpacity={0.05} />
+                      </linearGradient>
+                      <linearGradient id="projectedGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.05} />
+                      </linearGradient>
+                      <linearGradient id="overdueGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#EF4444" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(v) =>
+                        v >= 10000000
+                          ? `${(v / 10000000).toFixed(1)}Cr`
+                          : v >= 100000
+                          ? `${(v / 100000).toFixed(1)}L`
+                          : v >= 1000
+                          ? `${(v / 1000).toFixed(0)}K`
+                          : v.toString()
+                      }
+                    />
+                    <Tooltip
+                      formatter={(value: number | null, name: string) => [
+                        value != null
+                          ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
+                          : "—",
+                        name,
+                      ]}
+                      labelFormatter={(label) => {
+                        const item = cashFlowData.monthly.find(d => d.month === label);
+                        return item?.fullMonth || label;
+                      }}
+                    />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="collected"
+                      name="Collected"
+                      stroke="#22C55E"
+                      strokeWidth={2.5}
+                      fill="url(#collectedGradient)"
+                      dot={{ r: 3, fill: "#22C55E", strokeWidth: 2, stroke: "#fff" }}
+                      connectNulls={false}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="projected"
+                      name="Projected"
+                      stroke="#3B82F6"
+                      strokeWidth={2}
+                      strokeDasharray="6 3"
+                      fill="url(#projectedGradient)"
+                      dot={{ r: 3, fill: "#3B82F6", strokeWidth: 2, stroke: "#fff" }}
+                      connectNulls={false}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="overdue"
+                      name="Overdue"
+                      stroke="#EF4444"
+                      strokeWidth={2}
+                      fill="url(#overdueGradient)"
+                      dot={{ r: 3, fill: "#EF4444", strokeWidth: 2, stroke: "#fff" }}
+                      connectNulls={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[320px] flex items-center justify-center text-muted-foreground">
+                  No collection data yet
                 </div>
               )}
             </CardContent>
