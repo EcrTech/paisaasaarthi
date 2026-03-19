@@ -13,9 +13,13 @@ interface StaffMetrics {
   user_id: string;
   user_name: string;
   leads_assigned: number;
+  leads_amount: number;
   applications_in_progress: number;
+  in_progress_amount: number;
   approvals: number;
+  approvals_amount: number;
   sanctions: number;
+  sanctions_amount: number;
   disbursements: number;
   total_disbursed_amount: number;
   collection_rate: number;
@@ -24,9 +28,10 @@ interface StaffMetrics {
 interface StaffPerformanceDashboardProps {
   fromDate: Date;
   toDate: Date;
+  agentOnly?: boolean;
 }
 
-export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPerformanceDashboardProps) {
+export default function StaffPerformanceDashboard({ fromDate, toDate, agentOnly }: StaffPerformanceDashboardProps) {
   const { orgId } = useOrgContext();
 
   // Fetch all loan applications with assigned_to for the org
@@ -62,20 +67,38 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
     enabled: !!orgId,
   });
 
+  // When agentOnly, fetch user IDs with agent roles
+  const { data: agentUserIds } = useQuery({
+    queryKey: ["agent-role-users", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("org_id", orgId!)
+        .in("role", ["sales_agent", "support_agent"]);
+      if (error) throw error;
+      return (data || []).map((r: any) => r.user_id);
+    },
+    enabled: !!orgId && !!agentOnly,
+  });
+
   // Fetch assigned user profiles
   const assignedUserIds = [...new Set(applications.filter((a) => a.assigned_to).map((a) => a.assigned_to))];
+  const filteredUserIds = agentOnly && agentUserIds
+    ? assignedUserIds.filter((id) => agentUserIds.includes(id as string))
+    : assignedUserIds;
   const { data: profiles = [], isLoading: profilesLoading } = useQuery({
-    queryKey: ["staff-profiles", assignedUserIds],
+    queryKey: ["staff-profiles", filteredUserIds],
     queryFn: async () => {
-      if (assignedUserIds.length === 0) return [];
+      if (filteredUserIds.length === 0) return [];
       const { data, error } = await supabase
         .from("profiles")
         .select("id, first_name, last_name")
-        .in("id", assignedUserIds as string[]);
+        .in("id", filteredUserIds as string[]);
       if (error) throw error;
       return data || [];
     },
-    enabled: assignedUserIds.length > 0,
+    enabled: filteredUserIds.length > 0 && (!agentOnly || !!agentUserIds),
   });
 
   // Fetch collection stats
@@ -165,9 +188,13 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
         user_id: userId,
         user_name: profileMap[userId] || "Unknown",
         leads_assigned: contactMap.size,
+        leads_amount: 0,
         applications_in_progress: 0,
+        in_progress_amount: 0,
         approvals: 0,
+        approvals_amount: 0,
         sanctions: 0,
+        sanctions_amount: 0,
         disbursements: 0,
         total_disbursed_amount: 0,
         collection_rate: 0,
@@ -175,10 +202,11 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
 
       for (const { priority, amount } of contactMap.values()) {
         const category = stageToCategory(priority);
-        if (category === "in_progress") grouped[userId].applications_in_progress++;
-        if (category === "approved") grouped[userId].approvals++;
-        if (category === "sanctioned") { grouped[userId].approvals++; grouped[userId].sanctions++; }
-        if (category === "disbursed") { grouped[userId].approvals++; grouped[userId].sanctions++; grouped[userId].disbursements++; grouped[userId].total_disbursed_amount += amount; }
+        grouped[userId].leads_amount += amount;
+        if (category === "in_progress") { grouped[userId].applications_in_progress++; grouped[userId].in_progress_amount += amount; }
+        if (category === "approved") { grouped[userId].approvals++; grouped[userId].approvals_amount += amount; }
+        if (category === "sanctioned") { grouped[userId].approvals++; grouped[userId].approvals_amount += amount; grouped[userId].sanctions++; grouped[userId].sanctions_amount += amount; }
+        if (category === "disbursed") { grouped[userId].approvals++; grouped[userId].approvals_amount += amount; grouped[userId].sanctions++; grouped[userId].sanctions_amount += amount; grouped[userId].disbursements++; grouped[userId].total_disbursed_amount += amount; }
       }
     }
 
@@ -205,6 +233,13 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
       currency: "INR",
       maximumFractionDigits: 0,
     }).format(amount);
+
+  const formatCompact = (amount: number) => {
+    if (amount >= 10000000) return `${(amount / 10000000).toFixed(1)}Cr`;
+    if (amount >= 100000) return `${(amount / 100000).toFixed(1)}L`;
+    if (amount >= 1000) return `${(amount / 1000).toFixed(0)}K`;
+    return amount.toString();
+  };
 
   const exportToCSV = () => {
     if (staffMetrics.length === 0) return;
@@ -269,11 +304,26 @@ export default function StaffPerformanceDashboard({ fromDate, toDate }: StaffPer
               {staffMetrics.map((staff) => (
                 <TableRow key={staff.user_id}>
                   <TableCell className="font-medium">{staff.user_name}</TableCell>
-                  <TableCell className="text-right">{staff.leads_assigned}</TableCell>
-                  <TableCell className="text-right">{staff.applications_in_progress}</TableCell>
-                  <TableCell className="text-right">{staff.approvals}</TableCell>
-                  <TableCell className="text-right">{staff.sanctions}</TableCell>
-                  <TableCell className="text-right font-bold text-green-600">{staff.disbursements}</TableCell>
+                  <TableCell className="text-right">
+                    <div>{staff.leads_assigned}</div>
+                    {staff.leads_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.leads_amount)}</div>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div>{staff.applications_in_progress}</div>
+                    {staff.in_progress_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.in_progress_amount)}</div>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div>{staff.approvals}</div>
+                    {staff.approvals_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.approvals_amount)}</div>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div>{staff.sanctions}</div>
+                    {staff.sanctions_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.sanctions_amount)}</div>}
+                  </TableCell>
+                  <TableCell className="text-right font-bold text-green-600">
+                    <div>{staff.disbursements}</div>
+                    {staff.total_disbursed_amount > 0 && <div className="text-xs font-normal">{formatCompact(staff.total_disbursed_amount)}</div>}
+                  </TableCell>
                   <TableCell className="text-right">{formatCurrency(staff.total_disbursed_amount)}</TableCell>
                   <TableCell className="text-right">
                     <span className={staff.collection_rate >= 80 ? "text-green-600" : staff.collection_rate >= 50 ? "text-yellow-600" : "text-destructive"}>

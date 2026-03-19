@@ -5,7 +5,6 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 import DashboardLayout from "@/components/Layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import {
   FileText,
@@ -15,16 +14,15 @@ import {
   IndianRupee,
   Users,
   AlertCircle,
-  MapPinOff,
   CalendarIcon,
 } from "lucide-react";
 import { LoadingState } from "@/components/common/LoadingState";
-import { Bar, BarChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+import { Area, AreaChart, Bar, BarChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import StaffPerformanceDashboard from "@/components/LOS/Reports/StaffPerformanceDashboard";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { format, subDays } from "date-fns";
+import { format, subDays, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from "date-fns";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
 
@@ -51,7 +49,15 @@ const SOURCE_LABELS: Record<string, string> = {
   loan_application: "Loan Application",
 };
 
-const SOURCE_COLORS = ["#01B8AA", "#168980", "#8AD4EB", "#F2C80F", "#A66999", "#FE9666", "#FD625E", "#6366F1", "#3B82F6"];
+const SOURCE_COLORS: Record<string, string> = {
+  referral_link: "#01B8AA",
+  referral: "#168980",
+  public_form: "#8AD4EB",
+  bulk_upload: "#F2C80F",
+  bulk_import: "#A66999",
+  loan_application: "#FE9666",
+  unknown: "#9CA3AF",
+};
 
 export default function LOSDashboard() {
   const { orgId } = useOrgContext();
@@ -113,8 +119,6 @@ export default function LOSDashboard() {
         disbursementsData,
         pendingEMIsRes,
         overdueEMIsRes,
-        negativeAreasRes,
-        applicantsWithAddressRes
       ] = await Promise.all([
         // All non-draft apps with contact_id and current_stage (paginated)
         fetchAllRows(() =>
@@ -158,22 +162,6 @@ export default function LOSDashboard() {
           .select("*", { count: "exact", head: true })
           .eq("org_id", orgId)
           .or(`status.eq.overdue,and(status.eq.pending,due_date.lt.${today})`),
-
-        // Negative area pin codes
-        supabase
-          .from("loan_negative_areas")
-          .select("area_value")
-          .eq("org_id", orgId)
-          .eq("area_type", "pincode")
-          .eq("is_active", true),
-
-        // Applicants with address to check against negative areas
-        fetchAllRows(() =>
-          supabase
-            .from("loan_applicants")
-            .select("loan_application_id, current_address")
-            .not("current_address", "is", null)
-        ),
       ]);
 
       // Deduplicate: each contact counted once at their highest lifecycle stage
@@ -206,13 +194,6 @@ export default function LOSDashboard() {
         0
       );
 
-      // Count applications from negative areas
-      const negativePincodes = new Set(negativeAreasRes.data?.map(a => a.area_value) || []);
-      const negativeAreaApps = applicantsWithAddressRes.filter((a: any) => {
-        const pincode = (a.current_address as any)?.pincode;
-        return pincode && negativePincodes.has(pincode);
-      }).length || 0;
-
       return {
         totalApps: contactHighest.size,
         pendingApproval,
@@ -222,7 +203,6 @@ export default function LOSDashboard() {
         totalDisbursedAmount,
         pendingEMIs: pendingEMIsRes.count || 0,
         overdueEMIs: overdueEMIsRes.count || 0,
-        negativeAreaApps,
       };
     },
     enabled: !!orgId,
@@ -299,50 +279,49 @@ export default function LOSDashboard() {
     enabled: !!orgId,
   });
 
-  // Leads by source (pie chart)
-  const { data: leadsBySource } = useQuery({
-    queryKey: ["los-leads-by-source", orgId],
+  // Leads by source — date-wise area chart (last 6 months, monthly)
+  const { data: leadsBySourceTrend } = useQuery({
+    queryKey: ["los-leads-by-source-trend", orgId],
     queryFn: async () => {
+      const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
+
       const { data, error } = await supabase
         .from("loan_applications")
-        .select("source")
-        .eq("org_id", orgId)
-        .neq("status", "draft");
-      if (error) throw error;
-
-      const counts: Record<string, number> = {};
-      (data || []).forEach((app: any) => {
-        const src = app.source || "unknown";
-        counts[src] = (counts[src] || 0) + 1;
-      });
-
-      return Object.entries(counts)
-        .map(([source, count]) => ({
-          source,
-          name: SOURCE_LABELS[source] || source.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-          count,
-        }))
-        .sort((a, b) => b.count - a.count);
-    },
-    enabled: !!orgId,
-  });
-
-  const { data: recentApplications } = useQuery({
-    queryKey: ["recent-applications", orgId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("loan_applications")
-        .select(`
-          *,
-          loan_applicants(first_name, last_name)
-        `)
+        .select("source, created_at")
         .eq("org_id", orgId)
         .neq("status", "draft")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
+        .gte("created_at", sixMonthsAgo.toISOString());
       if (error) throw error;
-      return data;
+
+      // Collect all unique sources
+      const sourceSet = new Set<string>();
+      const monthlyBySource: Record<string, Record<string, number>> = {};
+
+      (data || []).forEach((app: any) => {
+        const src = app.source || "unknown";
+        sourceSet.add(src);
+        const month = format(new Date(app.created_at), "MMM yyyy");
+        if (!monthlyBySource[month]) monthlyBySource[month] = {};
+        monthlyBySource[month][src] = (monthlyBySource[month][src] || 0) + 1;
+      });
+
+      // Generate last 6 months in order
+      const months = eachMonthOfInterval({
+        start: sixMonthsAgo,
+        end: endOfMonth(new Date()),
+      });
+
+      const sources = Array.from(sourceSet);
+      const result = months.map((m) => {
+        const key = format(m, "MMM yyyy");
+        const row: Record<string, any> = { month: format(m, "MMM") };
+        sources.forEach((src) => {
+          row[src] = monthlyBySource[key]?.[src] || 0;
+        });
+        return row;
+      });
+
+      return { data: result, sources };
     },
     enabled: !!orgId,
   });
@@ -377,7 +356,7 @@ export default function LOSDashboard() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">LOS Dashboard</h1>
@@ -385,182 +364,138 @@ export default function LOSDashboard() {
               Loan Origination System overview and statistics
             </p>
           </div>
-          {/* Applications can only be created via referral links */}
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Total Applications
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats?.totalApps || 0}</div>
+        {/* Stats Grid — compact, single row */}
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-8">
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <FileText className="h-3 w-3" />
+                Applications
+              </div>
+              <div className="text-xl font-bold">{stats?.totalApps || 0}</div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Clock className="h-4 w-4 text-yellow-600" />
-                Pending Approval
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-yellow-600">
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Clock className="h-3 w-3 text-yellow-600" />
+                Pending
+              </div>
+              <div className="text-xl font-bold text-yellow-600">
                 {stats?.pendingApproval || 0}
               </div>
-              <Button
-                variant="link"
-                className="p-0 h-auto mt-2"
-                onClick={() => navigate("/los/approval-queue")}
-              >
-                View Queue →
-              </Button>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-blue-600" />
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <TrendingUp className="h-3 w-3 text-blue-600" />
                 In Progress
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-blue-600">
+              </div>
+              <div className="text-xl font-bold text-blue-600">
                 {stats?.inProgress || 0}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <CheckCircle className="h-3 w-3 text-green-600" />
                 Disbursed
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-green-600">
+              </div>
+              <div className="text-xl font-bold text-green-600">
                 {stats?.disbursed || 0}
               </div>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Financial Stats */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <IndianRupee className="h-4 w-4" />
-                Total Sanctioned Amount
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <IndianRupee className="h-3 w-3" />
+                Sanctioned
+              </div>
+              <div className="text-xl font-bold text-primary">
                 {formatCurrency(stats?.totalSanctioned || 0)}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <IndianRupee className="h-4 w-4 text-green-600" />
-                Total Disbursed Amount
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <IndianRupee className="h-3 w-3 text-green-600" />
+                Disbursed Amt
+              </div>
+              <div className="text-xl font-bold text-green-600">
                 {formatCurrency(stats?.totalDisbursedAmount || 0)}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-600" />
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Clock className="h-3 w-3 text-blue-600" />
                 Pending EMIs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">
+              </div>
+              <div className="text-xl font-bold text-blue-600">
                 {stats?.pendingEMIs || 0}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-red-600" />
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <AlertCircle className="h-3 w-3 text-red-600" />
                 Overdue EMIs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">
+              </div>
+              <div className="text-xl font-bold text-red-600">
                 {stats?.overdueEMIs || 0}
               </div>
             </CardContent>
           </Card>
-
-          <Card className="border-red-200 bg-red-50/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <MapPinOff className="h-4 w-4 text-red-600" />
-                Negative Area Applications
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">
-                {stats?.negativeAreaApps || 0}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                From blocked pin codes
-              </p>
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Charts Row 1: Leads by Source + Application Pipeline */}
+        {/* Charts Row: Leads by Source (Area) + Application Pipeline */}
         <div className="grid gap-4 md:grid-cols-2">
-          {/* Leads by Source */}
+          {/* Leads by Source — date-wise area chart */}
           <Card>
-            <CardHeader>
-              <CardTitle>Leads by Source</CardTitle>
-              <CardDescription>Where your loan applications come from</CardDescription>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Leads by Source</CardTitle>
+              <CardDescription>Monthly application volume by source</CardDescription>
             </CardHeader>
             <CardContent>
-              {leadsBySource && leadsBySource.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={leadsBySource}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={90}
-                      fill="#8884d8"
-                      dataKey="count"
-                      nameKey="name"
-                    >
-                      {leadsBySource.map((_entry, index) => (
-                        <Cell key={`cell-${index}`} fill={SOURCE_COLORS[index % SOURCE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number, name: string) => [value, name]} />
+              {leadsBySourceTrend && leadsBySourceTrend.data.length > 0 && leadsBySourceTrend.sources.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart data={leadsBySourceTrend.data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                    <Tooltip />
                     <Legend />
-                  </PieChart>
+                    {leadsBySourceTrend.sources.map((src) => (
+                      <Area
+                        key={src}
+                        type="monotone"
+                        dataKey={src}
+                        name={SOURCE_LABELS[src] || src.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                        stackId="1"
+                        stroke={SOURCE_COLORS[src] || "#8884d8"}
+                        fill={SOURCE_COLORS[src] || "#8884d8"}
+                        fillOpacity={0.6}
+                      />
+                    ))}
+                  </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">
                   No lead data yet
                 </div>
               )}
@@ -569,13 +504,13 @@ export default function LOSDashboard() {
 
           {/* Application Stage Distribution */}
           <Card>
-            <CardHeader>
-              <CardTitle>Application Pipeline</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Application Pipeline</CardTitle>
               <CardDescription>Applications by current stage</CardDescription>
             </CardHeader>
             <CardContent>
               {stageDistribution && stageDistribution.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={stageDistribution} layout="vertical" margin={{ left: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" allowDecimals={false} />
@@ -591,7 +526,7 @@ export default function LOSDashboard() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">
                   No application data yet
                 </div>
               )}
@@ -601,13 +536,13 @@ export default function LOSDashboard() {
 
         {/* Disbursement Trend - full width */}
         <Card>
-          <CardHeader>
-            <CardTitle>Disbursement Trend</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Disbursement Trend</CardTitle>
             <CardDescription>Last 6 months disbursement volume</CardDescription>
           </CardHeader>
           <CardContent>
             {disbursementTrend && disbursementTrend.some(d => d.amount > 0) ? (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={disbursementTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
@@ -632,7 +567,7 @@ export default function LOSDashboard() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+              <div className="h-[280px] flex items-center justify-center text-muted-foreground">
                 No disbursement data yet
               </div>
             )}
@@ -640,23 +575,24 @@ export default function LOSDashboard() {
         </Card>
 
         {/* Team Performance */}
-        <div className="space-y-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="space-y-3">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
             <div>
-              <h2 className="text-2xl font-bold">Team Performance</h2>
-              <p className="text-muted-foreground">Staff-wise metrics from leads to disbursement</p>
+              <h2 className="text-xl font-bold">Team Performance</h2>
+              <p className="text-sm text-muted-foreground">Agent metrics from leads to disbursement</p>
             </div>
             <div className="flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
+                    size="sm"
                     className={cn(
-                      "w-[140px] justify-start text-left font-normal",
+                      "w-[130px] justify-start text-left font-normal",
                       !fromDate && "text-muted-foreground"
                     )}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                     {fromDate ? format(fromDate, "dd MMM yyyy") : "From"}
                   </Button>
                 </PopoverTrigger>
@@ -670,17 +606,18 @@ export default function LOSDashboard() {
                   />
                 </PopoverContent>
               </Popover>
-              <span className="text-muted-foreground">to</span>
+              <span className="text-muted-foreground text-sm">to</span>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
+                    size="sm"
                     className={cn(
-                      "w-[140px] justify-start text-left font-normal",
+                      "w-[130px] justify-start text-left font-normal",
                       !toDate && "text-muted-foreground"
                     )}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                     {toDate ? format(toDate, "dd MMM yyyy") : "To"}
                   </Button>
                 </PopoverTrigger>
@@ -696,104 +633,55 @@ export default function LOSDashboard() {
               </Popover>
             </div>
           </div>
-          <StaffPerformanceDashboard fromDate={fromDate} toDate={toDate} />
+          <StaffPerformanceDashboard fromDate={fromDate} toDate={toDate} agentOnly />
         </div>
 
-        {/* Recent Applications */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Recent Applications</CardTitle>
+        {/* Quick Actions */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate("/los/applications")}
-              >
-                View All
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {recentApplications && recentApplications.length > 0 ? (
-              <div className="space-y-4">
-                {recentApplications.map((app: any) => {
-                  const applicant = app.loan_applicants?.[0];
-                  return (
-                    <div
-                      key={app.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:border-primary transition-colors cursor-pointer"
-                      onClick={() => navigate(`/los/applications/${app.id}`)}
-                    >
-                      <div className="space-y-1">
-                        <div className="font-medium">
-                          {app.application_number}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {applicant?.first_name} {applicant?.last_name || ""}
-                        </div>
-                      </div>
-                      <div className="text-right space-y-1">
-                        <div className="font-medium">
-                          {formatCurrency(app.requested_amount)}
-                        </div>
-                        <Badge variant="outline">
-                          {STAGE_LABELS[app.current_stage] || app.current_stage}
-                        </Badge>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                No applications yet
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Button
-                variant="outline"
-                className="h-auto py-4 flex-col gap-2"
+                className="h-auto py-2.5 flex-col gap-1"
                 onClick={() => navigate("/los/my-referrals")}
               >
-                <FileText className="h-6 w-6" />
-                <span>My Referrals</span>
+                <FileText className="h-4 w-4" />
+                <span className="text-xs">My Referrals</span>
               </Button>
               {permissions.canApproveLoans && (
                 <Button
                   variant="outline"
-                  className="h-auto py-4 flex-col gap-2"
+                  size="sm"
+                  className="h-auto py-2.5 flex-col gap-1"
                   onClick={() => navigate("/los/approval-queue")}
                 >
-                  <AlertCircle className="h-6 w-6" />
-                  <span>Approval Queue</span>
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-xs">Approval Queue</span>
                 </Button>
               )}
               {permissions.canViewApplications && (
                 <Button
                   variant="outline"
-                  className="h-auto py-4 flex-col gap-2"
+                  size="sm"
+                  className="h-auto py-2.5 flex-col gap-1"
                   onClick={() => navigate("/los/applications")}
                 >
-                  <Users className="h-6 w-6" />
-                  <span>All Applications</span>
+                  <Users className="h-4 w-4" />
+                  <span className="text-xs">All Applications</span>
                 </Button>
               )}
               <Button
                 variant="outline"
-                className="h-auto py-4 flex-col gap-2"
+                size="sm"
+                className="h-auto py-2.5 flex-col gap-1"
                 onClick={() => navigate("/los/bulk-payment-report")}
               >
-                <FileText className="h-6 w-6" />
-                <span>Bulk Payment Report</span>
+                <FileText className="h-4 w-4" />
+                <span className="text-xs">Bulk Payment</span>
               </Button>
             </div>
           </CardContent>
