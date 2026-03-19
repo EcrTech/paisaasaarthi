@@ -22,7 +22,8 @@ import StaffPerformanceDashboard from "@/components/LOS/Reports/StaffPerformance
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { format, subDays, subMonths, addMonths, startOfMonth, endOfMonth, eachMonthOfInterval } from "date-fns";
+import { format, subDays, subMonths, addMonths, addDays, startOfMonth, endOfMonth, eachMonthOfInterval, eachDayOfInterval, getDaysInMonth } from "date-fns";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
 
@@ -49,14 +50,16 @@ const SOURCE_LABELS: Record<string, string> = {
   loan_application: "Loan Application",
 };
 
-const SOURCE_COLORS: Record<string, string> = {
-  referral_link: "#01B8AA",
-  referral: "#168980",
-  public_form: "#8AD4EB",
-  bulk_upload: "#F2C80F",
-  bulk_import: "#A66999",
-  loan_application: "#FE9666",
-  unknown: "#9CA3AF",
+// Distinct color palette for lead sources — cycled for any number of sources
+const SOURCE_COLOR_PALETTE = [
+  "#01B8AA", "#E8532B", "#3B82F6", "#F2C80F", "#8B5CF6",
+  "#22C55E", "#EC4899", "#F97316", "#06B6D4", "#6366F1",
+  "#EF4444", "#14B8A6", "#A855F7", "#84CC16", "#D946EF",
+];
+
+const getSourceColor = (sources: string[], src: string) => {
+  const idx = sources.indexOf(src);
+  return SOURCE_COLOR_PALETTE[idx >= 0 ? idx % SOURCE_COLOR_PALETTE.length : 0];
 };
 
 export default function LOSDashboard() {
@@ -65,6 +68,7 @@ export default function LOSDashboard() {
   const { permissions } = useLOSPermissions();
   const [fromDate, setFromDate] = useState<Date>(subDays(new Date(), 30));
   const [toDate, setToDate] = useState<Date>(new Date());
+  const [chartView, setChartView] = useState<"daily" | "monthly">("daily");
 
   // Fetch all stats in a single query function with Promise.all for parallel execution
   const { data: stats, isLoading } = useQuery({
@@ -239,143 +243,180 @@ export default function LOSDashboard() {
     enabled: !!orgId,
   });
 
-  // Monthly disbursement trend (last 6 months)
+  // Disbursement trend — daily (current month) or monthly (6 months)
   const { data: disbursementTrend } = useQuery({
-    queryKey: ["los-disbursement-trend", orgId],
+    queryKey: ["los-disbursement-trend", orgId, chartView],
     queryFn: async () => {
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const isDaily = chartView === "daily";
+      const rangeStart = isDaily
+        ? startOfMonth(new Date()).toISOString().split("T")[0]
+        : (() => { const d = new Date(); d.setMonth(d.getMonth() - 6); return d.toISOString().split("T")[0]; })();
 
       const { data, error } = await supabase
         .from("loan_disbursements")
         .select("disbursement_amount, disbursement_date, loan_applications!inner(org_id)")
         .eq("status", "completed")
         .eq("loan_applications.org_id", orgId)
-        .gte("disbursement_date", sixMonthsAgo.toISOString().split("T")[0]);
+        .gte("disbursement_date", rangeStart);
       if (error) throw error;
 
-      const monthly: Record<string, { amount: number; count: number }> = {};
+      const buckets: Record<string, { amount: number; count: number }> = {};
       (data || []).forEach((d: any) => {
-        const month = format(new Date(d.disbursement_date), "MMM yyyy");
-        if (!monthly[month]) monthly[month] = { amount: 0, count: 0 };
-        monthly[month].amount += d.disbursement_amount;
-        monthly[month].count += 1;
+        const key = isDaily
+          ? d.disbursement_date
+          : format(new Date(d.disbursement_date), "MMM yyyy");
+        if (!buckets[key]) buckets[key] = { amount: 0, count: 0 };
+        buckets[key].amount += d.disbursement_amount;
+        buckets[key].count += 1;
       });
 
-      // Generate last 6 months in order
-      const result = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i);
-        const key = format(d, "MMM yyyy");
-        result.push({
-          month: format(d, "MMM"),
-          amount: monthly[key]?.amount || 0,
-          count: monthly[key]?.count || 0,
+      if (isDaily) {
+        const days = eachDayOfInterval({ start: startOfMonth(new Date()), end: new Date() });
+        return days.map((d) => {
+          const key = format(d, "yyyy-MM-dd");
+          return { label: format(d, "dd"), amount: buckets[key]?.amount || 0, count: buckets[key]?.count || 0 };
         });
+      } else {
+        const result = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date();
+          d.setMonth(d.getMonth() - i);
+          const key = format(d, "MMM yyyy");
+          result.push({ label: format(d, "MMM"), amount: buckets[key]?.amount || 0, count: buckets[key]?.count || 0 });
+        }
+        return result;
       }
-      return result;
     },
     enabled: !!orgId,
   });
 
-  // Leads by source — date-wise area chart (last 6 months, monthly)
+  // Leads by source — supports daily (current month) and monthly (6 months) views
   const { data: leadsBySourceTrend } = useQuery({
-    queryKey: ["los-leads-by-source-trend", orgId],
+    queryKey: ["los-leads-by-source-trend", orgId, chartView],
     queryFn: async () => {
-      const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
+      const isDaily = chartView === "daily";
+      const rangeStart = isDaily ? startOfMonth(new Date()) : startOfMonth(subMonths(new Date(), 5));
 
       const { data, error } = await supabase
         .from("loan_applications")
         .select("source, created_at")
         .eq("org_id", orgId)
         .neq("status", "draft")
-        .gte("created_at", sixMonthsAgo.toISOString());
+        .gte("created_at", rangeStart.toISOString());
       if (error) throw error;
 
-      // Collect all unique sources
       const sourceSet = new Set<string>();
-      const monthlyBySource: Record<string, Record<string, number>> = {};
+      const bucketBySource: Record<string, Record<string, number>> = {};
 
       (data || []).forEach((app: any) => {
         const src = app.source || "unknown";
         sourceSet.add(src);
-        const month = format(new Date(app.created_at), "MMM yyyy");
-        if (!monthlyBySource[month]) monthlyBySource[month] = {};
-        monthlyBySource[month][src] = (monthlyBySource[month][src] || 0) + 1;
-      });
-
-      // Generate last 6 months in order
-      const months = eachMonthOfInterval({
-        start: sixMonthsAgo,
-        end: endOfMonth(new Date()),
+        const key = isDaily
+          ? format(new Date(app.created_at), "yyyy-MM-dd")
+          : format(new Date(app.created_at), "MMM yyyy");
+        if (!bucketBySource[key]) bucketBySource[key] = {};
+        bucketBySource[key][src] = (bucketBySource[key][src] || 0) + 1;
       });
 
       const sources = Array.from(sourceSet);
-      const result = months.map((m) => {
-        const key = format(m, "MMM yyyy");
-        const row: Record<string, any> = { month: format(m, "MMM") };
-        sources.forEach((src) => {
-          row[src] = monthlyBySource[key]?.[src] || 0;
+
+      let result: Record<string, any>[];
+      if (isDaily) {
+        const days = eachDayOfInterval({
+          start: startOfMonth(new Date()),
+          end: new Date(),
         });
-        return row;
-      });
+        result = days.map((d) => {
+          const key = format(d, "yyyy-MM-dd");
+          const row: Record<string, any> = { label: format(d, "dd") };
+          sources.forEach((src) => { row[src] = bucketBySource[key]?.[src] || 0; });
+          return row;
+        });
+      } else {
+        const months = eachMonthOfInterval({
+          start: rangeStart,
+          end: endOfMonth(new Date()),
+        });
+        result = months.map((m) => {
+          const key = format(m, "MMM yyyy");
+          const row: Record<string, any> = { label: format(m, "MMM") };
+          sources.forEach((src) => { row[src] = bucketBySource[key]?.[src] || 0; });
+          return row;
+        });
+      }
 
       return { data: result, sources };
     },
     enabled: !!orgId,
   });
 
-  // Collections cash flow — past actuals + future projections (12 months window)
+  // Collections cash flow — daily (current month) or monthly (12 months window)
   const { data: cashFlowData } = useQuery({
-    queryKey: ["los-cashflow", orgId],
+    queryKey: ["los-cashflow", orgId, chartView],
     queryFn: async () => {
-      const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
-      const sixMonthsAhead = endOfMonth(addMonths(new Date(), 6));
+      const isDaily = chartView === "daily";
+      const rangeStart = isDaily ? startOfMonth(new Date()) : startOfMonth(subMonths(new Date(), 5));
+      const rangeEnd = isDaily ? endOfMonth(new Date()) : endOfMonth(addMonths(new Date(), 6));
 
-      // Fetch all EMIs in the 12-month window
       const { data, error } = await supabase
         .from("loan_repayment_schedule")
         .select("due_date, total_emi, amount_paid, payment_date, status, principal_amount, interest_amount, late_fee")
         .eq("org_id", orgId)
-        .gte("due_date", sixMonthsAgo.toISOString().split("T")[0])
-        .lte("due_date", sixMonthsAhead.toISOString().split("T")[0]);
+        .gte("due_date", rangeStart.toISOString().split("T")[0])
+        .lte("due_date", rangeEnd.toISOString().split("T")[0]);
       if (error) throw error;
 
       const today = new Date();
-      const months = eachMonthOfInterval({
-        start: sixMonthsAgo,
-        end: endOfMonth(addMonths(today, 6)),
-      });
-
-      const monthlyData = months.map((m) => {
-        const key = format(m, "yyyy-MM");
-        const monthEmis = (data || []).filter((e: any) => e.due_date.startsWith(key));
-        const isPast = m <= startOfMonth(today);
-        const isCurrent = format(m, "yyyy-MM") === format(today, "yyyy-MM");
-
-        const expected = monthEmis.reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
-        const collected = monthEmis.reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
-        const principal = monthEmis.reduce((s: number, e: any) => s + (e.principal_amount || 0), 0);
-        const interest = monthEmis.reduce((s: number, e: any) => s + (e.interest_amount || 0), 0);
-        const overdue = monthEmis
-          .filter((e: any) => e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today))
-          .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
-
-        return {
-          month: format(m, "MMM"),
-          fullMonth: format(m, "MMM yyyy"),
-          expected,
-          collected: (isPast || isCurrent) ? collected : null,
-          projected: (!isPast || isCurrent) ? expected : null,
-          principal,
-          interest,
-          overdue: (isPast || isCurrent) ? overdue : null,
-        };
-      });
-
-      // Summary stats
       const allEmis = data || [];
+
+      let chartData: any[];
+
+      if (isDaily) {
+        const days = eachDayOfInterval({ start: startOfMonth(today), end: endOfMonth(today) });
+        chartData = days.map((d) => {
+          const key = format(d, "yyyy-MM-dd");
+          const dayEmis = allEmis.filter((e: any) => e.due_date === key);
+          const isPast = d <= today;
+          const expected = dayEmis.reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
+          const collected = dayEmis.reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
+          const overdue = dayEmis
+            .filter((e: any) => e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today))
+            .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
+
+          return {
+            label: format(d, "dd"),
+            fullLabel: format(d, "dd MMM"),
+            expected,
+            collected: isPast ? collected : null,
+            projected: !isPast ? expected : (format(d, "yyyy-MM-dd") === format(today, "yyyy-MM-dd") ? expected : null),
+            overdue: isPast ? overdue : null,
+          };
+        });
+      } else {
+        const months = eachMonthOfInterval({ start: rangeStart, end: rangeEnd });
+        chartData = months.map((m) => {
+          const key = format(m, "yyyy-MM");
+          const monthEmis = allEmis.filter((e: any) => e.due_date.startsWith(key));
+          const isPast = m <= startOfMonth(today);
+          const isCurrent = format(m, "yyyy-MM") === format(today, "yyyy-MM");
+          const expected = monthEmis.reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
+          const collected = monthEmis.reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
+          const overdue = monthEmis
+            .filter((e: any) => e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today))
+            .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
+
+          return {
+            label: format(m, "MMM"),
+            fullLabel: format(m, "MMM yyyy"),
+            expected,
+            collected: (isPast || isCurrent) ? collected : null,
+            projected: (!isPast || isCurrent) ? expected : null,
+            overdue: (isPast || isCurrent) ? overdue : null,
+          };
+        });
+      }
+
+      // Summary stats (always from full data)
       const totalExpected = allEmis
         .filter((e: any) => new Date(e.due_date) <= today)
         .reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
@@ -386,15 +427,12 @@ export default function LOSDashboard() {
         .filter((e: any) => (e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today)))
         .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
       const next3MonthsProjected = allEmis
-        .filter((e: any) => {
-          const d = new Date(e.due_date);
-          return d > today && d <= addMonths(today, 3);
-        })
+        .filter((e: any) => { const d = new Date(e.due_date); return d > today && d <= addMonths(today, 3); })
         .reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
       const collectionRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0;
 
       return {
-        monthly: monthlyData,
+        chartData,
         summary: { totalExpected, totalCollected, totalOverdue, next3MonthsProjected, collectionRate },
       };
     },
@@ -538,18 +576,31 @@ export default function LOSDashboard() {
           </Card>
         </div>
 
+        {/* Daily / Monthly toggle */}
+        <div className="flex items-center gap-2">
+          <Tabs value={chartView} onValueChange={(v) => setChartView(v as "daily" | "monthly")}>
+            <TabsList className="h-8">
+              <TabsTrigger value="daily" className="text-xs px-3 h-7">Daily</TabsTrigger>
+              <TabsTrigger value="monthly" className="text-xs px-3 h-7">Monthly</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <span className="text-xs text-muted-foreground">
+            {chartView === "daily" ? format(startOfMonth(new Date()), "MMM yyyy") : "Last 6 months"}
+          </span>
+        </div>
+
         {/* Leads by Source — full width area chart */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Leads by Source</CardTitle>
-            <CardDescription>Monthly application volume by source</CardDescription>
+            <CardDescription>{chartView === "daily" ? "Day-wise this month" : "Monthly trend (6 months)"}</CardDescription>
           </CardHeader>
           <CardContent>
             {leadsBySourceTrend && leadsBySourceTrend.data.length > 0 && leadsBySourceTrend.sources.length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={leadsBySourceTrend.data}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                   <Tooltip />
                   <Legend />
@@ -560,8 +611,8 @@ export default function LOSDashboard() {
                       dataKey={src}
                       name={SOURCE_LABELS[src] || src.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
                       stackId="1"
-                      stroke={SOURCE_COLORS[src] || "#8884d8"}
-                      fill={SOURCE_COLORS[src] || "#8884d8"}
+                      stroke={getSourceColor(leadsBySourceTrend.sources, src)}
+                      fill={getSourceColor(leadsBySourceTrend.sources, src)}
                       fillOpacity={0.6}
                     />
                   ))}
@@ -612,7 +663,7 @@ export default function LOSDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Disbursement Trend</CardTitle>
-              <CardDescription>Last 6 months disbursement volume</CardDescription>
+              <CardDescription>{chartView === "daily" ? "Day-wise this month" : "Last 6 months"}</CardDescription>
             </CardHeader>
             <CardContent>
               {disbursementTrend && disbursementTrend.some(d => d.amount > 0) ? (
@@ -625,7 +676,7 @@ export default function LOSDashboard() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                     <YAxis
                       tick={{ fontSize: 12 }}
                       tickFormatter={(v) =>
@@ -713,12 +764,12 @@ export default function LOSDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Cash Flow — Actual vs Projected</CardTitle>
-              <CardDescription>Past 6 months collections and next 6 months projected EMIs</CardDescription>
+              <CardDescription>{chartView === "daily" ? "Day-wise this month" : "Past 6 months collections and next 6 months projected EMIs"}</CardDescription>
             </CardHeader>
             <CardContent>
-              {cashFlowData?.monthly && cashFlowData.monthly.some(d => (d.expected || 0) > 0) ? (
+              {cashFlowData?.chartData && cashFlowData.chartData.some((d: any) => (d.expected || 0) > 0) ? (
                 <ResponsiveContainer width="100%" height={320}>
-                  <AreaChart data={cashFlowData.monthly}>
+                  <AreaChart data={cashFlowData.chartData}>
                     <defs>
                       <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#22C55E" stopOpacity={0.35} />
@@ -734,7 +785,7 @@ export default function LOSDashboard() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                     <YAxis
                       tick={{ fontSize: 12 }}
                       tickFormatter={(v) =>
@@ -755,8 +806,8 @@ export default function LOSDashboard() {
                         name,
                       ]}
                       labelFormatter={(label) => {
-                        const item = cashFlowData.monthly.find(d => d.month === label);
-                        return item?.fullMonth || label;
+                        const item = cashFlowData.chartData.find((d: any) => d.label === label);
+                        return item?.fullLabel || label;
                       }}
                     />
                     <Legend />
