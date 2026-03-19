@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import DashboardLayout from "@/components/Layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
@@ -15,15 +16,49 @@ import {
   Users,
   AlertCircle,
   MapPinOff,
+  CalendarIcon,
 } from "lucide-react";
 import { LoadingState } from "@/components/common/LoadingState";
+import { Bar, BarChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+import StaffPerformanceDashboard from "@/components/LOS/Reports/StaffPerformanceDashboard";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { format, subDays } from "date-fns";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
+
+const STAGE_COLORS: Record<string, string> = {
+  application_login: "#8AD4EB",
+  document_collection: "#01B8AA",
+  field_verification: "#168980",
+  credit_assessment: "#F2C80F",
+  approval_pending: "#FE9666",
+  sanctioned: "#A66999",
+  disbursement_pending: "#3B82F6",
+  disbursed: "#22C55E",
+  rejected: "#FD625E",
+  cancelled: "#9CA3AF",
+  closed: "#6366F1",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  referral_link: "Referral Link",
+  referral: "Referral",
+  public_form: "Public Form",
+  bulk_upload: "Bulk Upload",
+  bulk_import: "Bulk Import",
+  loan_application: "Loan Application",
+};
+
+const SOURCE_COLORS = ["#01B8AA", "#168980", "#8AD4EB", "#F2C80F", "#A66999", "#FE9666", "#FD625E", "#6366F1", "#3B82F6"];
 
 export default function LOSDashboard() {
   const { orgId } = useOrgContext();
   const navigate = useNavigate();
   const { permissions } = useLOSPermissions();
+  const [fromDate, setFromDate] = useState<Date>(subDays(new Date(), 30));
+  const [toDate, setToDate] = useState<Date>(new Date());
 
   // Fetch all stats in a single query function with Promise.all for parallel execution
   const { data: stats, isLoading } = useQuery({
@@ -189,6 +224,105 @@ export default function LOSDashboard() {
         overdueEMIs: overdueEMIsRes.count || 0,
         negativeAreaApps,
       };
+    },
+    enabled: !!orgId,
+  });
+
+  // Stage distribution for chart (count per current_stage)
+  const { data: stageDistribution } = useQuery({
+    queryKey: ["los-stage-distribution", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("loan_applications")
+        .select("current_stage")
+        .eq("org_id", orgId)
+        .neq("status", "draft");
+      if (error) throw error;
+
+      const counts: Record<string, number> = {};
+      (data || []).forEach((app: any) => {
+        counts[app.current_stage] = (counts[app.current_stage] || 0) + 1;
+      });
+
+      return Object.entries(counts)
+        .map(([stage, count]) => ({
+          stage,
+          label: STAGE_LABELS[stage] || stage,
+          count,
+          fill: STAGE_COLORS[stage] || "#8884d8",
+        }))
+        .sort((a, b) => {
+          const order = Object.keys(STAGE_LABELS);
+          return order.indexOf(a.stage) - order.indexOf(b.stage);
+        });
+    },
+    enabled: !!orgId,
+  });
+
+  // Monthly disbursement trend (last 6 months)
+  const { data: disbursementTrend } = useQuery({
+    queryKey: ["los-disbursement-trend", orgId],
+    queryFn: async () => {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const { data, error } = await supabase
+        .from("loan_disbursements")
+        .select("disbursement_amount, disbursement_date, loan_applications!inner(org_id)")
+        .eq("status", "completed")
+        .eq("loan_applications.org_id", orgId)
+        .gte("disbursement_date", sixMonthsAgo.toISOString().split("T")[0]);
+      if (error) throw error;
+
+      const monthly: Record<string, { amount: number; count: number }> = {};
+      (data || []).forEach((d: any) => {
+        const month = format(new Date(d.disbursement_date), "MMM yyyy");
+        if (!monthly[month]) monthly[month] = { amount: 0, count: 0 };
+        monthly[month].amount += d.disbursement_amount;
+        monthly[month].count += 1;
+      });
+
+      // Generate last 6 months in order
+      const result = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        const key = format(d, "MMM yyyy");
+        result.push({
+          month: format(d, "MMM"),
+          amount: monthly[key]?.amount || 0,
+          count: monthly[key]?.count || 0,
+        });
+      }
+      return result;
+    },
+    enabled: !!orgId,
+  });
+
+  // Leads by source (pie chart)
+  const { data: leadsBySource } = useQuery({
+    queryKey: ["los-leads-by-source", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("loan_applications")
+        .select("source")
+        .eq("org_id", orgId)
+        .neq("status", "draft");
+      if (error) throw error;
+
+      const counts: Record<string, number> = {};
+      (data || []).forEach((app: any) => {
+        const src = app.source || "unknown";
+        counts[src] = (counts[src] || 0) + 1;
+      });
+
+      return Object.entries(counts)
+        .map(([source, count]) => ({
+          source,
+          name: SOURCE_LABELS[source] || source.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+          count,
+        }))
+        .sort((a, b) => b.count - a.count);
     },
     enabled: !!orgId,
   });
@@ -392,6 +526,177 @@ export default function LOSDashboard() {
               </p>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Charts Row 1: Leads by Source + Application Pipeline */}
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Leads by Source */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Leads by Source</CardTitle>
+              <CardDescription>Where your loan applications come from</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {leadsBySource && leadsBySource.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={leadsBySource}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={90}
+                      fill="#8884d8"
+                      dataKey="count"
+                      nameKey="name"
+                    >
+                      {leadsBySource.map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={SOURCE_COLORS[index % SOURCE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value: number, name: string) => [value, name]} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No lead data yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Application Stage Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Application Pipeline</CardTitle>
+              <CardDescription>Applications by current stage</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {stageDistribution && stageDistribution.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={stageDistribution} layout="vertical" margin={{ left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} />
+                    <YAxis type="category" dataKey="label" width={130} tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      formatter={(value: number) => [value, "Applications"]}
+                    />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                      {stageDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No application data yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Disbursement Trend - full width */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Disbursement Trend</CardTitle>
+            <CardDescription>Last 6 months disbursement volume</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {disbursementTrend && disbursementTrend.some(d => d.amount > 0) ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={disbursementTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis
+                    tickFormatter={(v) =>
+                      v >= 10000000
+                        ? `${(v / 10000000).toFixed(1)}Cr`
+                        : v >= 100000
+                        ? `${(v / 100000).toFixed(1)}L`
+                        : v >= 1000
+                        ? `${(v / 1000).toFixed(0)}K`
+                        : v.toString()
+                    }
+                  />
+                  <Tooltip
+                    formatter={(value: number) => [
+                      new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value),
+                      "Disbursed",
+                    ]}
+                  />
+                  <Bar dataKey="amount" fill="#22C55E" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                No disbursement data yet
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Team Performance */}
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold">Team Performance</h2>
+              <p className="text-muted-foreground">Staff-wise metrics from leads to disbursement</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-[140px] justify-start text-left font-normal",
+                      !fromDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {fromDate ? format(fromDate, "dd MMM yyyy") : "From"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={fromDate}
+                    onSelect={(date) => date && setFromDate(date)}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+              <span className="text-muted-foreground">to</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-[140px] justify-start text-left font-normal",
+                      !toDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {toDate ? format(toDate, "dd MMM yyyy") : "To"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={toDate}
+                    onSelect={(date) => date && setToDate(date)}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <StaffPerformanceDashboard fromDate={fromDate} toDate={toDate} />
         </div>
 
         {/* Recent Applications */}
