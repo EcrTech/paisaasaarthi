@@ -463,45 +463,45 @@ export default function LOSDashboard() {
           </Card>
         </div>
 
-        {/* Charts Row: Leads by Source (Area) + Application Pipeline */}
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Leads by Source — date-wise area chart */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Leads by Source</CardTitle>
-              <CardDescription>Monthly application volume by source</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {leadsBySourceTrend && leadsBySourceTrend.data.length > 0 && leadsBySourceTrend.sources.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={leadsBySourceTrend.data}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Legend />
-                    {leadsBySourceTrend.sources.map((src) => (
-                      <Area
-                        key={src}
-                        type="monotone"
-                        dataKey={src}
-                        name={SOURCE_LABELS[src] || src.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                        stackId="1"
-                        stroke={SOURCE_COLORS[src] || "#8884d8"}
-                        fill={SOURCE_COLORS[src] || "#8884d8"}
-                        fillOpacity={0.6}
-                      />
-                    ))}
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">
-                  No lead data yet
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Leads by Source — full width area chart */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Leads by Source</CardTitle>
+            <CardDescription>Monthly application volume by source</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {leadsBySourceTrend && leadsBySourceTrend.data.length > 0 && leadsBySourceTrend.sources.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={leadsBySourceTrend.data}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                  <Tooltip />
+                  <Legend />
+                  {leadsBySourceTrend.sources.map((src) => (
+                    <Area
+                      key={src}
+                      type="monotone"
+                      dataKey={src}
+                      name={SOURCE_LABELS[src] || src.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                      stackId="1"
+                      stroke={SOURCE_COLORS[src] || "#8884d8"}
+                      fill={SOURCE_COLORS[src] || "#8884d8"}
+                      fillOpacity={0.6}
+                    />
+                  ))}
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[280px] flex items-center justify-center text-muted-foreground">
+                No lead data yet
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
+        {/* Application Pipeline + Disbursement Trend side by side */}
+        <div className="grid gap-4 md:grid-cols-2">
           {/* Application Stage Distribution */}
           <Card>
             <CardHeader className="pb-2">
@@ -532,47 +532,62 @@ export default function LOSDashboard() {
               )}
             </CardContent>
           </Card>
-        </div>
 
-        {/* Disbursement Trend - full width */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Disbursement Trend</CardTitle>
-            <CardDescription>Last 6 months disbursement volume</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {disbursementTrend && disbursementTrend.some(d => d.amount > 0) ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={disbursementTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis
-                    tickFormatter={(v) =>
-                      v >= 10000000
-                        ? `${(v / 10000000).toFixed(1)}Cr`
-                        : v >= 100000
-                        ? `${(v / 100000).toFixed(1)}L`
-                        : v >= 1000
-                        ? `${(v / 1000).toFixed(0)}K`
-                        : v.toString()
-                    }
-                  />
-                  <Tooltip
-                    formatter={(value: number) => [
-                      new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value),
-                      "Disbursed",
-                    ]}
-                  />
-                  <Bar dataKey="amount" fill="#22C55E" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[280px] flex items-center justify-center text-muted-foreground">
-                No disbursement data yet
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {/* Disbursement Trend — gradient area chart */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Disbursement Trend</CardTitle>
+              <CardDescription>Last 6 months disbursement volume</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {disbursementTrend && disbursementTrend.some(d => d.amount > 0) ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart data={disbursementTrend}>
+                    <defs>
+                      <linearGradient id="disbursementGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22C55E" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#22C55E" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(v) =>
+                        v >= 10000000
+                          ? `${(v / 10000000).toFixed(1)}Cr`
+                          : v >= 100000
+                          ? `${(v / 100000).toFixed(1)}L`
+                          : v >= 1000
+                          ? `${(v / 1000).toFixed(0)}K`
+                          : v.toString()
+                      }
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [
+                        new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value),
+                        "Disbursed",
+                      ]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="amount"
+                      stroke="#22C55E"
+                      strokeWidth={2.5}
+                      fill="url(#disbursementGradient)"
+                      dot={{ r: 4, fill: "#22C55E", strokeWidth: 2, stroke: "#fff" }}
+                      activeDot={{ r: 6, fill: "#22C55E", strokeWidth: 2, stroke: "#fff" }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground">
+                  No disbursement data yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Team Performance */}
         <div className="space-y-3">
