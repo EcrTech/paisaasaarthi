@@ -77,7 +77,7 @@ export default function StaffPerformanceDashboard({ fromDate, toDate, agentOnly 
         .eq("org_id", orgId!)
         .in("role", ["sales_agent", "support_agent"]);
       if (error) throw error;
-      return (data || []).map((r: any) => r.user_id);
+      return [...new Set((data || []).map((r: any) => r.user_id))];
     },
     enabled: !!orgId && !!agentOnly,
   });
@@ -180,10 +180,12 @@ export default function StaffPerformanceDashboard({ fromDate, toDate, agentOnly 
       }
     });
 
-    // Step 2: Build staff metrics from deduplicated contacts
+    // Step 2: Build staff metrics from deduplicated contacts (only users with profiles)
     const grouped: Record<string, StaffMetrics> = {};
 
     for (const [userId, contactMap] of Object.entries(staffContactHighest)) {
+      // Skip users not in the filtered profile list
+      if (!profileMap[userId]) continue;
       grouped[userId] = {
         user_id: userId,
         user_name: profileMap[userId] || "Unknown",
@@ -233,13 +235,6 @@ export default function StaffPerformanceDashboard({ fromDate, toDate, agentOnly 
       currency: "INR",
       maximumFractionDigits: 0,
     }).format(amount);
-
-  const formatCompact = (amount: number) => {
-    if (amount >= 10000000) return `${(amount / 10000000).toFixed(1)}Cr`;
-    if (amount >= 100000) return `${(amount / 100000).toFixed(1)}L`;
-    if (amount >= 1000) return `${(amount / 1000).toFixed(0)}K`;
-    return amount.toString();
-  };
 
   const exportToCSV = () => {
     if (staffMetrics.length === 0) return;
@@ -306,23 +301,23 @@ export default function StaffPerformanceDashboard({ fromDate, toDate, agentOnly 
                   <TableCell className="font-medium">{staff.user_name}</TableCell>
                   <TableCell className="text-right">
                     <div>{staff.leads_assigned}</div>
-                    {staff.leads_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.leads_amount)}</div>}
+                    {staff.leads_amount > 0 && <div className="text-xs text-muted-foreground">{formatCurrency(staff.leads_amount)}</div>}
                   </TableCell>
                   <TableCell className="text-right">
                     <div>{staff.applications_in_progress}</div>
-                    {staff.in_progress_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.in_progress_amount)}</div>}
+                    {staff.in_progress_amount > 0 && <div className="text-xs text-muted-foreground">{formatCurrency(staff.in_progress_amount)}</div>}
                   </TableCell>
                   <TableCell className="text-right">
                     <div>{staff.approvals}</div>
-                    {staff.approvals_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.approvals_amount)}</div>}
+                    {staff.approvals_amount > 0 && <div className="text-xs text-muted-foreground">{formatCurrency(staff.approvals_amount)}</div>}
                   </TableCell>
                   <TableCell className="text-right">
                     <div>{staff.sanctions}</div>
-                    {staff.sanctions_amount > 0 && <div className="text-xs text-muted-foreground">{formatCompact(staff.sanctions_amount)}</div>}
+                    {staff.sanctions_amount > 0 && <div className="text-xs text-muted-foreground">{formatCurrency(staff.sanctions_amount)}</div>}
                   </TableCell>
                   <TableCell className="text-right font-bold text-green-600">
                     <div>{staff.disbursements}</div>
-                    {staff.total_disbursed_amount > 0 && <div className="text-xs font-normal">{formatCompact(staff.total_disbursed_amount)}</div>}
+                    {staff.total_disbursed_amount > 0 && <div className="text-xs font-normal">{formatCurrency(staff.total_disbursed_amount)}</div>}
                   </TableCell>
                   <TableCell className="text-right">{formatCurrency(staff.total_disbursed_amount)}</TableCell>
                   <TableCell className="text-right">
