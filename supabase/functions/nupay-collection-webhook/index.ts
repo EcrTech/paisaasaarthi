@@ -91,10 +91,10 @@ serve(async (req) => {
     if (transactionStatus === "SUCCESS" && transaction.schedule_id) {
       console.log("Processing auto-reconciliation for schedule:", transaction.schedule_id);
 
-      // Get schedule details
+      // Get schedule details with interest_rate and disbursement_date for due-today calc
       const { data: schedule, error: scheduleError } = await supabase
         .from("loan_repayment_schedule")
-        .select("*, loan_applications(id, contact_id)")
+        .select("*, loan_applications(id, contact_id, interest_rate, loan_disbursements(disbursement_date))")
         .eq("id", transaction.schedule_id)
         .single();
 
@@ -127,12 +127,20 @@ serve(async (req) => {
         } else {
           console.log("Payment record created:", paymentNumber);
 
-          // Update schedule status
+          // Update schedule status - compare against due-today (not just total_emi)
           const newAmountPaid = (schedule.amount_paid || 0) + paymentAmount;
-          const newStatus = newAmountPaid >= schedule.total_emi 
-            ? "paid" 
-            : newAmountPaid > 0 
-              ? "partially_paid" 
+          const interestRate = schedule.loan_applications?.interest_rate || 0;
+          const disbData = schedule.loan_applications?.loan_disbursements;
+          const disbDate = Array.isArray(disbData) ? disbData[0]?.disbursement_date : disbData?.disbursement_date;
+          let dueToday = schedule.total_emi;
+          if (interestRate && disbDate) {
+            const actualDays = Math.max(1, Math.round((Date.now() - new Date(disbDate).getTime()) / (1000 * 60 * 60 * 24)));
+            dueToday = schedule.principal_amount + Math.round(schedule.principal_amount * (interestRate / 100) * actualDays);
+          }
+          const newStatus = (newAmountPaid >= dueToday || newAmountPaid >= schedule.total_emi)
+            ? "paid"
+            : newAmountPaid > 0
+              ? "partially_paid"
               : "pending";
 
           const scheduleUpdate: Record<string, any> = {

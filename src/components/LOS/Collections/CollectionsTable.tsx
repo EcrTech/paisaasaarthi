@@ -92,10 +92,18 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     });
   };
 
+  // Compute effective status: if amount_paid covers the due-today amount, treat as "paid"
+  const getEffectiveStatus = (record: CollectionRecord) => {
+    if (record.status === "partially_paid" && record.amount_paid >= getDueToday(record)) {
+      return "paid";
+    }
+    return record.status;
+  };
+
   const getStatusBadge = (status: string, dueDate: string) => {
     const today = new Date().toISOString().split("T")[0];
     const isOverdue = status === "pending" && dueDate < today;
-    
+
     if (status === "paid") {
       return <Badge className="bg-green-100 text-green-800 text-xs">Paid</Badge>;
     }
@@ -154,10 +162,11 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     if (statusFilter !== "all") {
       const today = new Date().toISOString().split("T")[0];
       filtered = filtered.filter((c) => {
+        const effectiveStatus = getEffectiveStatus(c);
         if (statusFilter === "overdue") {
-          return c.status === "overdue" || (c.status === "pending" && c.due_date < today);
+          return effectiveStatus === "overdue" || (effectiveStatus === "pending" && c.due_date < today);
         }
-        return c.status === statusFilter;
+        return effectiveStatus === statusFilter;
       });
     }
 
@@ -192,9 +201,9 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     const today = new Date().toISOString().split("T")[0];
     return {
       total: filteredCollections.length,
-      pending: filteredCollections.filter((c) => c.status === "pending" && c.due_date >= today).length,
-      overdue: filteredCollections.filter((c) => c.status === "overdue" || (c.status === "pending" && c.due_date < today)).length,
-      paid: filteredCollections.filter((c) => c.status === "paid").length,
+      pending: filteredCollections.filter((c) => { const s = getEffectiveStatus(c); return s === "pending" && c.due_date >= today; }).length,
+      overdue: filteredCollections.filter((c) => { const s = getEffectiveStatus(c); return s === "overdue" || (s === "pending" && c.due_date < today); }).length,
+      paid: filteredCollections.filter((c) => getEffectiveStatus(c) === "paid").length,
     };
   }, [filteredCollections]);
 
@@ -389,11 +398,11 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                       )}
                     </TableCell>
                     <TableCell className="py-2">
-                      {getStatusBadge(record.status, record.due_date)}
+                      {getStatusBadge(getEffectiveStatus(record), record.due_date)}
                     </TableCell>
                     <TableCell className="py-2">
                       <div className="flex items-center justify-center gap-1">
-                        {record.status !== "paid" && record.status !== "settled" ? (
+                        {getEffectiveStatus(record) !== "paid" && record.status !== "settled" ? (
                           <>
                             <Button
                               size="sm"
