@@ -19,7 +19,7 @@ const POLICY_RULES = [
   { key: "age", name: "Age Check", description: "Age between 21-58 years", critical: false },
   { key: "income", name: "Minimum Income", description: "Net monthly income ≥ ₹25,000", critical: true },
   { key: "employment", name: "Employment Stability", description: "Min 1 year in current company", critical: false },
-  { key: "credit_score", name: "Credit Score", description: "CIBIL score ≥ 650", critical: true },
+  { key: "credit_score", name: "Credit Score", description: "CIBIL score ≥ 550", critical: true },
   { key: "foir", name: "FOIR Check", description: "FOIR should be ≤ 50%", critical: true },
   { key: "existing_loans", name: "Existing Loans", description: "Max 3 active loans", critical: false },
 ];
@@ -272,7 +272,7 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
 
     const creditScore = (creditBureau?.response_data as any)?.credit_score || 0;
     checks.credit_score = {
-      passed: creditScore >= 650,
+      passed: creditScore >= 550,
       details: creditScore > 0 ? `CIBIL score: ${creditScore}` : "Credit bureau report not available - please upload CIBIL report"
     };
 
