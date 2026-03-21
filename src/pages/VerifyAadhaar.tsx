@@ -4,8 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ld3ZnbmJ5Z3Z0bm15b214Ym11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODY4MTIsImV4cCI6MjA4ODc2MjgxMn0.pVaREVeEVFGAXxR57DMzCYmZmnaIrbliVdUSUFgdxlg";
 const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
 
 type PageStatus = "loading" | "ready" | "verifying" | "success" | "error";
