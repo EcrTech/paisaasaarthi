@@ -309,14 +309,11 @@ Deno.serve(async (req) => {
               first_name: firstName,
               last_name: lastName,
               pan_number: applicant.pan?.toUpperCase() || null,
-              pan_verified: applicant.panVerified || false,
               aadhaar_number: applicant.aadhaar?.replace(/\s/g, '') || null,
-              aadhaar_verified: applicant.aadhaarVerified || false,
               mobile: applicant.phone,
               email: applicant.email || null,
               office_email: applicant.officeEmail || null,
               office_email_verified: applicant.officeEmailVerified || false,
-              video_kyc_completed: applicant.videoKycCompleted || false,
               updated_at: new Date().toISOString(),
             })
             .eq('loan_application_id', draftApplicationId);
@@ -510,30 +507,48 @@ Deno.serve(async (req) => {
 
       console.log('[submit-loan-application] Extracted data - DOB:', dob, 'Gender:', gender, 'Has Address:', !!currentAddress);
 
-      // Create applicant record
+      // Create applicant record (upsert to handle cases where early lead already created the app but no applicant)
       const { error: applicantError } = await supabase
         .from('loan_applicants')
-        .insert({
+        .upsert({
           loan_application_id: application.id,
           applicant_type: 'primary',
           first_name: firstName,
           last_name: lastName,
           pan_number: applicant.pan?.toUpperCase() || null,
-          pan_verified: applicant.panVerified || false,
           aadhaar_number: applicant.aadhaar?.replace(/\s/g, '') || null,
-          aadhaar_verified: applicant.aadhaarVerified || false,
           mobile: applicant.phone,
           email: applicant.email || null,
           office_email: applicant.officeEmail || null,
           office_email_verified: applicant.officeEmailVerified || false,
-          video_kyc_completed: applicant.videoKycCompleted || false,
           dob: dob,
           gender: gender,
           current_address: currentAddress,
-        });
+        }, { onConflict: 'loan_application_id,applicant_type', ignoreDuplicates: false });
 
       if (applicantError) {
-        console.error('[submit-loan-application] Referral applicant creation error:', applicantError);
+        // Fallback to plain insert if upsert fails (e.g., no unique constraint)
+        console.warn('[submit-loan-application] Upsert failed, trying insert:', applicantError.message);
+        const { error: insertError } = await supabase
+          .from('loan_applicants')
+          .insert({
+            loan_application_id: application.id,
+            applicant_type: 'primary',
+            first_name: firstName,
+            last_name: lastName,
+            pan_number: applicant.pan?.toUpperCase() || null,
+            aadhaar_number: applicant.aadhaar?.replace(/\s/g, '') || null,
+            mobile: applicant.phone,
+            email: applicant.email || null,
+            office_email: applicant.officeEmail || null,
+            office_email_verified: applicant.officeEmailVerified || false,
+            dob: dob,
+            gender: gender,
+            current_address: currentAddress,
+          });
+        if (insertError) {
+          console.error('[submit-loan-application] Referral applicant creation error:', insertError);
+        }
       }
 
       // Update referral stats
