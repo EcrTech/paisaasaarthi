@@ -137,11 +137,10 @@ Deno.serve(async (req) => {
       address: reportData.address || null,
     };
 
-    // Save verification record
-    if (applicationId && applicantId) {
-      const verificationRecord = {
+    // Save verification record (applicantId is optional — referral flow may not have it yet)
+    if (applicationId) {
+      const verificationRecord: Record<string, unknown> = {
         loan_application_id: applicationId,
-        applicant_id: applicantId,
         verification_type: 'credit_bureau',
         verification_source: 'experian',
         status: creditScore ? 'success' : 'failed',
@@ -158,6 +157,10 @@ Deno.serve(async (req) => {
         verified_at: new Date().toISOString(),
       };
 
+      if (applicantId) {
+        verificationRecord.applicant_id = applicantId;
+      }
+
       const { data: existing } = await supabase
         .from('loan_verifications')
         .select('id')
@@ -171,6 +174,36 @@ Deno.serve(async (req) => {
         await supabase.from('loan_verifications').update(verificationRecord).eq('id', existing.id);
       } else {
         await supabase.from('loan_verifications').insert(verificationRecord);
+      }
+
+      // Save PDF as a loan_documents record so it's visible in the Documents tab
+      if (storagePath) {
+        const { data: existingDoc } = await supabase
+          .from('loan_documents')
+          .select('id')
+          .eq('loan_application_id', applicationId)
+          .eq('document_type', 'credit_report')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!existingDoc) {
+          const { error: docError } = await supabase
+            .from('loan_documents')
+            .insert({
+              loan_application_id: applicationId,
+              document_type: 'credit_report',
+              file_name: `Experian_Credit_Report_${pan.toUpperCase()}.pdf`,
+              file_path: storagePath,
+              verification_status: 'verified',
+            });
+
+          if (docError) {
+            console.error('[experian-credit-report] Document record error:', docError);
+          } else {
+            console.log('[experian-credit-report] Credit report document record created');
+          }
+        }
       }
     }
 
