@@ -87,68 +87,14 @@ export function AadhaarVerificationStep({
     trackAadhaarStart();
 
     try {
-      // Step 1: Create a verification record in loan_verifications
-      let verificationId: string;
-
-      // Use the surepass-aadhaar-init endpoint which creates/validates the record
-      // First, create a pending verification record via direct API
-      const createResponse = await fetch(`${FUNCTIONS_BASE}/surepass-aadhaar-init`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          verificationId: applicationId ? undefined : undefined,
-        }),
-      });
-
-      // We need to create the record first, then init
-      // Let's use a simpler approach: call surepass-aadhaar-init with a pre-created record
-      // Actually, for the referral flow, we should create the record ourselves
-      // and then call init with its ID
-
-      // Create a pending loan_verification record using the edge function approach
-      const initBody: any = {};
-
-      if (applicationId) {
-        // Create the verification record via a lightweight call
-        const recordRes = await fetch(`${SUPABASE_URL}/rest/v1/loan_verifications`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            Prefer: "return=representation",
-          },
-          body: JSON.stringify({
-            loan_application_id: applicationId,
-            verification_type: "aadhaar",
-            verification_source: "surepass",
-            status: "pending",
-            request_data: { initiated_at: new Date().toISOString() },
-          }),
-        });
-
-        const records = await recordRes.json();
-        verificationId = Array.isArray(records) ? records[0]?.id : records?.id;
-      } else {
-        // No application ID — generate a temp UUID
-        verificationId = crypto.randomUUID();
-      }
-
-      if (!verificationId) {
-        throw new Error("Failed to create verification record");
-      }
-
-      // Step 2: Initialize Surepass DigiLocker session
+      // Single call: edge function creates verification record + initializes Surepass
       const initResponse = await fetch(`${FUNCTIONS_BASE}/surepass-aadhaar-init`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           apikey: SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ verificationId }),
+        body: JSON.stringify({ applicationId }),
       });
 
       const initData = await initResponse.json();
@@ -157,6 +103,7 @@ export function AadhaarVerificationStep({
         throw new Error(initData.error || "Failed to initialize DigiLocker");
       }
 
+      const verificationId = initData.data.verificationId;
       const sdkToken = initData.data.token;
 
       // Step 3: Load DigiBoost SDK

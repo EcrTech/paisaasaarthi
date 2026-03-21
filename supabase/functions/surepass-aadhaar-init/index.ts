@@ -17,11 +17,12 @@ serve(async (req) => {
   }
 
   try {
-    const { verificationId } = await req.json();
+    const body = await req.json();
+    const { verificationId, applicationId } = body;
 
-    if (!verificationId) {
+    if (!verificationId && !applicationId) {
       return new Response(
-        JSON.stringify({ success: false, error: "verificationId is required" }),
+        JSON.stringify({ success: false, error: "verificationId or applicationId is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -31,11 +32,39 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    let recordId = verificationId;
+
+    // If applicationId provided (referral flow), create the verification record
+    if (!verificationId && applicationId) {
+      const { data: newRecord, error: insertError } = await supabase
+        .from("loan_verifications")
+        .insert({
+          loan_application_id: applicationId,
+          verification_type: "aadhaar",
+          verification_source: "surepass",
+          status: "pending",
+          request_data: { initiated_at: new Date().toISOString() },
+        })
+        .select("id")
+        .single();
+
+      if (insertError || !newRecord) {
+        console.error("[surepass-aadhaar-init] Failed to create verification record:", insertError);
+        return new Response(
+          JSON.stringify({ success: false, error: "Failed to create verification record" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      recordId = newRecord.id;
+      console.log("[surepass-aadhaar-init] Created verification record:", recordId);
+    }
+
     // Verify that the verification record exists and is pending/in_progress
     const { data: verification, error: fetchError } = await supabase
       .from("loan_verifications")
       .select("id, status, verification_type")
-      .eq("id", verificationId)
+      .eq("id", recordId)
       .single();
 
     if (fetchError || !verification) {
@@ -90,7 +119,7 @@ serve(async (req) => {
           surepass_initialized_at: new Date().toISOString(),
         },
       })
-      .eq("id", verificationId);
+      .eq("id", recordId);
 
     return new Response(
       JSON.stringify({
@@ -98,6 +127,7 @@ serve(async (req) => {
         data: {
           client_id: responseData.data.client_id,
           token: responseData.data.token,
+          verificationId: recordId,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
