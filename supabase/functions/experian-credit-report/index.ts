@@ -193,6 +193,7 @@ Deno.serve(async (req) => {
             .insert({
               loan_application_id: applicationId,
               document_type: 'credit_report',
+              document_category: 'other',
               file_name: `Experian_Credit_Report_${pan.toUpperCase()}.pdf`,
               file_path: storagePath,
               verification_status: 'verified',
