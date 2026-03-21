@@ -9,6 +9,7 @@ import { StepProgressBar } from "@/components/ReferralApplication/StepProgressBa
 import { LoanRequirementsScreen } from "@/components/ReferralApplication/LoanRequirementsScreen";
 import { ContactConsentScreen } from "@/components/ReferralApplication/ContactConsentScreen";
 import { IdentityInputStep } from "@/components/ReferralApplication/IdentityInputStep";
+import { AadhaarVerificationStep } from "@/components/ReferralApplication/AadhaarVerificationStep";
 import { VideoKYCStep } from "@/components/ReferralApplication/VideoKYCStep";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { captureUTMParams, getMarketingSource, type UTMParams } from "@/utils/utm";
@@ -160,6 +161,11 @@ export default function ReferralLoanApplication() {
   const [panNumber, setPanNumber] = useState("");
   const [aadhaarNumber, setAadhaarNumber] = useState("");
   const [videoKycCompleted, setVideoKycCompleted] = useState(false);
+  const [panVerifiedData, setPanVerifiedData] = useState<{ name: string; dob: string } | null>(null);
+  const [creditScore, setCreditScore] = useState<number | null>(null);
+  const [applicationRejected, setApplicationRejected] = useState(false);
+  const [aadhaarVerified, setAadhaarVerified] = useState(false);
+  const [aadhaarVerifiedData, setAadhaarVerifiedData] = useState<{ name: string; address: string; dob: string } | null>(null);
 
   // Restore form state from localStorage on mount (for DigiLocker redirect return)
   useEffect(() => {
@@ -348,15 +354,15 @@ export default function ReferralLoanApplication() {
     callback();
   };
 
-  // Handle entering Video KYC step
+  // Handle entering Video KYC step (now step 4)
   const handleEnterVideoStep = async () => {
     if (!geolocation) {
       toast.error("Please enable location access to continue");
       captureGeolocation();
       return;
     }
-    // Track step 3 - Video KYC
-    trackStep(3, 'video_kyc', 'referral');
+    // Track step 4 - Video KYC
+    trackStep(4, 'video_kyc', 'referral');
 
     // Reuse existing draft from early lead if available, otherwise create new
     let appId = draftApplicationId;
@@ -365,7 +371,29 @@ export default function ReferralLoanApplication() {
     }
     if (appId) {
       setDraftApplicationId(appId);
-      setCurrentStep(3);
+      setCurrentStep(4);
+    }
+  };
+
+  // Handle credit check rejection
+  const handleCreditCheckFailed = async (score: number) => {
+    setCreditScore(score);
+    setApplicationRejected(true);
+
+    // Update draft application status to rejected if it exists
+    if (draftApplicationId) {
+      try {
+        await supabase
+          .from("loan_applications")
+          .update({
+            status: "rejected",
+            rejection_reason: `Credit score ${score} below minimum threshold of 550`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", draftApplicationId);
+      } catch (err) {
+        console.warn("[ReferralLoanApplication] Failed to update rejection status:", err);
+      }
     }
   };
 
@@ -619,7 +647,7 @@ export default function ReferralLoanApplication() {
           </div>
         )}
 
-        {/* Step 2: Identity Details (PAN + Aadhaar input only) */}
+        {/* Step 2: PAN Verification + Credit Check */}
         {currentStep === 2 && (
           <div className="px-4 py-4">
             <Card className="border-0 shadow-lg bg-card rounded-2xl overflow-hidden">
@@ -627,13 +655,46 @@ export default function ReferralLoanApplication() {
                 <IdentityInputStep
                   panNumber={panNumber}
                   onPanChange={setPanNumber}
-                  aadhaarNumber={aadhaarNumber}
-                  onAadhaarChange={setAadhaarNumber}
-                  onNext={handleEnterVideoStep}
+                  applicantName={basicInfo.name}
+                  applicantPhone={basicInfo.phone}
+                  applicationId={draftApplicationId}
+                  orgId={referrerInfo?.orgId}
+                  onPanVerified={(data) => {
+                    setPanVerifiedData({ name: data.name, dob: data.dob });
+                  }}
+                  onCreditCheckPassed={(score) => {
+                    setCreditScore(score);
+                  }}
+                  onCreditCheckFailed={handleCreditCheckFailed}
+                  onNext={() => requireLocation(() => setCurrentStep(3))}
                   onBack={() => {
                     setCurrentStep(1);
                     setBasicInfoSubStep(2);
                   }}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Step 3: Aadhaar Verification via DigiLocker */}
+        {currentStep === 3 && (
+          <div className="px-4 py-4">
+            <Card className="border-0 shadow-lg bg-card rounded-2xl overflow-hidden">
+              <CardContent className="p-5">
+                <AadhaarVerificationStep
+                  onVerified={(data) => {
+                    setAadhaarVerified(true);
+                    setAadhaarVerifiedData({ name: data.name, address: data.address, dob: data.dob });
+                    if (data.aadhaarNumber) {
+                      setAadhaarNumber(data.aadhaarNumber);
+                    }
+                  }}
+                  onNext={handleEnterVideoStep}
+                  onBack={() => setCurrentStep(2)}
+                  isVerified={aadhaarVerified}
+                  verifiedData={aadhaarVerifiedData || undefined}
+                  applicationId={draftApplicationId}
                 />
               </CardContent>
             </Card>
@@ -648,14 +709,14 @@ export default function ReferralLoanApplication() {
           </div>
         )}
 
-        {/* Step 3: Video KYC */}
-        {currentStep === 3 && !creatingDraft && (
+        {/* Step 4: Video KYC */}
+        {currentStep === 4 && !creatingDraft && (
           <div className="px-4 py-4">
             <Card className="border-0 shadow-lg bg-card rounded-2xl overflow-hidden">
               <CardContent className="p-5">
                 <VideoKYCStep
                   onComplete={handleVideoKycComplete}
-                  onBack={() => setCurrentStep(2)}
+                  onBack={() => setCurrentStep(3)}
                   isCompleted={videoKycCompleted}
                   applicantName={basicInfo.name}
                   applicationId={draftApplicationId || undefined}

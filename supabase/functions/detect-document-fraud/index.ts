@@ -384,6 +384,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks):
       headers: {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "pdfs-2024-09-25",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

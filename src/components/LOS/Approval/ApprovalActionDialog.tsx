@@ -14,9 +14,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
+
+const REJECTION_REASONS = [
+  "Customer not interested",
+  "Customer need higher Amount",
+  "Interest rates are high",
+  "High processing fee",
+  "Document incomplete",
+  "Overdue Case",
+  "No due certificate Available",
+  "Others",
+];
 
 interface ApprovalActionDialogProps {
   open: boolean;
@@ -36,6 +48,7 @@ export default function ApprovalActionDialog({
   userId,
 }: ApprovalActionDialogProps) {
   const [comments, setComments] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
   const [customAmount, setCustomAmount] = useState<string>("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -78,6 +91,11 @@ export default function ApprovalActionDialog({
         ? eligibility.recommended_interest_rate 
         : null;
 
+      // Build comments: combine rejection reason + additional comments
+      const fullComments = action === "reject"
+        ? [rejectionReason, comments].filter(Boolean).join(" - ")
+        : comments;
+
       // Create approval record (audit trail only)
       const { error: approvalError } = await supabase
         .from("loan_approvals")
@@ -88,10 +106,18 @@ export default function ApprovalActionDialog({
           approval_level: "final",
           approval_status: action === "approve" ? "approved" : "rejected",
           approved_amount: approvedAmount,
-          comments,
+          comments: fullComments,
         });
 
       if (approvalError) throw approvalError;
+
+      // Save rejection reason on the application itself for table display
+      if (action === "reject") {
+        await supabase
+          .from("loan_applications")
+          .update({ rejection_reason: rejectionReason })
+          .eq("id", applicationId);
+      }
 
       // Sync eligibility derived values when approving with a different amount
       if (action === "approve" && approvedAmount && tenureDays && interestRate) {
@@ -140,6 +166,7 @@ export default function ApprovalActionDialog({
 
       onOpenChange(false);
       setComments("");
+      setRejectionReason("");
     },
     onError: (error: Error) => {
       toast({
@@ -254,20 +281,38 @@ export default function ApprovalActionDialog({
             </>
           )}
 
+          {action === "reject" && (
+            <div className="space-y-2">
+              <Label htmlFor="rejectionReason">Rejection Reason *</Label>
+              <Select value={rejectionReason} onValueChange={setRejectionReason}>
+                <SelectTrigger id="rejectionReason">
+                  <SelectValue placeholder="Select a reason..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {REJECTION_REASONS.map((reason) => (
+                    <SelectItem key={reason} value={reason}>
+                      {reason}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="comments">
-              {action === "approve" ? "Comments (Optional)" : "Rejection Reason *"}
+              {action === "approve" ? "Comments (Optional)" : "Additional Comments (Optional)"}
             </Label>
             <Textarea
               id="comments"
               placeholder={
                 action === "approve"
                   ? "Add any additional comments..."
-                  : "Explain why the application is being rejected..."
+                  : "Add any additional details..."
               }
               value={comments}
               onChange={(e) => setComments(e.target.value)}
-              rows={4}
+              rows={3}
             />
           </div>
         </div>
@@ -282,7 +327,7 @@ export default function ApprovalActionDialog({
             disabled={
               actionMutation.isPending ||
               (action === "approve" && !eligibility) ||
-              (action === "reject" && !comments)
+              (action === "reject" && !rejectionReason)
             }
           >
             {actionMutation.isPending

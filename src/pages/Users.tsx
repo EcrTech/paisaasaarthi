@@ -280,7 +280,7 @@ export default function Users() {
         // Hard delete - completely remove user from all orgs and auth
         const { data: { session } } = await supabase.auth.getSession();
         
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`, {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/delete-user`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${session?.access_token}`,

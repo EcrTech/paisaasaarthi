@@ -659,14 +659,20 @@ Deno.serve(async (req) => {
         .single();
 
       if (!fetchError && existingApp) {
-        applicationNumber = existingApp.application_number;
-        
-        // Update the draft to submitted status
+        // Use existing application_number only if it's a proper LA number;
+        // drafts from save-draft-application have null application_number
+        if (existingApp.application_number && !existingApp.application_number.startsWith('DRAFT-')) {
+          applicationNumber = existingApp.application_number;
+        }
+
+        // Update the draft to submitted status with proper application number
         const { data: updatedApp, error: updateError } = await supabase
           .from('loan_applications')
           .update({
+            application_number: applicationNumber,
             requested_amount: loanAmount,
             tenure_months: body.loanDetails.tenure,
+            current_stage: 'application_login',
             status: 'in_progress',
             latitude: body.geolocation?.latitude || null,
             longitude: body.geolocation?.longitude || null,

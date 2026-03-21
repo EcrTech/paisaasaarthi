@@ -30,8 +30,8 @@ export default function ExotelSettings() {
   const [testPhone, setTestPhone] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
 
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/exotel-webhook`;
-  const smsWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sms-webhook`;
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/exotel-webhook`;
+  const smsWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/sms-webhook`;
 
   useEffect(() => {
     if (orgId) {

@@ -3719,6 +3719,7 @@ export type Database = {
           previous_stage: string | null
           product_type: string
           referred_by: string | null
+          rejection_reason: string | null
           requested_amount: number
           source: string | null
           status: string
@@ -3748,6 +3749,7 @@ export type Database = {
           previous_stage?: string | null
           product_type?: string
           referred_by?: string | null
+          rejection_reason?: string | null
           requested_amount: number
           source?: string | null
           status?: string
@@ -3777,6 +3779,7 @@ export type Database = {
           previous_stage?: string | null
           product_type?: string
           referred_by?: string | null
+          rejection_reason?: string | null
           requested_amount?: number
           source?: string | null
           status?: string

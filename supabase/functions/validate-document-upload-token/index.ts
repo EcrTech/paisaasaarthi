@@ -63,6 +63,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    // One-time use: block if link was already opened
+    if (tokenData.status === 'accessed') {
+      return new Response(
+        JSON.stringify({
+          valid: false,
+          error: 'This link has already been used',
+          status: 'completed',
+          completed_at: tokenData.accessed_at,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Fetch existing documents for this application
     const { data: existingDocs } = await supabase
       .from('loan_documents')

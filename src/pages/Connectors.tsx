@@ -225,7 +225,7 @@ export default function Connectors() {
   };
 
   const getWebhookUrl = (token?: string) => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co";
     return `${supabaseUrl}/functions/v1/webhook-receiver/${token || '{webhook_token}'}`;
   };
 

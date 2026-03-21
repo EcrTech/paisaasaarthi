@@ -69,14 +69,14 @@ export default function PANVerificationDialog({
 
   const [debugInfo, setDebugInfo] = useState<any>(null);
 
-  // Verify PAN via VerifiedU API (no separate auth needed)
+  // Verify PAN via Surepass API
   const verifyMutation = useMutation({
     mutationFn: async () => {
       if (!formData.pan_number || formData.pan_number.length !== 10) {
         throw new Error("Please enter a valid 10-character PAN number");
       }
 
-      const { data, error } = await supabase.functions.invoke('verifiedu-pan-verify', {
+      const { data, error } = await supabase.functions.invoke('surepass-pan-verify', {
         body: {
           panNumber: formData.pan_number,
           applicationId,
@@ -95,9 +95,7 @@ export default function PANVerificationDialog({
     onSuccess: (data) => {
       toast({
         title: "PAN Verified",
-        description: data.is_mock
-          ? "PAN verified in mock mode (configure VerifiedU credentials for live verification)"
-          : "PAN details have been verified successfully",
+        description: "PAN details have been verified successfully",
       });
       // Update form with verified data
       setFormData(prev => ({
@@ -123,7 +121,7 @@ export default function PANVerificationDialog({
         loan_application_id: applicationId,
         applicant_id: applicant?.id,
         verification_type: "pan",
-        verification_source: "verifiedu",
+        verification_source: "surepass",
         status: formData.status,
         request_data: { pan_number: formData.pan_number },
         response_data: {
@@ -168,7 +166,7 @@ export default function PANVerificationDialog({
         <DialogHeader>
           <DialogTitle>PAN Verification</DialogTitle>
           <DialogDescription>
-            Verify PAN card via VerifiedU API
+            Verify PAN card details
           </DialogDescription>
         </DialogHeader>
 
@@ -192,7 +190,7 @@ export default function PANVerificationDialog({
               className="w-full"
             >
               {verifyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Verify PAN via VerifiedU
+              Verify PAN
             </Button>
           </div>
 

@@ -63,6 +63,18 @@ verify_jwt = false
 [functions.digilocker-callback]
 verify_jwt = false
 
+[functions.surepass-aadhaar-init]
+verify_jwt = false
+
+[functions.surepass-aadhaar-save]
+verify_jwt = false
+
+[functions.surepass-pan-verify]
+verify_jwt = false
+
+[functions.surepass-public-pan-verify]
+verify_jwt = false
+
 [functions.equifax-credit-report]
 verify_jwt = false
 

@@ -25,7 +25,7 @@ export const CallRecordingPlayer = ({ callLogId, variant = "ghost", size = "sm" 
       if (!session) throw new Error('Not authenticated');
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/exotel-get-recording?callLogId=${callLogId}`,
+        `${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/exotel-get-recording?callLogId=${callLogId}`,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`,

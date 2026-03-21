@@ -118,51 +118,30 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
   );
   const getAadhaarBackDocument = () => identityDocuments.find(d => d.document_type === "aadhaar_back");
 
-  // Fetch Aadhaar verification results directly from dashboard
+  // Fetch Aadhaar verification results directly from dashboard (queries DB)
   const [fetchingAadhaarResults, setFetchingAadhaarResults] = useState(false);
   const fetchAadhaarResults = async () => {
-    // Query database directly for the latest aadhaar verification with a request number
-    // (cached verifications state may be stale)
-    const { data: freshRecords } = await supabase
-      .from("loan_verifications")
-      .select("request_data")
-      .eq("loan_application_id", applicationId)
-      .eq("verification_type", "aadhaar")
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    let uniqueRequestNumber: string | null = null;
-    if (freshRecords) {
-      for (const v of freshRecords) {
-        const reqNum = (v.request_data as Record<string, any>)?.unique_request_number;
-        if (reqNum) {
-          uniqueRequestNumber = reqNum;
-          break;
-        }
-      }
-    }
-    if (!uniqueRequestNumber) {
-      toast({ variant: "destructive", title: "No request number", description: "Could not find a DigiLocker request number. Please open the Aadhaar dialog and initiate a new verification." });
-      return;
-    }
     setFetchingAadhaarResults(true);
     try {
-      const { data, error } = await supabase.functions.invoke('verifiedu-aadhaar-details', {
-        body: { uniqueRequestNumber, applicationId, orgId },
-      });
+      // Query the latest aadhaar verification record directly from DB
+      const { data, error } = await supabase
+        .from("loan_verifications")
+        .select("*")
+        .eq("loan_application_id", applicationId)
+        .eq("verification_type", "aadhaar")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
       if (error) throw error;
-      if (data?.mismatch) {
-        toast({ variant: "destructive", title: "Data Mismatch", description: "The verification service returned data for a different request. Please initiate a new Aadhaar verification." });
-      } else if (data?.still_processing) {
-        toast({ title: "Verification Pending", description: "Customer has not completed DigiLocker verification yet. Please try again later." });
-      } else if (data?.success && data?.data?.is_valid) {
-        toast({ title: "Aadhaar Verified!", description: `Customer ${data.data.name || ""} verified successfully via DigiLocker` });
+
+      if (data.status === "success" && data.response_data) {
+        const responseData = data.response_data as Record<string, any>;
+        toast({ title: "Aadhaar Verified!", description: `Customer ${responseData.name || ""} verified successfully via DigiLocker` });
         queryClient.invalidateQueries({ queryKey: ["loan-verifications", applicationId] });
-      } else if (data?.success && data?.data && !data?.data?.is_valid) {
-        toast({ variant: "destructive", title: "Verification Failed", description: "Aadhaar verification returned invalid. Customer may need to retry." });
+      } else if (data.status === "failed") {
+        toast({ variant: "destructive", title: "Verification Failed", description: "Aadhaar verification failed. Customer may need to retry." });
         queryClient.invalidateQueries({ queryKey: ["loan-verifications", applicationId] });
-      } else if (data?.error) {
-        toast({ variant: "destructive", title: "Error", description: data.message || data.error });
       } else {
         toast({ title: "Verification Pending", description: "Customer has not completed DigiLocker verification yet. Please try again later." });
       }

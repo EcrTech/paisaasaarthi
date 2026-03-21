@@ -296,7 +296,7 @@ serve(async (req) => {
 
     // Detect file type from path or content
     const fileExtension = filePath.split('.').pop()?.toLowerCase() || '';
-    const isPdf = fileExtension === 'pdf' || fileDataToUse.type === 'application/pdf';
+    let isPdf = fileExtension === 'pdf' || fileDataToUse.type === 'application/pdf';
     const isChunkable = isPdf && CHUNKABLE_DOC_TYPES.includes(documentType);
 
     console.log(`[ParseDocument] File size: ${arrayBuffer.byteLength}, isPDF: ${isPdf}, isChunkable: ${isChunkable}`);
@@ -305,20 +305,40 @@ serve(async (req) => {
     let pdfBytesToParse = fileBytes;
     const chunkConfig = getChunkConfig(documentType);
 
-    // For all PDFs, try to validate/decrypt the PDF to strip restrictions
-    if (isPdf) {
+    // For large images (>4MB), convert to PDF to avoid the 5MB image API limit
+    const MAX_IMAGE_SIZE = 4 * 1024 * 1024;
+    if (!isPdf && arrayBuffer.byteLength > MAX_IMAGE_SIZE) {
+      console.log(`[ParseDocument] Image too large (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(1)} MB), converting to PDF`);
       try {
         const { PDFDocument } = await import('https://esm.sh/pdf-lib@1.17.1');
-        const pdfDoc = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
-        const pageCount = pdfDoc.getPageCount();
-        console.log(`[ParseDocument] PDF validated: ${pageCount} pages`);
-
-        const cleanedPdfBytes = await pdfDoc.save();
-        pdfBytesToParse = new Uint8Array(cleanedPdfBytes);
-        console.log(`[ParseDocument] PDF re-saved (stripped encryption), new size: ${cleanedPdfBytes.byteLength}`);
-      } catch (pdfError) {
-        console.warn(`[ParseDocument] PDF validation/cleanup failed:`, pdfError);
+        const pdfDoc = await PDFDocument.create();
+        const mimeType = (fileDataToUse.type || 'image/jpeg').toLowerCase();
+        const image = mimeType.includes('png')
+          ? await pdfDoc.embedPng(fileBytes)
+          : await pdfDoc.embedJpg(fileBytes);
+        const page = pdfDoc.addPage([image.width, image.height]);
+        page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+        const pdfBytes = await pdfDoc.save();
+        pdfBytesToParse = new Uint8Array(pdfBytes);
+        isPdf = true;
+        console.log(`[ParseDocument] Converted image to PDF, size: ${(pdfBytes.byteLength / 1024 / 1024).toFixed(1)} MB`);
+      } catch (convError) {
+        console.warn(`[ParseDocument] Image-to-PDF conversion failed, sending original:`, convError);
       }
+    }
+
+    // For PDFs, validate but never re-save — send original bytes to the API.
+    // pdf-lib re-save corrupts encrypted PDFs (copies encrypted streams without decrypting).
+    // The Anthropic PDF beta handles owner-password-only PDFs natively.
+    if (isPdf && !isChunkable) {
+      try {
+        const { PDFDocument } = await import('https://esm.sh/pdf-lib@1.17.1');
+        const pdfDoc = await PDFDocument.load(pdfBytesToParse, { ignoreEncryption: true });
+        console.log(`[ParseDocument] PDF validated: ${pdfDoc.getPageCount()} pages`);
+      } catch (pdfError) {
+        console.warn(`[ParseDocument] PDF validation failed:`, pdfError);
+      }
+      // Always use original bytes — no re-save
     }
 
     // For PDFs, determine if we need chunked processing
@@ -409,6 +429,7 @@ serve(async (req) => {
       headers: {
         "x-api-key": anthropicApiKey,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "pdfs-2024-09-25",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -427,13 +448,22 @@ serve(async (req) => {
       const errorText = await aiResponse.text();
       console.error(`[ParseDocument] AI API error: ${aiResponse.status}`, errorText);
 
+      // Parse error details for better debugging
+      let errorDetail = '';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorDetail = errorJson?.error?.message || errorText.substring(0, 200);
+      } catch {
+        errorDetail = errorText.substring(0, 200);
+      }
+
       await supabase
         .from("loan_documents")
         .update({
           parsing_status: 'failed',
           parsing_progress: {
             ...calculateProgress(currentPage, actualTotalPages, chunkConfig.pagesPerChunk),
-            error: `AI API error: ${aiResponse.status}`,
+            error: `AI API error: ${aiResponse.status} - ${errorDetail}`,
             failed_at_page: currentPage,
           },
         })
@@ -445,7 +475,7 @@ serve(async (req) => {
       if (aiResponse.status === 402) {
         throw new Error("AI credits exhausted. Please add funds to continue.");
       }
-      throw new Error(`AI parsing failed: ${aiResponse.status}`);
+      throw new Error(`AI parsing failed: ${aiResponse.status} - ${errorDetail}`);
     }
 
     const aiResult = await aiResponse.json();

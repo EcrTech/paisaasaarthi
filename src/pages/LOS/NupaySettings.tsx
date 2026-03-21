@@ -188,7 +188,7 @@ const NupaySettings = () => {
     }) => {
       if (!orgId) throw new Error("No organization selected");
 
-      const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/nupay-webhook-handler`;
+      const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-webhook-handler`;
 
       const { error } = await supabase
         .from("nupay_config")
@@ -341,7 +341,7 @@ const NupaySettings = () => {
 
   const uatConfig = configs?.find(c => c.environment === "uat");
   const prodConfig = configs?.find(c => c.environment === "production");
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/nupay-webhook-handler`;
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-webhook-handler`;
 
   const filteredBanks = banksData?.banks?.filter(bank => 
     bank.name.toLowerCase().includes(bankSearchQuery.toLowerCase()) ||
@@ -685,7 +685,7 @@ const NupaySettings = () => {
                   <Label>Webhook URL</Label>
                   <div className="flex gap-2">
                     <Input 
-                      value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/nupay-collection-webhook`} 
+                      value={`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`} 
                       readOnly 
                       className="bg-muted text-xs" 
                     />
@@ -693,7 +693,7 @@ const NupaySettings = () => {
                       variant="outline"
                       size="icon"
                       onClick={() => {
-                        navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/nupay-collection-webhook`);
+                        navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`);
                         toast.success("Webhook URL copied");
                       }}
                     >
@@ -785,7 +785,7 @@ const NupaySettings = () => {
                   <Label>Webhook URL</Label>
                   <div className="flex gap-2">
                     <Input 
-                      value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/nupay-collection-webhook`} 
+                      value={`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`} 
                       readOnly 
                       className="bg-muted text-xs" 
                     />
@@ -793,7 +793,7 @@ const NupaySettings = () => {
                       variant="outline"
                       size="icon"
                       onClick={() => {
-                        navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/nupay-collection-webhook`);
+                        navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`);
                         toast.success("Webhook URL copied");
                       }}
                     >

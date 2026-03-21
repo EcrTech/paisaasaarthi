@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
 
     if (existingToken) {
       // Return existing active token
-      const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://app.paisasaarthi.com';
+      const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://paisaasaarthi.com';
       return new Response(
         JSON.stringify({
           success: true,
@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://app.paisasaarthi.com';
+    const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://paisaasaarthi.com';
     const uploadUrl = `${frontendUrl}/upload-documents/${newToken.access_token}`;
 
     console.log(`[generate-document-upload-link] Generated link for application ${applicationId}: ${uploadUrl}`);
@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
           .from('communication_templates')
           .select('template_name')
           .eq('org_id', profile.org_id)
-          .eq('template_name', 'doc_upload_link')
+          .eq('template_name', 'doc_upload')
           .eq('status', 'approved')
           .maybeSingle();
 
@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
         };
 
         if (templateData) {
-          whatsappBody.templateName = 'doc_upload_link';
+          whatsappBody.templateName = 'doc_upload';
           whatsappBody.templateVariables = {
             '1': applicantName,
             '2': applicationId.slice(0, 8).toUpperCase(),

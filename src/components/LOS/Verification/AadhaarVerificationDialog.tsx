@@ -77,9 +77,9 @@ export default function AadhaarVerificationDialog({
     }
   }, [aadhaarOcr, existingVerification]);
 
-  const [digilockerUrl, setDigilockerUrl] = useState<string | null>(null);
-  const [uniqueRequestNumber, setUniqueRequestNumber] = useState<string | null>(
-    existingVerification?.request_data?.unique_request_number || null
+  const [verificationLink, setVerificationLink] = useState<string | null>(null);
+  const [verificationRecordId, setVerificationRecordId] = useState<string | null>(
+    existingVerification?.id || null
   );
   const [whatsappSent, setWhatsappSent] = useState(false);
   const [whatsappError, setWhatsappError] = useState<string | null>(null);
@@ -96,54 +96,57 @@ export default function AadhaarVerificationDialog({
   const applicantEmail = applicant?.email || "";
   const applicantName = `${applicant?.first_name || ""} ${applicant?.last_name || ""}`.trim() || "Customer";
 
-  // Initiate Aadhaar verification via VerifiedU DigiLocker
-  const initiateMutation = useMutation({
+  // Generate verification link: create a pending record and build the URL
+  const generateLinkMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('verifiedu-aadhaar-initiate', {
-        body: {
-          applicationId,
-          orgId,
-          successUrl: `${window.location.origin}/digilocker/success`,
-          failureUrl: `${window.location.origin}/digilocker/failure`,
-        },
-      });
+      // Create a pending verification record
+      const { data, error } = await supabase
+        .from("loan_verifications")
+        .insert({
+          loan_application_id: applicationId,
+          applicant_id: applicant?.id,
+          verification_type: "aadhaar",
+          verification_source: "surepass",
+          status: "pending",
+          request_data: {
+            initiated_at: new Date().toISOString(),
+          },
+        })
+        .select("id")
+        .single();
 
       if (error) throw error;
-      if (!data.success) throw new Error(data.error || "Failed to initiate Aadhaar verification");
       return data;
     },
-    onSuccess: async (data) => {
-      const url = data.data.url;
-      const reqNumber = data.data.unique_request_number;
-      setDigilockerUrl(url);
-      setUniqueRequestNumber(reqNumber);
+    onSuccess: (data) => {
+      const link = `${window.location.origin}/verify-aadhaar/${data.id}`;
+      setVerificationLink(link);
+      setVerificationRecordId(data.id);
       toast({
-        title: "DigiLocker Verification Initiated",
+        title: "Verification Link Generated",
         description: "Sending verification link to the customer...",
       });
 
       // Auto-send WhatsApp and Email in parallel
-      if (applicantPhone) autoSendWhatsApp(url);
-      if (applicantEmail) autoSendEmail(url);
+      if (applicantPhone) autoSendWhatsApp(link);
+      if (applicantEmail) autoSendEmail(link);
     },
     onError: (error: any) => {
       toast({
         variant: "destructive",
-        title: "Initiation Failed",
-        description: error.message || "Failed to initiate Aadhaar verification",
+        title: "Failed",
+        description: error.message || "Failed to generate verification link",
       });
     },
   });
 
-  // Send verification link via WhatsApp (uses template for cold outreach)
+  // Send verification link via WhatsApp
   const sendWhatsApp = async (url?: string) => {
-    const linkUrl = url || digilockerUrl;
+    const linkUrl = url || verificationLink;
     if (!linkUrl || !applicantPhone) return;
     setSendingWhatsapp(true);
     setWhatsappError(null);
     try {
-      // Use approved template "aadhaar_verification_link" with variables:
-      // {{1}} = customer name, {{2}} = application ID, {{3}} = DigiLocker URL
       const { data, error } = await supabase.functions.invoke('send-whatsapp-message', {
         body: {
           phoneNumber: applicantPhone,
@@ -173,7 +176,7 @@ export default function AadhaarVerificationDialog({
 
   // Send verification link via Email
   const sendEmail = async (url?: string) => {
-    const linkUrl = url || digilockerUrl;
+    const linkUrl = url || verificationLink;
     if (!linkUrl || !applicantEmail) return;
     setSendingEmail(true);
     setEmailError(null);
@@ -221,55 +224,45 @@ export default function AadhaarVerificationDialog({
     }
   };
 
-  // Auto-send functions called from initiateMutation.onSuccess
   const autoSendWhatsApp = (url: string) => sendWhatsApp(url);
   const autoSendEmail = (url: string) => sendEmail(url);
 
-  // Check verification status via VerifiedU
+  // Check verification status — just query the DB
   const checkStatus = async () => {
-    if (!uniqueRequestNumber) {
-      toast({ variant: "destructive", title: "No request number available" });
+    const recordId = verificationRecordId || existingVerification?.id;
+    if (!recordId) {
+      toast({ variant: "destructive", title: "No verification record found" });
       return;
     }
     setCheckingStatus(true);
     try {
-      const { data, error } = await supabase.functions.invoke('verifiedu-aadhaar-details', {
-        body: {
-          uniqueRequestNumber,
-          applicationId,
-          orgId,
-        },
-      });
+      const { data, error } = await supabase
+        .from("loan_verifications")
+        .select("*")
+        .eq("id", recordId)
+        .single();
 
       if (error) throw error;
 
-      if (data?.success && data?.data?.is_valid) {
-        // Verification complete - update form with response data
-        const aadhaarData = data.data;
-        const address = aadhaarData.addresses?.[0]?.combined || "";
-        const aadhaarUid = aadhaarData.aadhaar_uid || "";
-        const last4 = aadhaarUid.slice(-4);
-
+      if (data.status === "success" && data.response_data) {
+        const responseData = data.response_data as Record<string, any>;
         setFormData(prev => ({
           ...prev,
-          name: aadhaarData.name || prev.name,
-          verified_address: address || prev.verified_address,
-          aadhaar_last4: last4 || prev.aadhaar_last4,
+          name: responseData.name || prev.name,
+          verified_address: responseData.verified_address || prev.verified_address,
+          aadhaar_last4: responseData.aadhaar_last4 || prev.aadhaar_last4,
           aadhaar_status: "valid",
           status: "success",
           address_match_result: "exact",
         }));
         setVerificationComplete(true);
-
-        toast({ title: "Aadhaar Verified!", description: `Customer ${aadhaarData.name} verified successfully via DigiLocker` });
-
-        // Invalidate queries to refresh the verification status in the dashboard
+        toast({ title: "Aadhaar Verified!", description: `Customer ${responseData.name || ""} verified successfully via DigiLocker` });
         queryClient.invalidateQueries({ queryKey: ["loan-verifications", applicationId] });
-      } else if (data?.success && data?.data && !data?.data?.is_valid) {
+      } else if (data.status === "failed") {
         toast({
           variant: "destructive",
           title: "Verification Failed",
-          description: "Aadhaar verification returned invalid. Customer may need to retry.",
+          description: "Aadhaar verification failed. Customer may need to retry.",
         });
         setFormData(prev => ({ ...prev, status: "failed", aadhaar_status: "invalid" }));
       } else {
@@ -280,20 +273,11 @@ export default function AadhaarVerificationDialog({
       }
     } catch (err: any) {
       console.error("Status check error:", err);
-      const errMsg = err?.message || "";
-      if (errMsg.includes("409") || errMsg.includes("mismatch") || errMsg.includes("Conflict")) {
-        toast({
-          variant: "destructive",
-          title: "Temporary Issue",
-          description: "The verification service returned a temporary error. Please wait a moment and click 'Check Status' again.",
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Status Check Failed",
-          description: "Failed to check verification status. The customer may not have completed verification yet.",
-        });
-      }
+      toast({
+        variant: "destructive",
+        title: "Status Check Failed",
+        description: "Failed to check verification status.",
+      });
     } finally {
       setCheckingStatus(false);
     }
@@ -301,8 +285,8 @@ export default function AadhaarVerificationDialog({
 
   // Copy link to clipboard
   const copyLink = () => {
-    if (digilockerUrl) {
-      navigator.clipboard.writeText(digilockerUrl);
+    if (verificationLink) {
+      navigator.clipboard.writeText(verificationLink);
       toast({ title: "Link copied to clipboard" });
     }
   };
@@ -313,11 +297,10 @@ export default function AadhaarVerificationDialog({
         loan_application_id: applicationId,
         applicant_id: applicant?.id,
         verification_type: "aadhaar",
-        verification_source: "verifiedu",
+        verification_source: "surepass",
         status: formData.status,
         request_data: {
           aadhaar_last4: formData.aadhaar_last4,
-          unique_request_number: uniqueRequestNumber,
         },
         response_data: {
           verified_address: formData.verified_address,
@@ -329,11 +312,12 @@ export default function AadhaarVerificationDialog({
         verified_at: new Date().toISOString(),
       };
 
-      if (existingVerification) {
+      const recordId = verificationRecordId || existingVerification?.id;
+      if (recordId) {
         const { error } = await supabase
           .from("loan_verifications")
           .update(verificationData)
-          .eq("id", existingVerification.id);
+          .eq("id", recordId);
         if (error) throw error;
       } else {
         const { error } = await supabase
@@ -356,8 +340,8 @@ export default function AadhaarVerificationDialog({
     },
   });
 
-  // Determine if we're in "already initiated" state (e.g. existing in_progress verification)
-  const isAlreadyInitiated = !!uniqueRequestNumber && !digilockerUrl && existingVerification?.status === "in_progress";
+  // Determine if we're in "already initiated" state
+  const isAlreadyInitiated = !verificationLink && existingVerification?.status === "in_progress";
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -389,8 +373,8 @@ export default function AadhaarVerificationDialog({
             </div>
           </div>
 
-          {/* Step 1: Initiate Verification */}
-          {!digilockerUrl && !isAlreadyInitiated && !verificationComplete && (
+          {/* Step 1: Generate Link */}
+          {!verificationLink && !isAlreadyInitiated && !verificationComplete && (
             <>
               <Alert>
                 <AlertCircle className="h-4 w-4" />
@@ -400,20 +384,20 @@ export default function AadhaarVerificationDialog({
               </Alert>
 
               <Button
-                onClick={() => initiateMutation.mutate()}
-                disabled={initiateMutation.isPending}
+                onClick={() => generateLinkMutation.mutate()}
+                disabled={generateLinkMutation.isPending}
                 variant="default"
                 className="w-full"
               >
-                {initiateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {generateLinkMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 <Send className="mr-2 h-4 w-4" />
                 Generate Verification Link
               </Button>
             </>
           )}
 
-          {/* Step 2: Send link to customer */}
-          {(digilockerUrl || isAlreadyInitiated) && !verificationComplete && (
+          {/* Step 2: Link generated — send & check */}
+          {(verificationLink || isAlreadyInitiated) && !verificationComplete && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-md">
                 <CheckCircle className="h-4 w-4 text-primary" />
@@ -421,10 +405,10 @@ export default function AadhaarVerificationDialog({
               </div>
 
               {/* Link display with copy */}
-              {digilockerUrl && (
+              {verificationLink && (
                 <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
                   <Input
-                    value={digilockerUrl}
+                    value={verificationLink}
                     readOnly
                     className="text-xs h-8 font-mono"
                   />
@@ -455,7 +439,7 @@ export default function AadhaarVerificationDialog({
                       </Button>
                     </div>
                   ) : applicantPhone ? (
-                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendWhatsApp()} disabled={!digilockerUrl}>
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendWhatsApp()} disabled={!verificationLink}>
                       Send
                     </Button>
                   ) : null}
@@ -480,7 +464,7 @@ export default function AadhaarVerificationDialog({
                       </Button>
                     </div>
                   ) : applicantEmail ? (
-                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendEmail()} disabled={!digilockerUrl}>
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendEmail()} disabled={!verificationLink}>
                       Send
                     </Button>
                   ) : null}
@@ -490,7 +474,7 @@ export default function AadhaarVerificationDialog({
               {/* Check Status */}
               <div className="border-t pt-4">
                 <p className="text-sm text-muted-foreground mb-2">
-                  After the customer completes verification via DigiLocker, click below to fetch the results.
+                  After the customer completes verification via DigiLocker, click below to check the results.
                 </p>
                 <Button
                   onClick={checkStatus}

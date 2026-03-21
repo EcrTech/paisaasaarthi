@@ -394,13 +394,13 @@ const EmailSettings = () => {
                         <p className="text-xs text-muted-foreground mb-1">Webhook URL:</p>
                         <div className="flex items-center gap-2">
                           <code className="text-xs flex-1 break-all">
-                            {`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/email-inbound-webhook`}
+                            {`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/email-inbound-webhook`}
                           </code>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/email-inbound-webhook`);
+                              navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/email-inbound-webhook`);
                               notify.success("Copied to clipboard");
                             }}
                           >

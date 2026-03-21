@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { Mail, Building2, Calendar, ArrowRight, Shield, Check, Loader2, Clock } from "lucide-react";
+import { Mail, Building2, Calendar, ArrowRight, Shield, Check, Loader2, Clock, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -133,13 +133,23 @@ export function ContactConsentScreen({
     }
   }, [formData.email, emailOtpSent, verificationStatus.emailVerified, sendingEmailOtp]);
 
+  // Reset office email OTP state when email changes after OTP was sent
+  useEffect(() => {
+    if (officeEmailOtpSent && formData.officeEmail !== lastOfficeEmailSentRef.current) {
+      setOfficeEmailOtpSent(false);
+      setOfficeEmailOtp("");
+      setOfficeEmailSessionId("");
+      setOfficeEmailTimer(0);
+    }
+  }, [formData.officeEmail, officeEmailOtpSent]);
+
   // Auto-send OTP for office email
   useEffect(() => {
     const isValidOfficeEmail = formData.officeEmail?.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
     if (
-      isValidOfficeEmail && 
-      !officeEmailOtpSent && 
-      !verificationStatus.officeEmailVerified && 
+      isValidOfficeEmail &&
+      !officeEmailOtpSent &&
+      !verificationStatus.officeEmailVerified &&
       !sendingOfficeEmailOtp &&
       lastOfficeEmailSentRef.current !== formData.officeEmail
     ) {
@@ -329,11 +339,24 @@ export function ContactConsentScreen({
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 </div>
+              ) : formData.officeEmail ? (
+                <button
+                  onClick={() => onUpdate({ officeEmail: '' })}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted transition-colors"
+                  type="button"
+                >
+                  <X className="h-4 w-4 text-muted-foreground" />
+                </button>
               ) : null}
             </div>
             {!formData.officeEmail && (
               <p className="text-[11px] text-muted-foreground">
                 For official communications
+              </p>
+            )}
+            {formData.officeEmail && !formData.officeEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/) && (
+              <p className="text-xs text-destructive">
+                Please enter a valid email address or clear the field
               </p>
             )}
             {officeEmailOtpSent && !verificationStatus.officeEmailVerified && (
@@ -352,11 +375,21 @@ export function ContactConsentScreen({
                 >
                   {verifyingOfficeEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
                 </Button>
-                {officeEmailTimer > 0 && (
+                {officeEmailTimer > 0 ? (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-[45px]">
                     <Clock className="h-3 w-3" />
                     {formatTimer(officeEmailTimer)}
                   </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    onClick={() => sendOtp('officeEmail')}
+                    disabled={sendingOfficeEmailOtp}
+                    className="h-10 px-3 text-xs text-primary hover:text-primary"
+                    type="button"
+                  >
+                    Resend
+                  </Button>
                 )}
               </div>
             )}

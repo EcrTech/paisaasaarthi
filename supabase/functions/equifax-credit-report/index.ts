@@ -136,15 +136,15 @@ function parseDPDFromPaymentHistory(history: string): number {
  * PAN=T, Passport=P, Voter=V, DL=D, Aadhaar=M, Ration=R, Other=O
  */
 function buildIDDetails(panNumber: string, aadhaarNumber: string): any[] {
-  return [
-    { seq: "1", IDType: "T", IDValue: panNumber || "", Source: "Inquiry" },
-    { seq: "2", IDType: "P", IDValue: "", Source: "Inquiry" },
-    { seq: "3", IDType: "V", IDValue: "", Source: "Inquiry" },
-    { seq: "4", IDType: "D", IDValue: "", Source: "Inquiry" },
-    { seq: "5", IDType: "M", IDValue: aadhaarNumber ? aadhaarNumber.replace(/\s/g, "") : "", Source: "Inquiry" },
-    { seq: "6", IDType: "R", IDValue: "", Source: "Inquiry" },
-    { seq: "7", IDType: "O", IDValue: "", Source: "Inquiry" },
-  ];
+  const details: any[] = [];
+  let seq = 1;
+  if (panNumber) {
+    details.push({ seq: String(seq++), IDType: "T", IDValue: panNumber });
+  }
+  if (aadhaarNumber) {
+    details.push({ seq: String(seq++), IDType: "M", IDValue: aadhaarNumber.replace(/\s/g, "") });
+  }
+  return details;
 }
 
 /**
@@ -505,37 +505,44 @@ serve(async (req) => {
       throw new Error(`Missing Equifax credentials: ${missing.join(", ")}. Please configure them in settings.`);
     }
 
-    // Build request - PCS CIR 360 JSON format
+    // Build request - IDCR JSON format
     const stateCode = getStateCode(applicantData.address.state, applicantData.address.postal);
     console.log("[EQUIFAX] State code:", stateCode);
 
-    // Build RequestBody - only include MiddleName/LastName if non-empty
+    // Build RequestBody matching IDCR sample format exactly
     const requestBody: any = {
       InquiryPurpose: "00",
+      TransactionAmount: "0",
       FirstName: applicantData.firstName,
-      DOB: formatDate(applicantData.dob),
+      MiddleName: applicantData.middleName || "",
+      LastName: applicantData.lastName || "",
       InquiryAddresses: [{
         seq: "1",
-        AddressType: ["H"],
         AddressLine1: applicantData.address.line1,
+        AddressLine2: "",
+        Locality: applicantData.address.city,
+        City: applicantData.address.city,
         State: stateCode,
+        AddressType: ["H"],
         Postal: applicantData.address.postal,
       }],
       InquiryPhones: [{
         seq: "1",
-        PhoneType: ["M"],
         Number: applicantData.mobile,
+        PhoneType: ["M"],
+      }],
+      EmailAddresses: [{
+        seq: "1",
+        Email: "",
+        EmailType: ["O"],
       }],
       IDDetails: buildIDDetails(applicantData.panNumber, applicantData.aadhaarNumber),
+      DOB: formatDate(applicantData.dob),
+      Gender: applicantData.gender === "female" ? "F" : "M",
+      CustomFields: [
+        { key: "EmbeddedPdf", value: "Y" },
+      ],
     };
-
-    // Only include MiddleName and LastName if they have values
-    if (applicantData.middleName) {
-      requestBody.MiddleName = applicantData.middleName;
-    }
-    if (applicantData.lastName) {
-      requestBody.LastName = applicantData.lastName;
-    }
 
     const equifaxRequest = {
       RequestHeader: {
@@ -545,7 +552,7 @@ serve(async (req) => {
         MemberNumber: memberNumber,
         SecurityCode: securityCode,
         CustRefField: applicationId,
-        ProductCode: ["PCS"],
+        ProductCode: ["IDCR"],
       },
       RequestBody: requestBody,
       Score: [{ Type: "ERS", Version: "4.0" }],
@@ -555,51 +562,42 @@ serve(async (req) => {
     let rawApiResponse: any = null;
 
     try {
-      console.log("[EQUIFAX] ========== SENDING PCS JSON REQUEST ==========");
+      console.log("[EQUIFAX] ========== SENDING IDCR JSON REQUEST VIA DB PROXY ==========");
 
       const redactedBody = JSON.stringify(equifaxRequest)
         .replace(/"Password":"[^"]*"/g, '"Password":"***REDACTED***"')
         .replace(/"SecurityCode":"[^"]*"/g, '"SecurityCode":"***REDACTED***"');
       console.log("[EQUIFAX] Request (redacted):", redactedBody);
 
-      // 25-second timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      // Route through database proxy for static IP (52.78.20.116)
+      const { data: proxyResult, error: proxyError } = await supabase.rpc('proxy_http_post', {
+        target_url: apiUrl,
+        request_body: JSON.stringify(equifaxRequest),
+      });
 
-      let response: Response;
-      try {
-        response = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-          },
-          body: JSON.stringify(equifaxRequest),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId);
-        if (fetchError.name === 'AbortError') {
-          throw new Error("Equifax API request timed out after 25 seconds");
-        }
-        throw fetchError;
+      if (proxyError) {
+        console.error("[EQUIFAX] DB proxy error:", proxyError);
+        throw new Error(`DB proxy failed: ${proxyError.message}`);
       }
 
-      console.log("[EQUIFAX] Response Status:", response.status, response.statusText);
-
-      const responseText = await response.text();
+      const responseText = proxyResult || "";
       console.log("[EQUIFAX] Response length:", responseText.length);
+      if (responseText.length < 500) {
+        console.log("[EQUIFAX] Full response:", responseText);
+      } else {
+        console.log("[EQUIFAX] Response preview:", responseText.substring(0, 500));
+      }
 
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}: ${responseText.substring(0, 500)}`);
+      if (responseText.length === 0) {
+        throw new Error("Equifax API returned empty response (IP may not be whitelisted yet)");
       }
 
       try {
         rawApiResponse = JSON.parse(responseText);
         console.log("[EQUIFAX] Response keys:", Object.keys(rawApiResponse));
       } catch (parseError: any) {
-        throw new Error(`Failed to parse Equifax response as JSON: ${parseError.message}`);
+        console.error("[EQUIFAX] Raw response (first 1000 chars):", responseText.substring(0, 1000));
+        throw new Error(`Failed to parse Equifax response as JSON (len=${responseText.length}): ${responseText.substring(0, 200)}`);
       }
 
       // Check for API error response
@@ -615,6 +613,35 @@ serve(async (req) => {
       reportData.requestFormat = "json";
       console.log("[EQUIFAX] Credit Score:", reportData.creditScore, "Hit Code:", reportData.hitCode);
 
+      // Extract and store embedded PDF if present
+      const encodedPdf = rawApiResponse.EncodedPdf;
+      if (encodedPdf) {
+        try {
+          console.log("[EQUIFAX] Found EncodedPdf, saving to storage...");
+          const pdfBytes = Uint8Array.from(atob(encodedPdf), c => c.charCodeAt(0));
+          const pdfPath = `${orgId}/${applicationId}/equifax_report_${Date.now()}.pdf`;
+
+          const { error: pdfUploadError } = await supabase.storage
+            .from("loan-documents")
+            .upload(pdfPath, pdfBytes, {
+              contentType: "application/pdf",
+              cacheControl: "3600",
+              upsert: true,
+            });
+
+          if (pdfUploadError) {
+            console.error("[EQUIFAX] PDF upload error:", pdfUploadError);
+          } else {
+            reportData.report_file_path = pdfPath;
+            console.log("[EQUIFAX] PDF saved to:", pdfPath);
+          }
+        } catch (pdfErr: any) {
+          console.error("[EQUIFAX] PDF extraction error:", pdfErr.message);
+        }
+      } else {
+        console.log("[EQUIFAX] No EncodedPdf in response");
+      }
+
     } catch (apiError: any) {
       console.error("[EQUIFAX] API call failed:", apiError.message);
       throw new Error(`Failed to fetch credit report: ${apiError.message}`);
@@ -629,7 +656,7 @@ serve(async (req) => {
         MemberNumber: memberNumber,
         SecurityCode: "***REDACTED***",
         CustRefField: applicationId,
-        ProductCode: ["PCS"],
+        ProductCode: ["IDCR"],
       },
       RequestBody: {
         InquiryPurpose: "00",
@@ -671,7 +698,7 @@ serve(async (req) => {
         request_timestamp: new Date().toISOString(),
         full_request: redactedRequestForStorage,
         api_url_used: apiUrl,
-        request_format: "pcs_json",
+        request_format: "idcr_json",
       },
       response_data: {
         bureau_type: "equifax",
@@ -693,16 +720,18 @@ serve(async (req) => {
         enquiry_count_90d: reportData.enquiries.total90Days,
         name_on_report: reportData.personalInfo.name,
         pan_on_report: reportData.personalInfo.pan,
+        report_file_path: reportData.report_file_path || null,
         is_live_fetch: true,
         is_mock: false,
         raw_api_response: {
           summary: "Full response parsed into structured data above",
           hitCode: reportData?.hitCode,
           accountCount: reportData?.accounts?.length || 0,
+          hasPdf: !!reportData.report_file_path,
         },
         debug_info: {
           response_timestamp: new Date().toISOString(),
-          response_format: "pcs_json",
+          response_format: "idcr_json",
         }
       },
       remarks: (reportData.hitCode === "10" || reportData.hitCode === "01")
@@ -731,8 +760,10 @@ serve(async (req) => {
         .insert(verificationData);
     }
 
+    // Strip large fields before sending to frontend
+    const { rawResponse, ...clientData } = reportData;
     return new Response(
-      JSON.stringify({ success: true, data: reportData }),
+      JSON.stringify({ success: true, data: clientData }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {

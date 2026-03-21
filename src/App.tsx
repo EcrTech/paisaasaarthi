@@ -78,6 +78,7 @@ import VideoKYC from "./pages/VideoKYC";
 import PublicDocumentUpload from "./pages/PublicDocumentUpload";
 import DigilockerSuccess from "./pages/DigilockerSuccess";
 import DigilockerFailure from "./pages/DigilockerFailure";
+import VerifyAadhaar from "./pages/VerifyAadhaar";
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
 
 console.log('[App] Module loaded, all imports successful');
@@ -114,6 +115,7 @@ const App = () => {
             <Route path="/upload-documents/:token" element={<PublicDocumentUpload />} />
             <Route path="/digilocker/success" element={<DigilockerSuccess />} />
             <Route path="/digilocker/failure" element={<DigilockerFailure />} />
+            <Route path="/verify-aadhaar/:verificationId" element={<VerifyAadhaar />} />
             
             <Route path="/dashboard" element={
               <ProtectedRoute>

@@ -138,7 +138,7 @@ export function useUPICollection() {
       // If pending, call the status API
       if (data && data.status === "pending") {
         const statusResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/nupay-collection-status?client_reference_id=${clientReferenceId}`,
+          `${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-status?client_reference_id=${clientReferenceId}`,
           {
             headers: {
               "Authorization": `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,

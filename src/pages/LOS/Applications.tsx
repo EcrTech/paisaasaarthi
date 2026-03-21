@@ -100,6 +100,7 @@ const { data: applications = [], isLoading } = useQuery({
           application_number,
           status,
           current_stage,
+          rejection_reason,
           requested_amount,
           tenure_days,
           source,
@@ -410,9 +411,16 @@ const { data: applications = [], isLoading } = useQuery({
                             {getApplicantName(app)}
                           </TableCell>
                           <TableCell className="py-2">
-                            <Badge className={`${STATUS_COLORS[app.status] || "bg-muted"} text-white text-[10px] px-2 py-0 h-5`}>
-                              {app.status.replace("_", " ").toUpperCase()}
-                            </Badge>
+                            <div className="flex flex-col gap-0.5">
+                              <Badge className={`${STATUS_COLORS[app.status] || "bg-muted"} text-white text-[10px] px-2 py-0 h-5 w-fit`}>
+                                {app.status.replace("_", " ").toUpperCase()}
+                              </Badge>
+                              {app.status === "rejected" && app.rejection_reason && (
+                                <span className="text-[10px] text-red-600 leading-tight">
+                                  {app.rejection_reason}
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="py-2">
                             <Badge variant="outline" className="text-[10px] px-2 py-0 h-5">

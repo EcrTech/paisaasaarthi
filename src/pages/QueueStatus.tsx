@@ -72,7 +72,7 @@ const QueueStatus = () => {
   const handleCancel = async (jobId: string) => {
     try {
       const serviceClient = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co",
         import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
       );
 
