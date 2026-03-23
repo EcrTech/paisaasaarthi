@@ -1,8 +1,8 @@
 /**
- * Transform Experian raw response (from VerifiedU API) into the format
- * expected by the CreditReportViewer component.
+ * Transform Experian raw response into the format expected by the
+ * CreditReportViewer component.
  *
- * The input is the `raw_response` field stored by the verifiedu-credit-report
+ * The input is the `raw_response` field stored by the credit-report
  * edge function, which contains the full INProfileResponse from Experian.
  */
 

@@ -54,10 +54,9 @@ export function PANVerificationStep({
     setVerificationError(null);
 
     try {
-      // Call VerifiedU PAN verification (public endpoint)
-      console.log('[PAN Verification] Verifying PAN via VerifiedU:', panNumber.substring(0, 4) + '****');
+      console.log('[PAN Verification] Verifying PAN via Surepass:', panNumber.substring(0, 4) + '****');
       
-      const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verifiedu-public-pan-verify', {
+      const { data: verifyData, error: verifyError } = await supabase.functions.invoke('surepass-public-pan-verify', {
         body: {
           panNumber,
         },

@@ -103,13 +103,13 @@ export function BankDetailsSection({ applicationId, orgId, applicantId }: BankDe
     },
   });
 
-  // Bank verification mutation via VerifiedU API
+  // Bank verification mutation via Surepass API
   const verifyBankMutation = useMutation({
     mutationFn: async () => {
       if (!formData.bank_account_number || !formData.bank_ifsc_code) {
         throw new Error("Account number and IFSC code are required for verification");
       }
-      const { data, error } = await supabase.functions.invoke("verifiedu-bank-verify", {
+      const { data, error } = await supabase.functions.invoke("surepass-bank-verify", {
         body: {
           accountNumber: formData.bank_account_number,
           ifscCode: formData.bank_ifsc_code,
@@ -444,7 +444,7 @@ export function BankDetailsSection({ applicationId, orgId, applicantId }: BankDe
               )}
             </Button>
             <p className="text-xs text-muted-foreground mt-1">
-              Verify account details via VerifiedU API
+              Verify account details via Surepass API
             </p>
           </div>
         )}

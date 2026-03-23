@@ -103,14 +103,14 @@ export default function BankAccountVerificationDialog({
     }
   }, [bankStatementOcr]);
 
-  // Verify Bank Account via VerifiedU API
+  // Verify Bank Account via Surepass API
   const verifyMutation = useMutation({
     mutationFn: async () => {
       if (!formData.account_number || !formData.ifsc_code) {
         throw new Error("Please enter account number and IFSC code");
       }
 
-      const { data, error } = await supabase.functions.invoke('verifiedu-bank-verify', {
+      const { data, error } = await supabase.functions.invoke('surepass-bank-verify', {
         body: {
           accountNumber: formData.account_number,
           ifscCode: formData.ifsc_code,
@@ -127,7 +127,7 @@ export default function BankAccountVerificationDialog({
       toast({
         title: "Bank Account Verified",
         description: data.is_mock 
-          ? "Verified in mock mode (configure VerifiedU credentials for live verification)"
+          ? "Verified in mock mode (configure Surepass credentials for live verification)"
           : "Bank account details verified successfully",
       });
       // Update form with verified data
@@ -153,7 +153,7 @@ export default function BankAccountVerificationDialog({
         loan_application_id: applicationId,
         applicant_id: applicant?.id,
         verification_type: "bank_account",
-        verification_source: "verifiedu",
+        verification_source: "surepass",
         status: formData.status,
         request_data: {
           account_number: formData.account_number,
@@ -201,7 +201,7 @@ export default function BankAccountVerificationDialog({
         <DialogHeader>
           <DialogTitle>Bank Account Verification</DialogTitle>
           <DialogDescription>
-            Verify bank account details via VerifiedU API
+            Verify bank account details via Surepass API
           </DialogDescription>
         </DialogHeader>
 
@@ -242,7 +242,7 @@ export default function BankAccountVerificationDialog({
             className="w-full"
           >
             {verifyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Verify Account via VerifiedU
+            Verify Account
           </Button>
 
           {/* Verification Success Indicator */}

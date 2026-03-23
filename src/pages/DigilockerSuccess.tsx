@@ -21,7 +21,7 @@ export default function DigilockerSuccess() {
   const id = searchParams.get("id");
   const isMock = searchParams.get("mock") === "true";
   const returnUrlParam = searchParams.get("returnUrl"); // From callback chain
-  const callbackStatus = searchParams.get("status"); // Status from VerifiedU callback
+  const callbackStatus = searchParams.get("status");
 
   // Check if this is a referral form callback
   // Priority: URL param (survives cross-domain) > localStorage (same-domain fallback)
@@ -49,11 +49,10 @@ export default function DigilockerSuccess() {
         };
       }
 
-      const { data, error } = await supabase.functions.invoke("verifiedu-aadhaar-details", {
+      const { data, error } = await supabase.functions.invoke("surepass-aadhaar-save", {
         body: {
-          uniqueRequestNumber: id,
-          applicationId: isReferralCallback ? undefined : applicationId,
-          orgId: isReferralCallback ? undefined : orgId,
+          verificationId: id,
+          aadhaarData: { status: "callback", applicationId, orgId },
         },
       });
 
@@ -98,9 +97,10 @@ export default function DigilockerSuccess() {
       console.log("[DigilockerSuccess] Fetching Aadhaar details for referral...");
       setStatus("loading");
 
-      const { data, error } = await supabase.functions.invoke("verifiedu-public-aadhaar-details", {
+      const { data, error } = await supabase.functions.invoke("surepass-aadhaar-save", {
         body: {
-          uniqueRequestNumber: id,
+          verificationId: id,
+          aadhaarData: { status: "callback" },
         },
       });
 
