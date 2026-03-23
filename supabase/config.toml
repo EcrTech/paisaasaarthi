@@ -78,6 +78,9 @@ verify_jwt = false
 [functions.experian-credit-report]
 verify_jwt = false
 
+[functions.quick-credit-analysis]
+verify_jwt = false
+
 [functions.equifax-credit-report]
 verify_jwt = false
 
@@ -130,4 +133,163 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-whatsapp-message]
+verify_jwt = false
+
+[functions.analyze-campaign-performance]
+verify_jwt = false
+
+[functions.analyze-lead]
+verify_jwt = false
+
+[functions.analyze-pipeline-performance]
+verify_jwt = false
+
+[functions.auto-topup-check]
+verify_jwt = false
+
+[functions.automation-email-sender]
+verify_jwt = false
+
+[functions.automation-trigger-handler]
+verify_jwt = false
+
+[functions.blog-webhook]
+verify_jwt = false
+
+[functions.bulk-delete]
+verify_jwt = false
+
+[functions.bulk-import-trigger]
+verify_jwt = false
+
+[functions.bulk-whatsapp-sender]
+verify_jwt = false
+
+[functions.chat-campaign-assistant]
+verify_jwt = false
+
+[functions.check-next-actions]
+verify_jwt = false
+
+[functions.create-draft-referral-application]
+verify_jwt = false
+
+[functions.daily-lead-scoring]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.email-inbound-webhook]
+verify_jwt = false
+
+[functions.email-tracking]
+verify_jwt = false
+
+[functions.exotel-get-recording]
+verify_jwt = false
+
+[functions.exotel-make-call]
+verify_jwt = false
+
+[functions.exotel-sync-call-logs]
+verify_jwt = false
+
+[functions.exotel-webhook]
+verify_jwt = false
+
+[functions.generate-document-upload-link]
+verify_jwt = false
+
+[functions.generate-monthly-invoices]
+verify_jwt = false
+
+[functions.indiamart-webhook]
+verify_jwt = false
+
+[functions.manage-resend-domain]
+verify_jwt = false
+
+[functions.manage-user]
+verify_jwt = false
+
+[functions.nupay-esign-request]
+verify_jwt = false
+
+[functions.nupay-esign-status]
+verify_jwt = false
+
+[functions.nupay-esign-webhook]
+verify_jwt = false
+
+[functions.outbound-webhook-handler]
+verify_jwt = false
+
+[functions.parse-cibil-report]
+verify_jwt = false
+
+[functions.process-bulk-import]
+verify_jwt = false
+
+[functions.public-document-upload]
+verify_jwt = false
+
+[functions.queue-manager]
+verify_jwt = false
+
+[functions.queue-processor]
+verify_jwt = false
+
+[functions.retry-failed-whatsapp]
+verify_jwt = false
+
+[functions.rollback-bulk-import]
+verify_jwt = false
+
+[functions.scheduled-messages-processor]
+verify_jwt = false
+
+[functions.send-application-confirmation]
+verify_jwt = false
+
+[functions.send-bulk-email]
+verify_jwt = false
+
+[functions.send-esign-notifications]
+verify_jwt = false
+
+[functions.send-meeting-invitation]
+verify_jwt = false
+
+[functions.send-otp]
+verify_jwt = false
+
+[functions.send-subscription-email]
+verify_jwt = false
+
+[functions.submit-public-form]
+verify_jwt = false
+
+[functions.submit-whatsapp-template]
+verify_jwt = false
+
+[functions.subscription-status-checker]
+verify_jwt = false
+
+[functions.sync-whatsapp-templates]
+verify_jwt = false
+
+[functions.unsubscribe]
+verify_jwt = false
+
+[functions.validate-document-upload-token]
+verify_jwt = false
+
+[functions.verifiedu-credit-report]
+verify_jwt = false
+
+[functions.verify-otp]
+verify_jwt = false
+
+[functions.webhook-receiver]
 verify_jwt = false
