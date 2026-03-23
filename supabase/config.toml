@@ -75,6 +75,9 @@ verify_jwt = false
 [functions.surepass-public-pan-verify]
 verify_jwt = false
 
+[functions.experian-credit-report]
+verify_jwt = false
+
 [functions.equifax-credit-report]
 verify_jwt = false
 
