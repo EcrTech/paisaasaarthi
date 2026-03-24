@@ -84,6 +84,7 @@ export default function ReferralLoanApplication() {
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [earlyLeadContactId, setEarlyLeadContactId] = useState<string | null>(null);
   const earlyLeadCreatedRef = useRef(false);
+  const [isProcessingStep, setIsProcessingStep] = useState(false);
   const [geolocation, setGeolocation] = useState<{
     latitude: number;
     longitude: number;
@@ -375,6 +376,62 @@ export default function ReferralLoanApplication() {
     }
   };
 
+  // Handle Step 1 Continue (with IP rate limit check via early lead)
+  const handleStep1Continue = async () => {
+    if (!geolocation) {
+      toast.error("Please enable location access to continue");
+      captureGeolocation();
+      return;
+    }
+
+    setIsProcessingStep(true);
+
+    // Fire Google & Meta lead pixels on Step 1 completion
+    if (!step1PixelFiredRef.current) {
+      trackStep1Lead(basicInfo.requestedAmount, utmParamsRef.current);
+      step1PixelFiredRef.current = true;
+    }
+
+    // Create early lead (blocking, checks IP rate limit)
+    if (!earlyLeadCreatedRef.current && referrerInfo) {
+      earlyLeadCreatedRef.current = true;
+      try {
+        const { data, error } = await supabase.functions.invoke('create-early-lead', {
+          body: {
+            name: basicInfo.name,
+            phone: basicInfo.phone,
+            loanAmount: basicInfo.requestedAmount,
+            referralCode: referrerInfo.referralCode,
+            source: getMarketingSource(utmParamsRef.current),
+            geolocation,
+          },
+        });
+
+        if (data?.ipLimited) {
+          toast.error(data.message || 'Only one application is allowed per device in 24 hours.');
+          earlyLeadCreatedRef.current = false;
+          setIsProcessingStep(false);
+          return;
+        }
+
+        if (!error && data?.success) {
+          console.log('[ReferralLoanApplication] Early lead created:', data);
+          setEarlyLeadContactId(data.contactId || null);
+          if (data.draftApplicationId) {
+            setDraftApplicationId(data.draftApplicationId);
+          }
+        } else {
+          console.warn('[ReferralLoanApplication] Early lead creation failed:', error || data?.error);
+        }
+      } catch (err) {
+        console.warn('[ReferralLoanApplication] Early lead creation error:', err);
+      }
+    }
+
+    setIsProcessingStep(false);
+    setBasicInfoSubStep(2);
+  };
+
   // Handle credit check rejection
   const handleCreditCheckFailed = async (score: number) => {
     setCreditScore(score);
@@ -444,12 +501,18 @@ export default function ReferralLoanApplication() {
         body: applicationData,
       });
 
-      // Check for function invocation error
-      if (submitError) throw submitError;
-
       // Check for error in response data (HTTP non-2xx responses)
       if (data?.error) {
         throw new Error(data.details?.join(', ') || data.error);
+      }
+
+      // Check for function invocation error (extract message from context if available)
+      if (submitError) {
+        const ctx = submitError?.context;
+        if (typeof ctx === 'object' && ctx?.error) {
+          throw new Error(ctx.error);
+        }
+        throw submitError;
       }
 
       setApplicationNumber(data?.applicationNumber);
@@ -588,40 +651,8 @@ export default function ReferralLoanApplication() {
                   onConsentChange={handleConsentChange}
                   verificationStatus={{ phoneVerified: verificationStatus.phoneVerified }}
                   onVerificationComplete={() => handleVerificationComplete('phone')}
-                  onContinue={() => requireLocation(() => {
-                    // Fire Google & Meta lead pixels on Step 1 completion
-                    if (!step1PixelFiredRef.current) {
-                      trackStep1Lead(basicInfo.requestedAmount, utmParamsRef.current);
-                      step1PixelFiredRef.current = true;
-                    }
-                    // Create early lead (fire-and-forget, non-blocking)
-                    if (!earlyLeadCreatedRef.current && referrerInfo) {
-                      earlyLeadCreatedRef.current = true;
-                      supabase.functions.invoke('create-early-lead', {
-                        body: {
-                          name: basicInfo.name,
-                          phone: basicInfo.phone,
-                          loanAmount: basicInfo.requestedAmount,
-                          referralCode: referrerInfo.referralCode,
-                          source: getMarketingSource(utmParamsRef.current),
-                          geolocation,
-                        },
-                      }).then(({ data, error }) => {
-                        if (!error && data?.success) {
-                          console.log('[ReferralLoanApplication] Early lead created:', data);
-                          setEarlyLeadContactId(data.contactId || null);
-                          if (data.draftApplicationId) {
-                            setDraftApplicationId(data.draftApplicationId);
-                          }
-                        } else {
-                          console.warn('[ReferralLoanApplication] Early lead creation failed:', error || data?.error);
-                        }
-                      }).catch((err) => {
-                        console.warn('[ReferralLoanApplication] Early lead creation error:', err);
-                      });
-                    }
-                    setBasicInfoSubStep(2);
-                  })}
+                  isProcessing={isProcessingStep}
+                  onContinue={handleStep1Continue}
                 />
               </div>
             )}

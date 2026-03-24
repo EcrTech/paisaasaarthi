@@ -33,6 +33,7 @@ export function ContactConsentScreen({
   const [localTenure, setLocalTenure] = useState(formData.tenureDays || 30);
 
   // OTP states
+  const [isNavigating, setIsNavigating] = useState(false);
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [officeEmailOtpSent, setOfficeEmailOtpSent] = useState(false);
   const [emailOtp, setEmailOtp] = useState("");
@@ -397,8 +398,8 @@ export function ContactConsentScreen({
 
           {/* Continue Button */}
           <Button
-            onClick={onContinue}
-            disabled={!canContinue}
+            onClick={() => { setIsNavigating(true); onContinue(); }}
+            disabled={!canContinue || isNavigating}
             className="w-full h-[54px] text-base font-heading font-semibold rounded-[14px] bg-gradient-to-r from-primary to-[hsl(var(--teal-600))] shadow-[var(--shadow-teal)] hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:shadow-none disabled:transform-none"
           >
             Continue to PAN Verification

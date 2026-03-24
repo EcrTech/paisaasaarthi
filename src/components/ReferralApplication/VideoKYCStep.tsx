@@ -518,6 +518,7 @@ export function VideoKYCStep({
             {step === 'permissions' && (
               <Button
                 onClick={startRecording}
+                disabled={isRecording}
                 className="flex-1 h-14 text-base font-heading font-bold btn-coral rounded-xl"
               >
                 <Play className="h-5 w-5 mr-2" />
@@ -528,7 +529,7 @@ export function VideoKYCStep({
             {step === 'recording' && (
               <Button
                 onClick={stopRecording}
-                disabled={!allStagesComplete}
+                disabled={!allStagesComplete || !isRecording}
                 className="flex-1 h-14 text-base font-heading font-bold bg-[hsl(var(--error))] hover:bg-[hsl(var(--error))]/90 text-white rounded-xl shadow-lg transition-all disabled:opacity-50"
               >
                 {!allStagesComplete ? (

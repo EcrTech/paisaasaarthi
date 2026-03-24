@@ -24,6 +24,7 @@ interface LoanRequirementsScreenProps {
   onConsentChange: (consent: 'householdIncome' | 'termsAndConditions' | 'aadhaarConsent', value: boolean) => void;
   verificationStatus: { phoneVerified: boolean };
   onVerificationComplete: (type: 'phone') => void;
+  isProcessing?: boolean;
   onContinue: () => void;
 }
 
@@ -34,6 +35,7 @@ export function LoanRequirementsScreen({
   onConsentChange,
   verificationStatus,
   onVerificationComplete,
+  isProcessing = false,
   onContinue,
 }: LoanRequirementsScreenProps) {
   const [localAmount, setLocalAmount] = useState(formData.requestedAmount || 25000);
@@ -362,11 +364,20 @@ export function LoanRequirementsScreen({
           {/* Continue Button */}
           <Button
             onClick={onContinue}
-            disabled={!canContinue}
+            disabled={!canContinue || isProcessing}
             className="w-full h-[54px] text-base font-heading font-semibold rounded-[14px] bg-gradient-to-r from-primary to-[hsl(var(--teal-600))] shadow-[var(--shadow-teal)] hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:shadow-none disabled:transform-none"
           >
-            Continue
-            <ArrowRight className="h-5 w-5 ml-2" />
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                Continue
+                <ArrowRight className="h-5 w-5 ml-2" />
+              </>
+            )}
           </Button>
 
           {/* Trust badge */}

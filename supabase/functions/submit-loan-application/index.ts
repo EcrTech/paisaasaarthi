@@ -183,6 +183,28 @@ Deno.serve(async (req) => {
 
     // Handle referral application (simple form) vs full public form
     if (isReferralApplication) {
+      // 24-hour IP rate limit: only one referral application per IP per day
+      if (clientIP && clientIP !== 'unknown') {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentAppFromIP } = await supabase
+          .from('loan_applications')
+          .select('id')
+          .eq('submitted_from_ip', clientIP)
+          .neq('status', 'draft')
+          .neq('status', 'rejected')
+          .gte('created_at', twentyFourHoursAgo)
+          .limit(1)
+          .maybeSingle();
+
+        if (recentAppFromIP) {
+          console.log(`[submit-loan-application] 24h IP limit: ${clientIP} already has a recent application`);
+          return new Response(
+            JSON.stringify({ error: 'An application has already been submitted from this device in the last 24 hours. Please try again later.' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       // Simpler validation for referral applications
       const applicant = body.applicant;
       const errors: string[] = [];

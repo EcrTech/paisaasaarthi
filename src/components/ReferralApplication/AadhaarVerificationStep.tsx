@@ -74,6 +74,7 @@ export function AadhaarVerificationStep({
   const { trackAadhaarStart, trackAadhaarSuccess, trackStep } = useAnalytics();
   const [phase, setPhase] = useState<AadhaarPhase>(isVerified ? "verified" : "ready");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const [localDifferentAddress, setLocalDifferentAddress] = useState(isDifferentAddress);
   const [localCommAddress, setLocalCommAddress] = useState<CommunicationAddress>(
@@ -510,9 +511,10 @@ export function AadhaarVerificationStep({
               return;
             }
           }
+          setIsNavigating(true);
           onNext();
         }}
-        disabled={!isVerified && phase !== "verified"}
+        disabled={(!isVerified && phase !== "verified") || isNavigating}
         className="w-full h-14 text-lg font-heading font-bold btn-electric rounded-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
       >
         {isVerified || phase === "verified" ? (

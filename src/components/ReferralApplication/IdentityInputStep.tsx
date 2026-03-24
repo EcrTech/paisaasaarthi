@@ -39,6 +39,7 @@ export function IdentityInputStep({
   const isValidPanFormat = panRegex.test(panNumber);
 
   const [phase, setPhase] = useState<StepPhase>("pan_input");
+  const [isNavigating, setIsNavigating] = useState(false);
   const [panData, setPanData] = useState<{ name: string; dob: string } | null>(null);
   const [creditScore, setCreditScore] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -253,7 +254,8 @@ export function IdentityInputStep({
           </div>
 
           <Button
-            onClick={onNext}
+            onClick={() => { setIsNavigating(true); onNext(); }}
+            disabled={isNavigating}
             className="w-full h-14 text-lg font-heading font-bold btn-electric rounded-xl"
           >
             Continue to Aadhaar Verification
