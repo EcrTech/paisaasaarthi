@@ -209,38 +209,43 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
     }
   }, [existingEligibility, incomeFromSalarySlips, application]);
 
-  // Auto-calculate FOIR, eligible amount, and policy checks when inputs change
-  useEffect(() => {
+  const calculateFOIR = () => {
     const netIncome = parseFloat(formData.net_income) || 0;
     const existingEMI = parseFloat(formData.existing_emi_obligations) || 0;
     const proposedEMI = parseFloat(formData.proposed_emi) || 0;
+
+    if (netIncome === 0) return 0;
+
+    const foir = ((existingEMI + proposedEMI) / netIncome) * 100;
+    return Math.round(foir * 100) / 100;
+  };
+
+  const calculateEligibleAmount = () => {
+    const netIncome = parseFloat(formData.net_income) || 0;
+    const existingEMI = parseFloat(formData.existing_emi_obligations) || 0;
     const maxFOIR = parseFloat(formData.max_allowed_foir) || 50;
     const dailyInterestRate = parseFloat(formData.recommended_interest_rate) || 1;
     const tenureDays = parseInt(formData.recommended_tenure) || 30;
 
-    if (netIncome === 0) return;
-
-    // Calculate FOIR
-    const foir = Math.round(((existingEMI + proposedEMI) / netIncome) * 100 * 100) / 100;
-
-    // Calculate eligible amount
+    // Calculate max repayment capacity based on FOIR
     const maxRepayment = (netIncome * maxFOIR / 100) - existingEMI;
+
+    // For simple daily interest: Total = Principal * (1 + rate * days)
+    // So Principal = Total / (1 + rate * days)
     const totalInterestMultiplier = 1 + (dailyInterestRate / 100) * tenureDays;
-    const eligibleAmount = Math.round(maxRepayment / totalInterestMultiplier > 0 ? maxRepayment / totalInterestMultiplier : 0);
+    const eligibleAmount = maxRepayment / totalInterestMultiplier;
 
-    setFormData(prev => ({
-      ...prev,
-      foir_percentage: foir.toString(),
-      eligible_loan_amount: eligibleAmount.toString(),
-    }));
+    return Math.round(eligibleAmount > 0 ? eligibleAmount : 0);
+  };
 
-    // Run policy checks
+  const runPolicyChecks = () => {
     const checks: Record<string, { passed: boolean; details: string }> = {};
     const applicant = application?.loan_applicants?.[0] as any;
     const employment = applicant?.loan_employment_details?.[0] || applicant?.loan_employment_details;
     const creditBureau = application?.loan_verifications?.find((v: any) => v.verification_type === "credit_bureau");
     const panVerification = application?.loan_verifications?.find((v: any) => v.verification_type === "pan");
 
+    // Age check - use applicant DOB first, then fall back to PAN card DOB
     const applicantDob = applicant?.dob || (panVerification?.response_data as any)?.dob;
     if (applicantDob) {
       const age = Math.floor((Date.now() - new Date(applicantDob as string).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
@@ -252,14 +257,18 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
       checks.age = { passed: false, details: "DOB not available - upload PAN card" };
     }
 
+    // Income check
+    const netIncome = parseFloat(formData.net_income) || 0;
     checks.income = {
       passed: netIncome >= 25000,
       details: `Net monthly income: ₹${netIncome.toLocaleString()}`
     };
 
+    // Employment stability - check employment record first, then fall back to salary slip OCR data
     const dojFromEmployment = employment?.date_of_joining;
     const dojFromSalarySlip = salaryDocs?.find((d: any) => (d.ocr_data as any)?.date_of_joining)?.ocr_data as any;
     const dateOfJoining = dojFromEmployment || dojFromSalarySlip?.date_of_joining;
+    
     if (dateOfJoining) {
       const monthsInCompany = Math.floor((Date.now() - new Date(dateOfJoining as string).getTime()) / (1000 * 60 * 60 * 24 * 30));
       checks.employment = {
@@ -270,17 +279,21 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
       checks.employment = { passed: false, details: "Date of joining not available" };
     }
 
+    // Credit score from actual credit bureau verification
     const creditScore = (creditBureau?.response_data as any)?.credit_score || 0;
     checks.credit_score = {
       passed: creditScore >= 550,
       details: creditScore > 0 ? `CIBIL score: ${creditScore}` : "Credit bureau report not available - please upload CIBIL report"
     };
 
+    // FOIR check
+    const foir = calculateFOIR();
     checks.foir = {
-      passed: foir <= maxFOIR,
+      passed: foir <= parseFloat(formData.max_allowed_foir),
       details: `FOIR: ${foir.toFixed(2)}%`
     };
 
+    // Existing loans (mock - would need actual data)
     const activeAccounts = (creditBureau?.response_data as any)?.active_accounts || 0;
     checks.existing_loans = {
       passed: activeAccounts <= 3,
@@ -288,8 +301,23 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
     };
 
     setPolicyChecks(checks);
+    return checks;
+  };
+
+  const handleCalculate = () => {
+    const foir = calculateFOIR();
+    const eligibleAmount = calculateEligibleAmount();
+    const checks = runPolicyChecks();
+
+    setFormData({
+      ...formData,
+      foir_percentage: foir.toString(),
+      eligible_loan_amount: eligibleAmount.toString(),
+    });
+
     setHasCalculated(true);
-  }, [formData.net_income, formData.existing_emi_obligations, formData.proposed_emi, formData.max_allowed_foir, formData.recommended_interest_rate, formData.recommended_tenure, formData.loan_amount, application, salaryDocs]);
+    toast({ title: "Eligibility calculated successfully" });
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -376,18 +404,30 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
       // Get the recommended interest rate
       const interestRate = parseFloat(formData.recommended_interest_rate) || null;
       
+      // Fetch current stage dynamically to avoid stale-stage mismatch
+      const { data: currentApp } = await supabase
+        .from("loan_applications")
+        .select("current_stage")
+        .eq("id", applicationId)
+        .single();
+
+      const currentStage = currentApp?.current_stage;
+      if (!currentStage || !["assessment", "credit_assessment"].includes(currentStage)) {
+        throw new Error("Application is no longer in assessment stage. Please refresh and try again.");
+      }
+
       // Update application with approved values - guarded stage transition
       const { data: transitionResult, error } = await supabase
         .rpc("transition_loan_stage", {
           p_application_id: applicationId,
-          p_expected_current_stage: "credit_assessment",
+          p_expected_current_stage: currentStage,
           p_new_stage: "approval_pending",
           p_new_status: "in_progress",
           p_approved_amount: approvedAmount,
           p_tenure_days: tenureDays,
           p_interest_rate: interestRate,
         });
-      
+
       if (error) throw error;
       if (!transitionResult) throw new Error("Application stage has changed. Please refresh and try again.");
     },
@@ -412,15 +452,27 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Fetch current stage dynamically to avoid stale-stage mismatch
+      const { data: currentApp } = await supabase
+        .from("loan_applications")
+        .select("current_stage")
+        .eq("id", applicationId)
+        .single();
+
+      const currentStage = currentApp?.current_stage;
+      if (!currentStage || !["assessment", "credit_assessment"].includes(currentStage)) {
+        throw new Error("Application is no longer in assessment stage. Please refresh and try again.");
+      }
+
       // Then update application status - guarded stage transition
       const { data: transitionResult, error } = await supabase
         .rpc("transition_loan_stage", {
           p_application_id: applicationId,
-          p_expected_current_stage: "credit_assessment",
+          p_expected_current_stage: currentStage,
           p_new_stage: "rejected",
           p_new_status: "rejected",
         });
-      
+
       if (error) throw error;
       if (!transitionResult) throw new Error("Application stage has changed. Please refresh and try again.");
     },
@@ -590,29 +642,10 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
             </div>
           </div>
 
-          {/* FOIR and Eligible Amount - auto-calculated */}
-          {hasCalculated && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Label>FOIR (%)</Label>
-                <Input
-                  type="text"
-                  value={formData.foir_percentage}
-                  readOnly
-                  className="bg-muted"
-                />
-              </div>
-              <div>
-                <Label>Eligible Loan Amount (₹)</Label>
-                <Input
-                  type="text"
-                  value={parseFloat(formData.eligible_loan_amount).toLocaleString()}
-                  readOnly
-                  className="bg-muted"
-                />
-              </div>
-            </div>
-          )}
+          <Button onClick={handleCalculate} className="w-full">
+            <Calculator className="mr-2 h-4 w-4" />
+            Calculate Eligibility
+          </Button>
         </CardContent>
       </Card>
 
