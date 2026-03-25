@@ -69,7 +69,11 @@ export function IdentityInputStep({
       });
 
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "PAN verification failed");
+      if (!data?.success) {
+        if (data?.error) throw new Error(data.error);
+        setPhase("pan_input");
+        return;
+      }
 
       if (!data.data.is_valid) {
         setPhase("pan_failed");
