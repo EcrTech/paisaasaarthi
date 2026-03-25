@@ -12,6 +12,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // TEMPORARILY DISABLED — remove this block to re-enable
+  return new Response(
+    JSON.stringify({ success: false }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+
   try {
     const { verificationId, aadhaarData } = await req.json();
 
@@ -87,16 +93,43 @@ serve(async (req) => {
       throw updateError;
     }
 
-    // Update applicant DOB if available
-    if (dob && verification.loan_application_id) {
-      const { error: applicantUpdateError } = await supabase
-        .from("loan_applicants")
-        .update({ dob })
-        .eq("loan_application_id", verification.loan_application_id)
-        .eq("applicant_type", "primary");
+    // Update applicant DOB, gender, and address if available
+    if (verification.loan_application_id && (dob || gender || address)) {
+      const updateData: Record<string, unknown> = {};
 
-      if (applicantUpdateError) {
-        console.warn("[surepass-aadhaar-save] Failed to update applicant DOB:", applicantUpdateError);
+      if (dob) updateData.dob = dob;
+      if (gender) updateData.gender = gender;
+
+      // Build structured address from Surepass Aadhaar data
+      const addrObj = aadhaarData.addresses?.[0]?.complete_address
+        || aadhaarData.addresses?.[0]
+        || aadhaarData.split_address
+        || null;
+
+      if (addrObj && typeof addrObj === "object") {
+        const line1 = [addrObj.house, addrObj.street, addrObj.landmark].filter(Boolean).join(", ") || "";
+        const line2 = [addrObj.loc || addrObj.locality, addrObj.vtc, addrObj.subdist].filter(Boolean).join(", ") || "";
+        const city = addrObj.dist || "";
+        const state = addrObj.state || "";
+        const pincode = addrObj.pc || addrObj.pincode || addrObj.zip || "";
+        updateData.current_address = { line1, line2, city, state, pincode };
+      } else if (address && typeof address === "string") {
+        // Fallback: store full address string as line1
+        updateData.current_address = { line1: address, line2: "", city: "", state: "", pincode: "" };
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        const { error: applicantUpdateError } = await supabase
+          .from("loan_applicants")
+          .update(updateData)
+          .eq("loan_application_id", verification.loan_application_id)
+          .eq("applicant_type", "primary");
+
+        if (applicantUpdateError) {
+          console.warn("[surepass-aadhaar-save] Failed to update applicant:", applicantUpdateError);
+        } else {
+          console.log("[surepass-aadhaar-save] Updated applicant with address/dob/gender:", updateData);
+        }
       }
     }
 

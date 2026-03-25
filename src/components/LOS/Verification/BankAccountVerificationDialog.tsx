@@ -120,13 +120,17 @@ export default function BankAccountVerificationDialog({
       });
 
       if (error) throw error;
-      if (!data.success) throw new Error(data.error || "Bank verification failed");
+      if (!data.success) {
+        if (data.error) throw new Error(data.error);
+        return null;
+      }
       return data;
     },
     onSuccess: (data) => {
+      if (!data) return;
       toast({
         title: "Bank Account Verified",
-        description: data.is_mock 
+        description: data.is_mock
           ? "Verified in mock mode (configure Surepass credentials for live verification)"
           : "Bank account details verified successfully",
       });

@@ -101,7 +101,9 @@ export function AadhaarVerificationStep({
       const initData = await initResponse.json();
 
       if (!initData.success) {
-        throw new Error(initData.error || "Failed to initialize DigiLocker");
+        if (initData.error) throw new Error(initData.error);
+        setPhase("ready");
+        return;
       }
 
       const verificationId = initData.data.verificationId;

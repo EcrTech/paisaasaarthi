@@ -75,16 +75,16 @@ export function PANVerificationStep({
           status: 'Verified',
           dob: verifyData.data?.dob,
         });
-        
+
         // Track PAN verification success
         trackPAN();
         trackStep(2, 'pan_verified', 'referral');
-        
+
         toast.success("PAN verified successfully!");
-      } else {
-        // PAN verification failed but we got a response
-        setVerificationError(verifyData?.error || 'PAN verification failed. Please check and try again.');
-        toast.error(verifyData?.error || "PAN verification failed");
+      } else if (verifyData?.error) {
+        // PAN verification failed with explicit error
+        setVerificationError(verifyData.error);
+        toast.error(verifyData.error);
       }
     } catch (error: any) {
       console.error('[PAN Verification] Error:', error);

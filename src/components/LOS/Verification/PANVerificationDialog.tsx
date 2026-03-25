@@ -89,10 +89,14 @@ export default function PANVerificationDialog({
         throw error;
       }
       setDebugInfo(data?.debug || null);
-      if (!data.success) throw new Error(data.error || "PAN verification failed");
+      if (!data.success) {
+        if (data.error) throw new Error(data.error);
+        return null;
+      }
       return data;
     },
     onSuccess: (data) => {
+      if (!data) return;
       toast({
         title: "PAN Verified",
         description: "PAN details have been verified successfully",

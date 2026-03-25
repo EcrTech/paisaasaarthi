@@ -43,8 +43,12 @@ export default function VerifyAadhaar() {
       const data = await response.json();
 
       if (!data.success) {
-        setErrorMessage(data.error || "Failed to initialize verification");
-        setStatus("error");
+        if (data.error) {
+          setErrorMessage(data.error);
+          setStatus("error");
+        } else {
+          setStatus("ready");
+        }
         return;
       }
 
