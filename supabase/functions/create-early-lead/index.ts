@@ -136,12 +136,12 @@ Deno.serve(async (req) => {
       console.log('[create-early-lead] Updated existing contact to new status:', contactId);
     }
 
-    // Check if there's already a draft application for this contact
+    // Check if there's already a draft/new application for this contact
     const { data: existingDraft } = await supabase
       .from('loan_applications')
       .select('id')
       .eq('contact_id', contactId)
-      .eq('status', 'draft')
+      .in('status', ['draft', 'new'])
       .eq('org_id', orgId)
       .maybeSingle();
 
@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
           tenure_days: 30,
           tenure_months: 1,
           current_stage: 'lead',
-          status: 'draft',
+          status: 'new',
           source: source || 'referral_link',
           referred_by: referrerUserId,
           contact_id: contactId,
@@ -183,6 +183,23 @@ Deno.serve(async (req) => {
 
       draftApplicationId = newApp.id;
       console.log('[create-early-lead] Created draft application:', draftApplicationId);
+
+      // Create basic applicant record so the application detail page can render
+      const { error: applicantError } = await supabase
+        .from('loan_applicants')
+        .insert({
+          loan_application_id: draftApplicationId,
+          applicant_type: 'primary',
+          first_name: firstName,
+          last_name: lastName || null,
+          mobile: phone,
+        });
+
+      if (applicantError) {
+        console.error('[create-early-lead] Error creating applicant record:', applicantError);
+      } else {
+        console.log('[create-early-lead] Created applicant record for draft:', draftApplicationId);
+      }
     } else {
       console.log('[create-early-lead] Existing draft found:', draftApplicationId);
     }

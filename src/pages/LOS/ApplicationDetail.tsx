@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
+import { useDecryptedApplicant } from "@/hooks/useDecryptedApplicant";
 import DashboardLayout from "@/components/Layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +50,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
+  new: "bg-yellow-500",
   draft: "bg-muted",
   in_progress: "bg-blue-500",
   approved: "bg-green-500",
@@ -122,18 +124,9 @@ export default function ApplicationDetail() {
     enabled: !!id && !!orgId,
   });
 
-  // Fetch decrypted applicant PII (mobile, email, etc.)
-  const { data: decryptedApplicant } = useQuery({
-    queryKey: ["decrypted-applicant", id],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_decrypted_applicant", {
-        p_application_id: id,
-      });
-      if (error) return null;
-      return data?.[0] || null;
-    },
-    enabled: !!id,
-  });
+  // Fetch decrypted applicant PII (mobile, email, pan, aadhaar, bank details)
+  const rawApplicantId = application?.loan_applicants?.[0]?.id as string | undefined;
+  const { data: decryptedApplicant } = useDecryptedApplicant(rawApplicantId);
 
   // Fetch parsed document data
   const { data: documents = [] } = useQuery({
@@ -399,6 +392,25 @@ export default function ApplicationDetail() {
     },
   });
 
+  // Mutation to convert a draft application to active
+  const convertDraftMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("admin-convert-application", {
+        body: { applicationId: application?.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["loan-application", id, orgId] });
+      toast.success(`Application converted: ${data.applicationNumber}`);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to convert application");
+    },
+  });
+
   const ocrApplicantData = extractApplicantFromOCR();
 
 
@@ -478,11 +490,13 @@ export default function ApplicationDetail() {
   } : null;
 
   const rawApplicant = application?.loan_applicants?.[0];
-  // Overlay decrypted PII fields (mobile, email) on applicant data
+  // Overlay decrypted PII fields on applicant data
   const primaryApplicant = rawApplicant && decryptedApplicant ? {
     ...rawApplicant,
     mobile: decryptedApplicant.mobile || rawApplicant.mobile,
     email: decryptedApplicant.email || rawApplicant.email,
+    pan_number: decryptedApplicant.pan_number || rawApplicant.pan_number,
+    aadhaar_number: decryptedApplicant.aadhaar_number || rawApplicant.aadhaar_number,
   } : rawApplicant;
   const tenureDays = application?.tenure_days;
 
@@ -572,13 +586,26 @@ export default function ApplicationDetail() {
               </p>
             </div>
           </div>
-          {/* Repeat Loan Button - visible only for disbursed applications */}
-          {application.current_stage === "disbursed" && application.contact_id && (
-            <Button variant="outline" onClick={() => setShowRepeatLoanDialog(true)}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Repeat Loan
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {/* Convert Draft Button - visible only for draft/new applications */}
+            {(application.status === "draft" || application.status === "new") && (
+              <Button onClick={() => convertDraftMutation.mutate()} disabled={convertDraftMutation.isPending}>
+                {convertDraftMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                )}
+                Start Processing
+              </Button>
+            )}
+            {/* Repeat Loan Button - visible only for disbursed applications */}
+            {application.current_stage === "disbursed" && application.contact_id && (
+              <Button variant="outline" onClick={() => setShowRepeatLoanDialog(true)}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Repeat Loan
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Quick Stats */}

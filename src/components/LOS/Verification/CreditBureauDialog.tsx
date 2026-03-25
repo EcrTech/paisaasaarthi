@@ -98,14 +98,27 @@ export default function CreditBureauDialog({
     existingVerification?.response_data?.quick_analysis || null
   );
 
-  const applicantName = applicant ? 
-    `${applicant.first_name || ''} ${applicant.middle_name || ''} ${applicant.last_name || ''}`.trim() : 
+  const applicantName = applicant ?
+    `${applicant.first_name || ''} ${applicant.middle_name || ''} ${applicant.last_name || ''}`.trim() :
     'Unknown';
-  const applicantPAN = applicant?.pan_number || '';
+  const applicantPANFromRecord = applicant?.pan_number || '';
   // Use 'dob' field (the actual column name) - fall back to date_of_birth for compatibility
   const applicantDOB = applicant?.dob || applicant?.date_of_birth || '';
-  const applicantMobile = applicant?.mobile || '';
-  
+  const applicantMobileFromRecord = applicant?.mobile || '';
+
+  // Editable PAN and mobile for live fetch (allows entry when missing from applicant record)
+  const [livePAN, setLivePAN] = useState(applicantPANFromRecord);
+  const [liveMobile, setLiveMobile] = useState(applicantMobileFromRecord);
+
+  // Sync when applicant data loads asynchronously
+  useEffect(() => {
+    if (applicantPANFromRecord && !livePAN) setLivePAN(applicantPANFromRecord);
+    if (applicantMobileFromRecord && !liveMobile) setLiveMobile(applicantMobileFromRecord);
+  }, [applicantPANFromRecord, applicantMobileFromRecord]);
+
+  const applicantPAN = livePAN;
+  const applicantMobile = liveMobile;
+
   // Handle current_address as JSONB object with line1, city, state, pincode fields
   const addressObj = applicant?.current_address;
   const applicantAddress = typeof addressObj === 'object' && addressObj !== null
@@ -577,16 +590,28 @@ export default function CreditBureauDialog({
                   <span className="font-medium">{applicantName || "Not available"}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">PAN: </span>
-                  <span className="font-medium">{applicantPAN || "Not available"}</span>
+                  <Label className="text-muted-foreground text-sm">PAN</Label>
+                  <Input
+                    value={livePAN}
+                    onChange={(e) => setLivePAN(e.target.value.toUpperCase())}
+                    placeholder="Enter PAN number"
+                    className="h-8 mt-0.5"
+                    maxLength={10}
+                  />
                 </div>
                 <div>
                   <span className="text-muted-foreground">DOB: </span>
                   <span className="font-medium">{applicantDOB || "Not available"}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Mobile: </span>
-                  <span className="font-medium">{applicantMobile || "Not available"}</span>
+                  <Label className="text-muted-foreground text-sm">Mobile</Label>
+                  <Input
+                    value={liveMobile}
+                    onChange={(e) => setLiveMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="Enter mobile number"
+                    className="h-8 mt-0.5"
+                    maxLength={10}
+                  />
                 </div>
                 {applicantAddress && (
                   <div className="col-span-2">

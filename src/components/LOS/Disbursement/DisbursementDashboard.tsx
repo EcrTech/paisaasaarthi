@@ -93,8 +93,9 @@ export default function DisbursementDashboard({ applicationId }: DisbursementDas
     },
   });
 
-  // Fetch primary applicant
+  // Fetch primary applicant (raw record to get applicant ID)
   interface ApplicantData {
+    id: string;
     first_name: string;
     last_name?: string;
     mobile?: string;
@@ -104,26 +105,47 @@ export default function DisbursementDashboard({ applicationId }: DisbursementDas
     pan_number?: string;
     aadhaar_number?: string;
   }
-  
-  const { data: applicant, isLoading: loadingApplicant } = useQuery<ApplicantData | null>({
-    queryKey: ["primary-applicant", applicationId],
+
+  const { data: rawApplicant } = useQuery<ApplicantData | null>({
+    queryKey: ["raw-applicant", applicationId],
     queryFn: async () => {
-      try {
-        // Use RPC function that auto-decrypts encrypted PII fields
-        const { data, error } = await supabase.rpc("get_decrypted_applicant", {
-          p_application_id: applicationId,
-        });
-        if (error) {
-          console.error("Error fetching decrypted applicant:", error);
-          return null;
-        }
-        return data?.[0] || null;
-      } catch (error) {
-        console.error("Error fetching applicant:", error);
-        return null;
-      }
+      const { data, error } = await supabase
+        .from("loan_applicants")
+        .select("*")
+        .eq("loan_application_id", applicationId)
+        .eq("applicant_type", "primary")
+        .maybeSingle();
+      if (error) return null;
+      return data as ApplicantData | null;
     },
   });
+
+  // Decrypt PII fields using the correct RPC
+  const { data: decryptedData, isLoading: loadingApplicant } = useQuery<ApplicantData | null>({
+    queryKey: ["primary-applicant-decrypted", rawApplicant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_applicant_decrypted", {
+        p_applicant_id: rawApplicant!.id,
+      });
+      if (error) {
+        console.error("Error fetching decrypted applicant:", error);
+        return null;
+      }
+      return data as unknown as ApplicantData | null;
+    },
+    enabled: !!rawApplicant?.id,
+  });
+
+  // Merge decrypted fields over raw applicant
+  const applicant: ApplicantData | null = rawApplicant ? {
+    ...rawApplicant,
+    ...(decryptedData ? {
+      mobile: decryptedData.mobile || rawApplicant.mobile,
+      email: decryptedData.email || rawApplicant.email,
+      pan_number: decryptedData.pan_number || rawApplicant.pan_number,
+      aadhaar_number: decryptedData.aadhaar_number || rawApplicant.aadhaar_number,
+    } : {}),
+  } : null;
 
   // Bank details derived from decrypted applicant data
   const bankDetails = applicant ? {
