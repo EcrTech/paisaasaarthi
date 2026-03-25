@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, User, FileText, Calculator, FileCheck, XCircle, CreditCard, CheckCircle, MapPin, Edit2, Save, X, RefreshCw, Loader2, Sparkles, Plus, Pencil, Trash2, History, Lock } from "lucide-react";
+import { ArrowLeft, User, FileText, Calculator, FileCheck, XCircle, CreditCard, CheckCircle, MapPin, Edit2, Save, X, RefreshCw, Loader2, Sparkles, Plus, Pencil, Trash2, History, Lock, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { extractAadhaarAddress, extractAddressString } from "@/lib/addressUtils";
 import { LoadingState } from "@/components/common/LoadingState";
@@ -34,6 +34,7 @@ import { RepeatLoanDialog } from "@/components/LOS/RepeatLoanDialog";
 import VerificationDashboard from "@/components/LOS/VerificationDashboard";
 
 const STAGE_LABELS: Record<string, string> = {
+  lead: "Lead",
   application_login: "Application Login",
   document_collection: "Document Collection",
   field_verification: "Field Verification",
@@ -359,6 +360,42 @@ export default function ApplicationDetail() {
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to start assessment");
+    },
+  });
+
+  // Mutation to convert lead to application (override credit check rejection)
+  const convertLeadMutation = useMutation({
+    mutationFn: async () => {
+      // Generate a proper application number using the DB sequence
+      const now = new Date();
+      const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const { data: seqVal, error: seqError } = await supabase.rpc("nextval_text", {
+        seq_name: "loan_application_number_seq",
+      });
+      if (seqError) throw seqError;
+      const applicationNumber = `LA-${yearMonth}-${String(seqVal).padStart(5, "0")}`;
+
+      // Update application: set proper number, stage, and status
+      const { error: updateError } = await supabase
+        .from("loan_applications")
+        .update({
+          application_number: applicationNumber,
+          current_stage: "application_login",
+          status: "in_progress",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", application?.id)
+        .eq("current_stage", "lead"); // guard against race conditions
+
+      if (updateError) throw updateError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["loan-application", id, orgId] });
+      queryClient.invalidateQueries({ queryKey: ["loan-applications"] });
+      toast.success("Lead converted to application successfully");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to convert lead to application");
     },
   });
 
@@ -1010,87 +1047,112 @@ export default function ApplicationDetail() {
           {/* Documents Section */}
           <DocumentUpload applicationId={application.id} orgId={orgId} applicant={primaryApplicant} />
 
-          {/* Sections only visible in review mode - contextual based on stage */}
-          {isReviewMode && (
+          {/* Convert Lead to Application - visible for lead stage */}
+          {application.current_stage === "lead" && (
+            <Card className="border-amber-200 bg-amber-50/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserPlus className="h-5 w-5 text-amber-600" />
+                  Convert Lead to Application
+                </CardTitle>
+                <CardDescription>
+                  This lead was created from the referral form but did not pass the automated credit check.
+                  Convert it to a full application to manually evaluate the credit profile.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  onClick={() => convertLeadMutation.mutate()}
+                  disabled={convertLeadMutation.isPending}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  {convertLeadMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4 mr-2" />
+                  )}
+                  Convert to Application
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Start Assessment - shown when at application_login stage */}
+          {application.current_stage === "application_login" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Start Assessment</CardTitle>
+                <CardDescription>
+                  Move this application to Credit Assessment to begin the review process
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  onClick={() => startAssessmentMutation.mutate()}
+                  disabled={startAssessmentMutation.isPending}
+                >
+                  {startAssessmentMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Calculator className="h-4 w-4 mr-2" />
+                  )}
+                  Start Credit Assessment
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Income & Assessment - shown until approval */}
+          {!["sanctioned", "disbursement_pending", "disbursed", "closed"].includes(application.current_stage) && (
             <>
-              {/* Start Assessment - shown when at application_login stage */}
-              {application.current_stage === "application_login" && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Start Assessment</CardTitle>
-                    <CardDescription>
-                      Move this application to Credit Assessment to begin the review process
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button
-                      onClick={() => startAssessmentMutation.mutate()}
-                      disabled={startAssessmentMutation.isPending}
-                    >
-                      {startAssessmentMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Calculator className="h-4 w-4 mr-2" />
-                      )}
-                      Start Credit Assessment
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Income & Assessment - shown until approval */}
-              {!["sanctioned", "disbursement_pending", "disbursed", "closed"].includes(application.current_stage) && (
-                <>
-                  <IncomeSummary applicationId={application.id} orgId={orgId} />
-                  <AssessmentDashboard applicationId={application.id} orgId={orgId} />
-                </>
-              )}
-              
-              {/* Approval Actions - Only shown when stage is approval_pending */}
-              {application.current_stage === "approval_pending" && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Approval Actions</CardTitle>
-                    <CardDescription>
-                      Review and take action on this loan application
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex gap-4">
-                      <Button
-                        variant="default"
-                        onClick={() => setApprovalAction("approve")}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Approve Application
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={() => setApprovalAction("reject")}
-                      >
-                        <XCircle className="h-4 w-4 mr-2" />
-                        Reject Application
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Approval History - shown for approval stages and beyond */}
-              {["approval_pending", "sanctioned", "disbursement_pending", "disbursed", "closed"].includes(application.current_stage) && (
-                <ApprovalHistory applicationId={id!} />
-              )}
-
-              {/* Full Application Summary for sanctioned stages */}
-              {["sanctioned", "disbursement_pending", "disbursed"].includes(application.current_stage) && (
-                <ApplicationSummary applicationId={id!} orgId={orgId!} />
-              )}
-
-              {/* Disbursement Section */}
-              {application.current_stage === "disbursement_pending" && (
-                <DisbursementForm applicationId={id!} />
-              )}
+              <IncomeSummary applicationId={application.id} orgId={orgId} />
+              <AssessmentDashboard applicationId={application.id} orgId={orgId} />
             </>
+          )}
+
+          {/* Approval Actions - Only shown when stage is approval_pending */}
+          {application.current_stage === "approval_pending" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Approval Actions</CardTitle>
+                <CardDescription>
+                  Review and take action on this loan application
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-4">
+                  <Button
+                    variant="default"
+                    onClick={() => setApprovalAction("approve")}
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Approve Application
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setApprovalAction("reject")}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Reject Application
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Approval History - shown for approval stages and beyond */}
+          {["approval_pending", "sanctioned", "disbursement_pending", "disbursed", "closed"].includes(application.current_stage) && (
+            <ApprovalHistory applicationId={id!} />
+          )}
+
+          {/* Full Application Summary for sanctioned stages */}
+          {["sanctioned", "disbursement_pending", "disbursed"].includes(application.current_stage) && (
+            <ApplicationSummary applicationId={id!} orgId={orgId!} />
+          )}
+
+          {/* Disbursement Section */}
+          {application.current_stage === "disbursement_pending" && (
+            <DisbursementForm applicationId={id!} />
           )}
 
           {/* Disbursement Status - always visible for disbursed applications */}
