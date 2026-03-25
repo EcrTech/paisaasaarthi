@@ -76,7 +76,7 @@ serve(async (req) => {
     console.log(`[surepass-bank-verify] Verifying account: ****${accountNumber.slice(-4)}, IFSC: ${sanitizedIfsc}`);
 
     const response = await callWithRetry(
-      `${SUREPASS_BASE_URL}/api/v1/bank-verification/`,
+      `${SUREPASS_BASE_URL}/api/v1/bank-verification/pennyless`,
       {
         method: "POST",
         headers: {
