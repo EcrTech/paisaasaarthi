@@ -12,12 +12,6 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // TEMPORARILY DISABLED — remove this block to re-enable
-  return new Response(
-    JSON.stringify({ success: false }),
-    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-
   try {
     const { verificationId, aadhaarData } = await req.json();
 

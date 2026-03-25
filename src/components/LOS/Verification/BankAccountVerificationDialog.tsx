@@ -120,14 +120,10 @@ export default function BankAccountVerificationDialog({
       });
 
       if (error) throw error;
-      if (!data.success) {
-        if (data.error) throw new Error(data.error);
-        return null;
-      }
+      if (!data.success) throw new Error(data.error || "Bank verification failed");
       return data;
     },
     onSuccess: (data) => {
-      if (!data) return;
       toast({
         title: "Bank Account Verified",
         description: data.is_mock

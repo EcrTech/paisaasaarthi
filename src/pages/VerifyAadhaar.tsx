@@ -43,12 +43,8 @@ export default function VerifyAadhaar() {
       const data = await response.json();
 
       if (!data.success) {
-        if (data.error) {
-          setErrorMessage(data.error);
-          setStatus("error");
-        } else {
-          setStatus("ready");
-        }
+        setErrorMessage(data.error || "Failed to initialize verification");
+        setStatus("error");
         return;
       }
 
@@ -73,7 +69,7 @@ export default function VerifyAadhaar() {
     script.onload = () => {
       try {
         (window as any).DigiboostSdk({
-          gateway: "sandbox",
+          gateway: "production",
           token: sdkToken,
           selector: "#digilocker-sdk-container",
           onSuccess: async (data: any) => {

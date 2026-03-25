@@ -101,9 +101,7 @@ export function AadhaarVerificationStep({
       const initData = await initResponse.json();
 
       if (!initData.success) {
-        if (initData.error) throw new Error(initData.error);
-        setPhase("ready");
-        return;
+        throw new Error(initData.error || "Failed to initialize DigiLocker");
       }
 
       const verificationId = initData.data.verificationId;
@@ -117,7 +115,7 @@ export function AadhaarVerificationStep({
       script.onload = () => {
         try {
           (window as any).DigiboostSdk({
-            gateway: "sandbox",
+            gateway: "production",
             token: sdkToken,
             selector: "#digilocker-sdk-referral",
             onSuccess: async (data: any) => {
