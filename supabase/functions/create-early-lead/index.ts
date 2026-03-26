@@ -20,33 +20,6 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get client IP for rate limiting
-    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-                     req.headers.get('cf-connecting-ip') ||
-                     'unknown';
-
-    // 24-hour IP rate limit: only one application per IP per day
-    if (clientIP && clientIP !== 'unknown') {
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data: recentAppFromIP } = await supabase
-        .from('loan_applications')
-        .select('id')
-        .eq('submitted_from_ip', clientIP)
-        .neq('status', 'draft')
-        .neq('status', 'rejected')
-        .gte('created_at', twentyFourHoursAgo)
-        .limit(1)
-        .maybeSingle();
-
-      if (recentAppFromIP) {
-        console.log(`[create-early-lead] 24h IP limit: ${clientIP} already has a recent application`);
-        return new Response(
-          JSON.stringify({ success: false, ipLimited: true, message: 'An application has already been submitted from this device in the last 24 hours.' }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
     const body = await req.json();
     const { name, loanAmount, referralCode, source, geolocation } = body;
     const phone = normalizePhone(body.phone || '');
@@ -95,6 +68,28 @@ Deno.serve(async (req) => {
       .or(`phone.eq.${phone10},phone.eq.+91${phone10},phone.eq.91${phone10}`)
       .limit(1)
       .maybeSingle();
+
+    // 24-hour phone rate limit: only one application per phone per day
+    if (existingContact) {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentAppFromPhone } = await supabase
+        .from('loan_applications')
+        .select('id')
+        .eq('contact_id', existingContact.id)
+        .neq('status', 'draft')
+        .neq('status', 'rejected')
+        .gte('created_at', twentyFourHoursAgo)
+        .limit(1)
+        .maybeSingle();
+
+      if (recentAppFromPhone) {
+        console.log(`[create-early-lead] 24h phone limit: ${phone10.slice(-4)} already has a recent application`);
+        return new Response(
+          JSON.stringify({ success: false, phoneLimited: true, message: 'An application has already been submitted with this phone number in the last 24 hours.' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     let contactId = existingContact?.id;
 

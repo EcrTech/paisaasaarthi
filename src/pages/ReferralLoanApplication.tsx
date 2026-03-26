@@ -407,8 +407,8 @@ export default function ReferralLoanApplication() {
           },
         });
 
-        if (data?.ipLimited) {
-          toast.error(data.message || 'Only one application is allowed per device in 24 hours.');
+        if (data?.phoneLimited) {
+          toast.error(data.message || 'Only one application is allowed per phone number in 24 hours.');
           earlyLeadCreatedRef.current = false;
           setIsProcessingStep(false);
           return;

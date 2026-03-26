@@ -52,6 +52,41 @@ serve(async (req) => {
 
     console.log(`[surepass-public-pan-verify] Verifying PAN: ${panUpper.slice(0, 5)}*****`);
 
+    // Check if this PAN was already successfully verified in the last 24 hours
+    const supabaseForDedup = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentVerification } = await supabaseForDedup
+      .from("loan_verifications")
+      .select("id, response_data")
+      .eq("verification_type", "pan")
+      .eq("status", "success")
+      .eq("request_data->>pan_number", panUpper)
+      .gte("verified_at", twentyFourHoursAgo)
+      .order("verified_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentVerification) {
+      console.log(`[surepass-public-pan-verify] PAN already verified in last 24h, returning cached result`);
+      const cachedData = recentVerification.response_data || {};
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            pan_number: cachedData.pan_number || panUpper,
+            name: cachedData.full_name || cachedData.name || "",
+            dob: cachedData.dob || "",
+            category: cachedData.category || "",
+            is_valid: true,
+          },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const response = await callWithRetry(
       `${SUREPASS_BASE_URL}/api/v1/pan/pan`,
       {
