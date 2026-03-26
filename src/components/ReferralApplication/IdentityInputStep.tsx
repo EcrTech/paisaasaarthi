@@ -87,7 +87,7 @@ export function IdentityInputStep({
       onPanVerified(verifiedData);
 
       // Auto-trigger Experian credit check
-      setTimeout(() => runCreditCheck(data.data.name), 500);
+      await runCreditCheck(data.data.name);
     } catch (err: any) {
       console.error("[IdentityInputStep] PAN verify error:", err);
       setPhase("pan_failed");
