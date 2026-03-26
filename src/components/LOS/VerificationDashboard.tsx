@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import PANVerificationDialog from "./Verification/PANVerificationDialog";
 import AadhaarVerificationDialog from "./Verification/AadhaarVerificationDialog";
 import BankAccountVerificationDialog from "./Verification/BankAccountVerificationDialog";
+import CreditBureauDialog from "./Verification/CreditBureauDialog";
 import VerificationDetailsDialog from "./Verification/VerificationDetailsDialog";
 import { VideoKYCRetryButton } from "./Verification/VideoKYCRetryButton";
 import { VideoKYCViewDialog } from "./Verification/VideoKYCViewDialog";
@@ -22,27 +23,33 @@ interface VerificationDashboardProps {
 }
 
 const VERIFICATION_TYPES = [
-  { 
-    type: "video_kyc", 
-    name: "Video KYC", 
+  {
+    type: "video_kyc",
+    name: "Video KYC",
     description: "Live video verification session",
     category: "identity"
   },
-  { 
-    type: "pan", 
-    name: "PAN Verification", 
+  {
+    type: "pan",
+    name: "PAN Verification",
     description: "Verify PAN card details via NSDL",
     category: "identity"
   },
-  { 
-    type: "aadhaar", 
-    name: "Aadhaar Verification", 
+  {
+    type: "credit_bureau",
+    name: "Credit Bureau",
+    description: "Credit score and report from Experian",
+    category: "financial"
+  },
+  {
+    type: "aadhaar",
+    name: "Aadhaar Verification",
     description: "Verify Aadhaar details via UIDAI",
     category: "identity"
   },
-  { 
-    type: "bank_account", 
-    name: "Bank Account Verification", 
+  {
+    type: "bank_account",
+    name: "Bank Account Verification",
     description: "Verify bank account via penny drop",
     category: "financial"
   },
@@ -304,50 +311,114 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
                   <div className="mb-3 p-3 bg-muted/50 rounded-md border">
                     <p className="text-xs font-medium text-muted-foreground mb-2">Verified Details</p>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      {verificationType.type === "pan" && (
-                        <>
-                          {(verification.response_data as Record<string, any>).name_on_pan && (
-                            <div>
-                              <span className="text-muted-foreground">Name: </span>
-                              <span className="font-medium">{(verification.response_data as Record<string, any>).name_on_pan}</span>
-                            </div>
-                          )}
-                          {(verification.response_data as Record<string, any>).pan_status && (
-                            <div>
-                              <span className="text-muted-foreground">Status: </span>
-                              <Badge variant={(verification.response_data as Record<string, any>).pan_status === "valid" ? "default" : "destructive"} className="text-xs">
-                                {(verification.response_data as Record<string, any>).pan_status}
-                              </Badge>
-                            </div>
-                          )}
-                          {(verification.response_data as Record<string, any>).name_match_result && (
-                            <div>
-                              <span className="text-muted-foreground">Name Match: </span>
-                              <Badge variant={(verification.response_data as Record<string, any>).name_match_result === "exact" ? "default" : "secondary"} className="text-xs">
-                                {(verification.response_data as Record<string, any>).name_match_result}
-                              </Badge>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      {verificationType.type === "aadhaar" && (
-                        <>
-                          {(verification.response_data as Record<string, any>).name_on_aadhaar && (
-                            <div>
-                              <span className="text-muted-foreground">Name: </span>
-                              <span className="font-medium">{(verification.response_data as Record<string, any>).name_on_aadhaar}</span>
-                            </div>
-                          )}
-                          {(verification.response_data as Record<string, any>).address_match && (
-                            <div>
-                              <span className="text-muted-foreground">Address Match: </span>
-                              <Badge variant={(verification.response_data as Record<string, any>).address_match === "exact" ? "default" : "secondary"} className="text-xs">
-                                {(verification.response_data as Record<string, any>).address_match}
-                              </Badge>
-                            </div>
-                          )}
-                        </>
-                      )}
+                      {verificationType.type === "pan" && (() => {
+                        const rd = verification.response_data as Record<string, any>;
+                        const panName = rd.name_on_pan || rd.full_name || rd.name || "";
+                        const panNum = rd.pan_number || "";
+                        const panStatus = rd.pan_status || (rd.is_valid ? "valid" : rd.is_valid === false ? "invalid" : "");
+                        return (
+                          <>
+                            {panName && (
+                              <div>
+                                <span className="text-muted-foreground">Name: </span>
+                                <span className="font-medium">{panName}</span>
+                              </div>
+                            )}
+                            {panNum && (
+                              <div>
+                                <span className="text-muted-foreground">PAN: </span>
+                                <span className="font-medium font-mono">{panNum}</span>
+                              </div>
+                            )}
+                            {panStatus && (
+                              <div>
+                                <span className="text-muted-foreground">Status: </span>
+                                <Badge variant={panStatus === "valid" ? "default" : "destructive"} className="text-xs">
+                                  {panStatus}
+                                </Badge>
+                              </div>
+                            )}
+                            {rd.name_match_result && (
+                              <div>
+                                <span className="text-muted-foreground">Name Match: </span>
+                                <Badge variant={rd.name_match_result === "exact" ? "default" : "secondary"} className="text-xs">
+                                  {rd.name_match_result}
+                                </Badge>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                      {verificationType.type === "credit_bureau" && (() => {
+                        const rd = verification.response_data as Record<string, any>;
+                        const score = rd.credit_score;
+                        const bureau = rd.bureau_type || verification.verification_source || "";
+                        return (
+                          <>
+                            {score != null && (
+                              <div>
+                                <span className="text-muted-foreground">Score: </span>
+                                <span className={`font-bold ${score >= 700 ? "text-green-600" : score >= 550 ? "text-amber-600" : "text-red-600"}`}>
+                                  {score}
+                                </span>
+                              </div>
+                            )}
+                            {bureau && (
+                              <div>
+                                <span className="text-muted-foreground">Bureau: </span>
+                                <span className="font-medium capitalize">{bureau}</span>
+                              </div>
+                            )}
+                            {rd.name_on_report && (
+                              <div>
+                                <span className="text-muted-foreground">Name: </span>
+                                <span className="font-medium">{rd.name_on_report}</span>
+                              </div>
+                            )}
+                            {rd.total_accounts != null && (
+                              <div>
+                                <span className="text-muted-foreground">Accounts: </span>
+                                <span className="font-medium">{rd.active_accounts || 0} active / {rd.total_accounts} total</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                      {verificationType.type === "aadhaar" && (() => {
+                        const rd = verification.response_data as Record<string, any>;
+                        const aadhaarName = rd.name_on_aadhaar || rd.name || rd.full_name || "";
+                        const aadhaarLast4 = rd.aadhaar_last4 || "";
+                        return (
+                          <>
+                            {aadhaarName && (
+                              <div>
+                                <span className="text-muted-foreground">Name: </span>
+                                <span className="font-medium">{aadhaarName}</span>
+                              </div>
+                            )}
+                            {aadhaarLast4 && (
+                              <div>
+                                <span className="text-muted-foreground">Aadhaar: </span>
+                                <span className="font-medium font-mono">XXXX-XXXX-{aadhaarLast4}</span>
+                              </div>
+                            )}
+                            {rd.address_match && (
+                              <div>
+                                <span className="text-muted-foreground">Address Match: </span>
+                                <Badge variant={rd.address_match === "exact" ? "default" : "secondary"} className="text-xs">
+                                  {rd.address_match}
+                                </Badge>
+                              </div>
+                            )}
+                            {rd.verified_address && (
+                              <div className="col-span-2">
+                                <span className="text-muted-foreground">Address: </span>
+                                <span className="font-medium text-xs">{typeof rd.verified_address === "string" ? rd.verified_address : ""}</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                       {verificationType.type === "bank_account" && (
                         <>
                           {(verification.response_data as Record<string, any>).account_holder_name && (
@@ -536,6 +607,17 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
 
       {selectedVerification?.type === "aadhaar" && (
         <AadhaarVerificationDialog
+          open={true}
+          onClose={() => setSelectedVerification(null)}
+          applicationId={applicationId}
+          orgId={orgId}
+          applicant={primaryApplicant}
+          existingVerification={selectedVerification.data}
+        />
+      )}
+
+      {selectedVerification?.type === "credit_bureau" && (
+        <CreditBureauDialog
           open={true}
           onClose={() => setSelectedVerification(null)}
           applicationId={applicationId}
