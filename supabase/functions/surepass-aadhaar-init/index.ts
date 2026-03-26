@@ -34,6 +34,33 @@ serve(async (req) => {
 
     let recordId = verificationId;
 
+    // If applicationId provided, check for existing successful Aadhaar verification (24h dedup)
+    if (applicationId) {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentAadhaar } = await supabase
+        .from("loan_verifications")
+        .select("id, response_data")
+        .eq("loan_application_id", applicationId)
+        .eq("verification_type", "aadhaar")
+        .eq("status", "success")
+        .gte("verified_at", twentyFourHoursAgo)
+        .order("verified_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentAadhaar) {
+        console.log(`[surepass-aadhaar-init] Aadhaar already verified for application ${applicationId} in last 24h, skipping`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            alreadyVerified: true,
+            error: "Aadhaar has already been verified for this application.",
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // If applicationId provided (referral flow), create the verification record
     if (!verificationId && applicationId) {
       const { data: newRecord, error: insertError } = await supabase
