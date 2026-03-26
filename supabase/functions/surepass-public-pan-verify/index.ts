@@ -72,6 +72,18 @@ serve(async (req) => {
     if (recentVerification) {
       console.log(`[surepass-public-pan-verify] PAN already verified in last 24h, returning cached result`);
       const cachedData = recentVerification.response_data || {};
+
+      // Ensure applicant record has PAN written back (backfill for older verifications)
+      if (applicationId) {
+        const updateData: Record<string, unknown> = { pan_number: panUpper };
+        if (cachedData.dob) updateData.dob = cachedData.dob;
+        await supabaseForDedup
+          .from("loan_applicants")
+          .update(updateData)
+          .eq("loan_application_id", applicationId)
+          .eq("applicant_type", "primary");
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -147,11 +159,13 @@ serve(async (req) => {
         verified_at: new Date().toISOString(),
       });
 
-      // Update applicant DOB if valid
-      if (panDob && isValid) {
+      // Update applicant PAN and DOB if valid
+      if (isValid) {
+        const updateData: Record<string, unknown> = { pan_number: panUpper };
+        if (panDob) updateData.dob = panDob;
         await supabase
           .from("loan_applicants")
-          .update({ dob: panDob })
+          .update(updateData)
           .eq("loan_application_id", applicationId)
           .eq("applicant_type", "primary");
       }
