@@ -92,21 +92,21 @@ function ScoreGauge({ score, maxScore = 900 }: { score: number; maxScore?: numbe
   const percentage = (score / maxScore) * 100;
   const getScoreColor = () => {
     if (score >= 750) return "text-green-600";
-    if (score >= 650) return "text-yellow-600";
+    if (score >= 600) return "text-yellow-600";
     return "text-red-600";
   };
-  
+
   const getScoreLabel = () => {
     if (score >= 750) return "Excellent";
     if (score >= 700) return "Good";
     if (score >= 650) return "Fair";
-    if (score >= 550) return "Poor";
-    return "Very Poor";
+    if (score >= 600) return "Below Average";
+    return "Poor";
   };
 
   const getGradient = () => {
     if (score >= 750) return "from-green-500 to-green-600";
-    if (score >= 650) return "from-yellow-500 to-yellow-600";
+    if (score >= 600) return "from-yellow-500 to-yellow-600";
     return "from-red-500 to-red-600";
   };
 

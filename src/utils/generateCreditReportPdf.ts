@@ -83,13 +83,13 @@ function getScoreLabel(score: number): string {
   if (score >= 750) return "Excellent";
   if (score >= 700) return "Good";
   if (score >= 650) return "Fair";
-  if (score >= 550) return "Poor";
-  return "Very Poor";
+  if (score >= 600) return "Below Average";
+  return "Poor";
 }
 
 function getScoreColor(score: number): string {
   if (score >= 750) return "#16a34a";
-  if (score >= 650) return "#ca8a04";
+  if (score >= 600) return "#ca8a04";
   return "#dc2626";
 }
 
@@ -348,10 +348,14 @@ function buildHtml(data: CreditReportData): string {
 export function downloadCreditReportPdf(data: CreditReportData) {
   const container = document.createElement("div");
   container.innerHTML = buildHtml(data);
-  container.style.position = "absolute";
-  container.style.left = "-9999px";
+  // Keep on-screen but invisible so html2canvas can capture painted content
+  container.style.position = "fixed";
+  container.style.left = "0";
   container.style.top = "0";
   container.style.width = "794px"; // A4 width at 96dpi
+  container.style.zIndex = "-1";
+  container.style.opacity = "0";
+  container.style.pointerEvents = "none";
   document.body.appendChild(container);
 
   const personalInfo = data.personalInfo || (data as any).personal_info || { name: "", pan: "" };
@@ -361,9 +365,9 @@ export function downloadCreditReportPdf(data: CreditReportData) {
     margin: [10, 12, 10, 12],
     filename,
     image: { type: "jpeg" as const, quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
     jsPDF: { unit: "mm" as const, format: "a4" as const, orientation: "portrait" as const },
-    pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+    pagebreak: { mode: ["css", "legacy"] },
   };
 
   html2pdf()
