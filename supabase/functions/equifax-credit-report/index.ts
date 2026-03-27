@@ -120,6 +120,103 @@ function getStateCode(state: string, pincode?: string): string {
   return state ? state.substring(0, 2).toUpperCase() : "";
 }
 
+// Known city to state mapping for parsing freeform addresses
+const CITY_STATE_MAP: Record<string, string> = {
+  "mumbai": "MH", "delhi": "DL", "new delhi": "DL", "bangalore": "KA", "bengaluru": "KA",
+  "hyderabad": "TS", "ahmedabad": "GJ", "chennai": "TN", "kolkata": "WB", "pune": "MH",
+  "jaipur": "RJ", "lucknow": "UP", "kanpur": "UP", "nagpur": "MH", "indore": "MP",
+  "thane": "MH", "bhopal": "MP", "visakhapatnam": "AP", "vadodara": "GJ", "ghaziabad": "UP",
+  "ludhiana": "PB", "agra": "UP", "nashik": "MH", "faridabad": "HR", "meerut": "UP",
+  "rajkot": "GJ", "varanasi": "UP", "srinagar": "JK", "aurangabad": "MH", "dhanbad": "JH",
+  "amritsar": "PB", "navi mumbai": "MH", "allahabad": "UP", "prayagraj": "UP",
+  "ranchi": "JH", "howrah": "WB", "coimbatore": "TN", "jabalpur": "MP", "gwalior": "MP",
+  "vijayawada": "AP", "jodhpur": "RJ", "madurai": "TN", "raipur": "CG", "kota": "RJ",
+  "chandigarh": "CH", "gurgaon": "HR", "gurugram": "HR", "noida": "UP", "greater noida": "UP",
+  "guwahati": "AS", "solapur": "MH", "hubli": "KA", "mysore": "KA", "mysuru": "KA",
+  "tiruchirappalli": "TN", "bareilly": "UP", "aligarh": "UP", "tiruppur": "TN",
+  "moradabad": "UP", "jalandhar": "PB", "bhubaneswar": "OD", "salem": "TN",
+  "warangal": "TS", "guntur": "AP", "bhiwandi": "MH", "saharanpur": "UP",
+  "gorakhpur": "UP", "bikaner": "RJ", "amravati": "MH", "noida": "UP",
+  "jamshedpur": "JH", "bhilai": "CG", "cuttack": "OD", "firozabad": "UP",
+  "kochi": "KL", "ernakulam": "KL", "thiruvananthapuram": "KL", "trivandrum": "KL",
+  "dehradun": "UK", "patna": "BR", "panaji": "GA", "shimla": "HP",
+  "surat": "GJ", "nanded": "MH", "kolhapur": "MH", "ajmer": "RJ",
+  "udaipur": "RJ", "mangalore": "KA", "mangaluru": "KA", "belgaum": "KA", "belagavi": "KA",
+  "sangli": "MH", "latur": "MH", "satara": "MH",
+};
+
+/**
+ * Parse a freeform address string like "Any Address, Gurgaon, Haryana 122002"
+ * into structured { line1, city, state, pincode } components.
+ */
+function parseFreeformAddress(raw: string): { line1: string; city: string; state: string; pincode: string } {
+  const result = { line1: raw, city: "", state: "", pincode: "" };
+  if (!raw) return result;
+
+  // Extract 6-digit pincode
+  const pincodeMatch = raw.match(/\b(\d{6})\b/);
+  if (pincodeMatch) {
+    result.pincode = pincodeMatch[1];
+  }
+
+  // Split by commas and work backwards (rightmost parts are usually state, city)
+  const parts = raw.split(",").map(p => p.trim());
+
+  // Try to find state from parts
+  for (let i = parts.length - 1; i >= 0; i--) {
+    // Remove pincode from the part for matching
+    const cleaned = parts[i].replace(/\b\d{6}\b/, "").trim().toLowerCase();
+    if (!cleaned) continue;
+
+    // Check direct state name match
+    if (STATE_CODES[cleaned]) {
+      result.state = STATE_CODES[cleaned];
+      break;
+    }
+    // Check if part contains a state name
+    for (const [stateName, stateCode] of Object.entries(STATE_CODES)) {
+      if (cleaned.includes(stateName)) {
+        result.state = stateCode;
+        break;
+      }
+    }
+    if (result.state) break;
+  }
+
+  // Try to find city from parts
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const cleaned = parts[i].replace(/\b\d{6}\b/, "").trim().toLowerCase();
+    if (!cleaned) continue;
+    // Skip if this part was the state
+    if (result.state && STATE_CODES[cleaned] === result.state) continue;
+
+    if (CITY_STATE_MAP[cleaned]) {
+      result.city = parts[i].replace(/\b\d{6}\b/, "").trim();
+      // Also derive state from city if not found yet
+      if (!result.state) {
+        result.state = CITY_STATE_MAP[cleaned];
+      }
+      break;
+    }
+    // Check for city name embedded in the part (e.g. "Near Gurgaon Station")
+    for (const [cityName, stateCode] of Object.entries(CITY_STATE_MAP)) {
+      if (cleaned.includes(cityName) && cityName.length >= 4) {
+        result.city = cityName.charAt(0).toUpperCase() + cityName.slice(1);
+        if (!result.state) result.state = stateCode;
+        break;
+      }
+    }
+    if (result.city) break;
+  }
+
+  // Derive state from pincode if still missing
+  if (!result.state && result.pincode) {
+    result.state = getStateFromPincode(result.pincode);
+  }
+
+  return result;
+}
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return "";
   return dateStr;
@@ -414,49 +511,50 @@ serve(async (req) => {
       );
     }
 
-    // Parse current_address JSONB
-    const currentAddress = applicant.current_address;
+    // Parse current_address JSONB, fall back to permanent_address
+    const rawAddress = applicant.current_address || applicant.permanent_address;
     let addressLine1 = "";
     let addressCity = "";
     let addressState = "";
     let addressPincode = "";
 
-    if (typeof currentAddress === 'object' && currentAddress !== null) {
-      addressLine1 = (currentAddress as any).line1 || "";
-      addressCity = (currentAddress as any).city || "";
-      addressState = (currentAddress as any).state || "";
-      addressPincode = (currentAddress as any).pincode || "";
-    } else if (typeof currentAddress === 'string') {
-      addressLine1 = currentAddress;
+    if (typeof rawAddress === 'object' && rawAddress !== null) {
+      addressLine1 = (rawAddress as any).line1 || "";
+      addressCity = (rawAddress as any).city || "";
+      addressState = (rawAddress as any).state || "";
+      addressPincode = (rawAddress as any).pincode || "";
+    } else if (typeof rawAddress === 'string') {
+      addressLine1 = rawAddress;
     }
 
-    // Fallback: extract pincode/state from line1 if missing
-    if (addressLine1 && (!addressPincode || !addressState)) {
-      if (!addressPincode) {
-        const pincodeMatch = addressLine1.match(/\b(\d{6})\b/);
-        if (pincodeMatch) {
-          addressPincode = pincodeMatch[1];
-          console.log("[EQUIFAX] Extracted pincode from line1:", addressPincode);
-        }
+    console.log("[EQUIFAX] Raw address source:", applicant.current_address ? "current_address" : (applicant.permanent_address ? "permanent_address" : "none"));
+
+    // Parse freeform line1 into structured components when city/state/pincode are missing
+    if (addressLine1 && (!addressCity || !addressState || !addressPincode)) {
+      const parsed = parseFreeformAddress(addressLine1);
+      if (!addressCity && parsed.city) {
+        addressCity = parsed.city;
+        console.log("[EQUIFAX] Parsed city from line1:", addressCity);
       }
-      if (!addressState) {
-        if (addressPincode) {
-          const stateFromPincode = getStateFromPincode(addressPincode);
-          if (stateFromPincode) {
-            addressState = stateFromPincode;
-            console.log("[EQUIFAX] Derived state from pincode:", addressState);
-          }
-        }
-        if (!addressState) {
-          const addressLower = addressLine1.toLowerCase();
-          for (const [stateName, stateCode] of Object.entries(STATE_CODES)) {
-            if (addressLower.includes(stateName)) {
-              addressState = stateCode;
-              break;
-            }
-          }
-        }
+      if (!addressState && parsed.state) {
+        addressState = parsed.state;
+        console.log("[EQUIFAX] Parsed state from line1:", addressState);
       }
+      if (!addressPincode && parsed.pincode) {
+        addressPincode = parsed.pincode;
+        console.log("[EQUIFAX] Parsed pincode from line1:", addressPincode);
+      }
+    }
+
+    // Validate we have minimum address data for Equifax
+    if (!addressLine1) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Address is required for Equifax credit bureau check. Please add the applicant's current address before pulling the report.",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const applicantData = {
@@ -562,25 +660,30 @@ serve(async (req) => {
     let rawApiResponse: any = null;
 
     try {
-      console.log("[EQUIFAX] ========== SENDING IDCR JSON REQUEST VIA DB PROXY ==========");
+      console.log("[EQUIFAX] ========== SENDING IDCR JSON REQUEST VIA AZURE PROXY ==========");
 
       const redactedBody = JSON.stringify(equifaxRequest)
         .replace(/"Password":"[^"]*"/g, '"Password":"***REDACTED***"')
         .replace(/"SecurityCode":"[^"]*"/g, '"SecurityCode":"***REDACTED***"');
       console.log("[EQUIFAX] Request (redacted):", redactedBody);
 
-      // Route through database proxy for static IP (52.78.20.116)
-      const { data: proxyResult, error: proxyError } = await supabase.rpc('proxy_http_post', {
-        target_url: apiUrl,
-        request_body: JSON.stringify(equifaxRequest),
+      // Route through Azure VM proxy for static IP (98.70.57.225 - Central India)
+      const proxyUrl = "http://98.70.57.225/equifax-proxy";
+      console.log("[EQUIFAX] Proxying through:", proxyUrl);
+
+      const proxyResponse = await fetch(proxyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(equifaxRequest),
       });
 
-      if (proxyError) {
-        console.error("[EQUIFAX] DB proxy error:", proxyError);
-        throw new Error(`DB proxy failed: ${proxyError.message}`);
+      if (!proxyResponse.ok) {
+        const errText = await proxyResponse.text();
+        console.error("[EQUIFAX] Proxy HTTP error:", proxyResponse.status, errText);
+        throw new Error(`Proxy request failed (${proxyResponse.status}): ${errText}`);
       }
 
-      const responseText = proxyResult || "";
+      const responseText = await proxyResponse.text();
       console.log("[EQUIFAX] Response length:", responseText.length);
       if (responseText.length < 500) {
         console.log("[EQUIFAX] Full response:", responseText);

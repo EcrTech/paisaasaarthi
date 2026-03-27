@@ -633,6 +633,14 @@ export default function CreditBureauDialog({
                   </span>
                 </div>
               )}
+              {liveBureau === "equifax" && !applicantAddress && (
+                <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <span className="text-sm text-amber-800">
+                    Address is required for Equifax bureau check. Please add the applicant's address first.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Bureau Selection */}
@@ -673,7 +681,7 @@ export default function CreditBureauDialog({
             {/* Fetch Button */}
             <Button
               onClick={handleFetchLiveReport}
-              disabled={isFetchingLive || !consentChecked || (!applicantPAN && !applicant?.aadhaar_number)}
+              disabled={isFetchingLive || !consentChecked || (!applicantPAN && !applicant?.aadhaar_number) || (liveBureau === "equifax" && !applicantAddress)}
               className="w-full"
               size="lg"
             >
