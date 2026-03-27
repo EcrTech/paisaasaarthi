@@ -36,13 +36,31 @@ export default function CreditBureauDialog({
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Normalize snake_case DB data to camelCase for CreditReportViewer/PDF
+  const normalizeLiveReport = (rd: any) => {
+    if (!rd) return null;
+    // If already has camelCase creditScore, it's from a live fetch — return as-is
+    if (rd.creditScore !== undefined) return rd;
+    return {
+      ...rd,
+      creditScore: rd.credit_score,
+      scoreType: rd.score_type || "ERS",
+      scoreVersion: rd.score_version || "4.0",
+      hitCode: rd.hit_code,
+      hitDescription: rd.hit_description,
+      reportDate: rd.report_date,
+      reportOrderNo: rd.report_order_no,
+      personalInfo: rd.personal_info || rd.personalInfo,
+    };
+  };
+
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [consentChecked, setConsentChecked] = useState(false);
   const [liveBureau, setLiveBureau] = useState<"equifax" | "experian">("experian");
   const [isFetchingLive, setIsFetchingLive] = useState(false);
   const [liveReportData, setLiveReportData] = useState<any>(
     existingVerification?.response_data?.is_live_fetch && existingVerification?.response_data?.credit_score > 0
-      ? existingVerification?.response_data : null
+      ? normalizeLiveReport(existingVerification?.response_data) : null
   );
 
   const [formData, setFormData] = useState({
@@ -84,7 +102,7 @@ export default function CreditBureauDialog({
         setQuickAnalysisData(rd.quick_analysis);
       }
       if (rd.is_live_fetch && rd.credit_score > 0) {
-        setLiveReportData(rd);
+        setLiveReportData(normalizeLiveReport(rd));
       }
     }
   }, [existingVerification]);
@@ -735,7 +753,26 @@ export default function CreditBureauDialog({
                     )}
                   </div>
                 ) : (
-                  <CreditReportViewer data={liveReportData} />
+                  <div className="space-y-3">
+                    {liveReportData.report_file_path && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const { data } = await supabase.storage
+                            .from("loan-documents")
+                            .createSignedUrl(liveReportData.report_file_path, 300);
+                          if (data?.signedUrl) {
+                            window.open(data.signedUrl, "_blank");
+                          }
+                        }}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Equifax PDF Report
+                      </Button>
+                    )}
+                    <CreditReportViewer data={liveReportData} />
+                  </div>
                 )}
               </div>
             )}
