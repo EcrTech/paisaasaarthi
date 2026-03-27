@@ -853,14 +853,37 @@ serve(async (req) => {
       .single();
 
     if (existingVerification) {
-      await supabase
+      const { error: updateError } = await supabase
         .from("loan_verifications")
         .update(verificationData)
         .eq("id", existingVerification.id);
+      if (updateError) {
+        console.error("[EQUIFAX] DB update failed:", JSON.stringify(updateError));
+        // Retry without org_id in case of constraint issue
+        const { org_id, ...dataWithoutOrg } = verificationData;
+        const { error: retryError } = await supabase
+          .from("loan_verifications")
+          .update(dataWithoutOrg)
+          .eq("id", existingVerification.id);
+        if (retryError) {
+          console.error("[EQUIFAX] DB update retry also failed:", JSON.stringify(retryError));
+        }
+      }
     } else {
-      await supabase
+      const { error: insertError } = await supabase
         .from("loan_verifications")
         .insert(verificationData);
+      if (insertError) {
+        console.error("[EQUIFAX] DB insert failed:", JSON.stringify(insertError));
+        // Retry without org_id
+        const { org_id, ...dataWithoutOrg } = verificationData;
+        const { error: retryError } = await supabase
+          .from("loan_verifications")
+          .insert(dataWithoutOrg);
+        if (retryError) {
+          console.error("[EQUIFAX] DB insert retry also failed:", JSON.stringify(retryError));
+        }
+      }
     }
 
     // Strip large fields before sending to frontend
