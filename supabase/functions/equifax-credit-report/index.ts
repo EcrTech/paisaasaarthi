@@ -716,14 +716,35 @@ serve(async (req) => {
       reportData.requestFormat = "json";
       console.log("[EQUIFAX] Credit Score:", reportData.creditScore, "Hit Code:", reportData.hitCode);
 
-      // Extract and store embedded PDF if present
+      // Extract, decrypt, and store embedded PDF if present
       const encodedPdf = rawApiResponse.EncodedPdf;
       if (encodedPdf) {
         try {
-          console.log("[EQUIFAX] Found EncodedPdf, saving to storage...");
-          const pdfBytes = Uint8Array.from(atob(encodedPdf), c => c.charCodeAt(0));
-          const pdfPath = `${orgId}/${applicationId}/equifax_report_${Date.now()}.pdf`;
+          console.log("[EQUIFAX] Found EncodedPdf, decrypting...");
 
+          // Build password: {CustomerID}{MonthAbbrev}{Year}
+          const now = new Date();
+          const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          const pdfPassword = `${customerId}${monthNames[now.getMonth()]}${now.getFullYear()}`;
+
+          // Decrypt via Azure VM service
+          const decryptResponse = await fetch("http://98.70.57.225/decrypt-pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pdf_base64: encodedPdf, password: pdfPassword }),
+          });
+          const decryptResult = await decryptResponse.json();
+
+          let pdfBytes: Uint8Array;
+          if (decryptResult.success) {
+            console.log("[EQUIFAX] PDF decrypted successfully");
+            pdfBytes = Uint8Array.from(atob(decryptResult.pdf_base64), c => c.charCodeAt(0));
+          } else {
+            console.warn("[EQUIFAX] PDF decryption failed, saving encrypted version:", decryptResult.error);
+            pdfBytes = Uint8Array.from(atob(encodedPdf), c => c.charCodeAt(0));
+          }
+
+          const pdfPath = `${orgId}/${applicationId}/equifax_report_${Date.now()}.pdf`;
           const { error: pdfUploadError } = await supabase.storage
             .from("loan-documents")
             .upload(pdfPath, pdfBytes, {
