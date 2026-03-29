@@ -768,7 +768,7 @@ serve(async (req) => {
     }
 
 
-    const isAadhaarOrPan = documentType === 'aadhaar_card' || documentType === 'aadhar_card' || documentType === 'pan_card';
+    const isAadhaarOrPan = documentType === 'aadhaar_card' || documentType === 'aadhar_card' || documentType === 'aadhaar_front' || documentType === 'aadhaar_back' || documentType === 'pan_card';
 
     if (isAadhaarOrPan && !mergedData.parse_error && loanApplicationId) {
       console.log(`[ParseDocument] Syncing OCR data to loan_applicants for ${documentType}`);
@@ -795,7 +795,8 @@ serve(async (req) => {
           }
         }
 
-        if (documentType === 'aadhaar_card' || documentType === 'aadhar_card') {
+        const isAadhaarType = documentType === 'aadhaar_card' || documentType === 'aadhar_card' || documentType === 'aadhaar_front' || documentType === 'aadhaar_back';
+        if (isAadhaarType) {
           if (mergedData.aadhaar_number) {
             const cleanAadhaar = mergedData.aadhaar_number.replace(/\s/g, '');
             if (/^\d{12}$/.test(cleanAadhaar)) {

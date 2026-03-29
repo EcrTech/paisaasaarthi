@@ -77,6 +77,7 @@ export default function ApplicationDetail() {
     religion: "",
     pan_number: "",
     mobile: "",
+    email: "",
     current_address: "",
   });
   const [referralData, setReferralData] = useState({
@@ -315,6 +316,7 @@ export default function ApplicationDetail() {
       if (data.religion) updateData.religion = data.religion;
       if (data.pan_number) updateData.pan_number = data.pan_number;
       if (data.mobile) updateData.mobile = data.mobile;
+      if (data.email) updateData.email = data.email;
       if (data.current_address) updateData.current_address = { line1: data.current_address };
 
       const { error } = await supabase
@@ -516,6 +518,7 @@ export default function ApplicationDetail() {
         religion: (primaryApplicant.religion as string) || "",
         pan_number: (primaryApplicant.pan_number as string) || "",
         mobile: (primaryApplicant.mobile as string) || "",
+        email: (primaryApplicant.email as string) || "",
         current_address: addressStr,
       });
     }
@@ -527,7 +530,8 @@ export default function ApplicationDetail() {
     primaryApplicant?.marital_status,
     primaryApplicant?.religion,
     primaryApplicant?.pan_number,
-    primaryApplicant?.mobile
+    primaryApplicant?.mobile,
+    primaryApplicant?.email
   ]);
 
   // Determine if application is locked (disbursed without active repeat loan)
@@ -824,7 +828,17 @@ export default function ApplicationDetail() {
                         maxLength={10}
                       />
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
+                      <Label className="text-xs">Email</Label>
+                      <Input
+                        value={applicantData.email}
+                        onChange={(e) => setApplicantData({ ...applicantData, email: e.target.value })}
+                        placeholder="email@example.com"
+                        className="mt-1"
+                        type="email"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
                       <Label className="text-xs">Current Address</Label>
                       <Input
                         value={applicantData.current_address}
@@ -871,7 +885,11 @@ export default function ApplicationDetail() {
                       <label className="text-xs text-muted-foreground">Mobile</label>
                       <p className="text-sm">{(primaryApplicant.mobile as string) || "N/A"}</p>
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Email</label>
+                      <p className="text-sm truncate">{(primaryApplicant.email as string) || "N/A"}</p>
+                    </div>
+                    <div className="md:col-span-3">
                       <label className="text-xs text-muted-foreground">Current Address</label>
                       <p className="text-sm">{formatAddress(primaryApplicant.current_address)}</p>
                     </div>
