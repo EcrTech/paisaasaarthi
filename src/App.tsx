@@ -55,6 +55,7 @@ import SMSAutomationRules from "./pages/SMSAutomationRules";
 import CampaignOverview from "./pages/Campaigns/CampaignOverview";
 import AIInsightsDashboard from "./pages/Campaigns/AIInsightsDashboard";
 import OutboundWebhooks from "./pages/OutboundWebhooks";
+import Tasks from "./pages/Tasks";
 import Applications from "./pages/LOS/Applications";
 // NewApplication import removed - applications only via referral links
 import ApplicationDetail from "./pages/LOS/ApplicationDetail";
@@ -318,6 +319,12 @@ const App = () => {
               </ProtectedRoute>
             } />
             
+            <Route path="/tasks" element={
+              <ProtectedRoute>
+                <Tasks />
+              </ProtectedRoute>
+            } />
+
             <Route path="/los/dashboard" element={
               <ProtectedRoute>
                 <LOSDashboard />

@@ -40,9 +40,8 @@ import {
   Sparkles,
   MapPinOff,
   IndianRupee,
-  Upload,
+  CheckSquare,
   Shield,
-  Ticket,
   HardDrive,
 } from "lucide-react";
 import { useNotification } from "@/hooks/useNotification";
@@ -292,17 +291,6 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               )}
 
-              {canAccessFeature("calling") && (
-                <Link
-                  to="/calling/upload-leads"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Upload size={18} />
-                  <span>Upload Leads</span>
-                </Link>
-              )}
-
               {canAccessFeature("redefine_data_repository") && orgName.includes("Redefine") && (
                 <Link
                   to="/redefine-repository"
@@ -325,14 +313,16 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               )}
 
-              <Link
-                to="/support-tickets"
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                onClick={() => setSidebarOpen(false)}
-              >
-                <Ticket size={18} />
-                <span>Support Tickets</span>
-              </Link>
+              {canAccessFeature("tasks") && (
+                <Link
+                  to="/tasks"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <CheckSquare size={18} />
+                  <span>Tasks</span>
+                </Link>
+              )}
 
               {showManagementSection && (
                 <>
