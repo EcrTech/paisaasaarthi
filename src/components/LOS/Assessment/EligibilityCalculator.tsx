@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Calculator, CheckCircle, XCircle, TrendingUp, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Calculator, CalendarIcon, CheckCircle, XCircle, TrendingUp, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { differenceInDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
 interface EligibilityCalculatorProps {
@@ -613,12 +616,38 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
           <div className="grid gap-4 md:grid-cols-3">
             <div>
               <Label>Recommended Tenure (days)</Label>
-              <Input
-                type="number"
-                value={formData.recommended_tenure}
-                onChange={(e) => setFormData({ ...formData, recommended_tenure: e.target.value })}
-                placeholder="30"
-              />
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={formData.recommended_tenure}
+                  onChange={(e) => setFormData({ ...formData, recommended_tenure: e.target.value })}
+                  placeholder="30"
+                  className="flex-1"
+                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon" className="shrink-0" title="Pick end date to calculate days">
+                      <CalendarIcon className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                      mode="single"
+                      selected={undefined}
+                      onSelect={(date) => {
+                        if (date) {
+                          const days = differenceInDays(date, new Date());
+                          if (days > 0) {
+                            setFormData({ ...formData, recommended_tenure: String(days) });
+                          }
+                        }
+                      }}
+                      disabled={(date) => date <= new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
             <div>
               <Label>Interest Rate (% per day)</Label>
