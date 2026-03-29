@@ -27,8 +27,13 @@ export function captureUTMParams(): UTMParams {
 export function getMarketingSource(utmParams?: UTMParams | null): string {
   if (!utmParams?.utm_source) return 'Direct';
 
+  // Strip anything after '&' in case the utm_source contains extra params
+  const rawSource = utmParams.utm_source.split('&')[0].trim();
+
   const sourceMap: Record<string, string> = {
     google: 'Google Ads',
+    'google-ads': 'Google Ads',
+    'google ads': 'Google Ads',
     facebook: 'Meta Ads',
     fb: 'Meta Ads',
     instagram: 'Instagram',
@@ -39,5 +44,5 @@ export function getMarketingSource(utmParams?: UTMParams | null): string {
     direct: 'Direct',
   };
 
-  return sourceMap[utmParams.utm_source.toLowerCase()] || utmParams.utm_source;
+  return sourceMap[rawSource.toLowerCase()] || rawSource;
 }

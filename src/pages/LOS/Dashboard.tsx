@@ -48,6 +48,12 @@ const SOURCE_LABELS: Record<string, string> = {
   bulk_upload: "Bulk Upload",
   bulk_import: "Bulk Import",
   loan_application: "Loan Application",
+  "Google Ads": "Google Ads",
+  "Meta Ads": "Meta Ads",
+  "Reapply Quick": "Reapply Quick",
+  "Repeat Loan": "Repeat Loan",
+  Direct: "Direct",
+  unknown: "Unknown",
 };
 
 // Distinct color palette for lead sources — cycled for any number of sources
