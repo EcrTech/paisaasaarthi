@@ -138,9 +138,6 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 {userName}
               </Link>
-              <div className="mt-4 w-full">
-                <QuickDial />
-              </div>
             </div>
 
             {/* Navigation */}
