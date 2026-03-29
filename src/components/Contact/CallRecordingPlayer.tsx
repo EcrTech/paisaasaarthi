@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, Download, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +16,20 @@ export const CallRecordingPlayer = ({ callLogId, variant = "ghost", size = "sm" 
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const notify = useNotification();
+  const audioUrlRef = useRef<string | null>(null);
+
+  // Cleanup: revoke blob URL and stop audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.removeAttribute("src");
+      }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+      }
+    };
+  }, [audioElement]);
 
   const fetchRecording = async () => {
     try {
@@ -38,13 +52,16 @@ export const CallRecordingPlayer = ({ callLogId, variant = "ghost", size = "sm" 
       }
 
       const blob = await response.blob();
+      // Revoke previous URL if any
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+
       const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
       setAudioUrl(url);
 
       const audio = new Audio(url);
-      audio.addEventListener('ended', () => {
-        setIsPlaying(false);
-      });
+      const onEnded = () => setIsPlaying(false);
+      audio.addEventListener('ended', onEnded);
       setAudioElement(audio);
 
       return audio;

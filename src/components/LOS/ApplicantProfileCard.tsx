@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,10 +12,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { User, FileText, CheckCircle, Eye, Loader2, Video, CreditCard, MessageSquare, Mail, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-import CreditBureauDialog from "@/components/LOS/Verification/CreditBureauDialog";
+const CreditBureauDialog = lazy(() => import("@/components/LOS/Verification/CreditBureauDialog"));
+const WhatsAppChatDialog = lazy(() => import("@/components/LOS/Relationships/WhatsAppChatDialog").then(m => ({ default: m.WhatsAppChatDialog })));
 import { VideoKYCRetryButton } from "@/components/LOS/Verification/VideoKYCRetryButton";
 import { VideoKYCViewDialog } from "@/components/LOS/Verification/VideoKYCViewDialog";
-import { WhatsAppChatDialog } from "@/components/LOS/Relationships/WhatsAppChatDialog";
 import { EmailChatDialog } from "@/components/LOS/Relationships/EmailChatDialog";
 import { CallChatDialog } from "@/components/LOS/Relationships/CallChatDialog";
 import { useUnreadWhatsApp } from "@/hooks/useUnreadWhatsApp";
@@ -595,24 +595,28 @@ export function ApplicantProfileCard({
       />
 
       {/* CIBIL Dialog */}
-      <CreditBureauDialog
-        open={cibilDialogOpen}
-        onClose={() => setCibilDialogOpen(false)}
-        applicationId={applicationId}
-        orgId={orgId}
-        applicant={applicant}
-        existingVerification={verifications.find(v => v.verification_type === 'credit_bureau')}
-      />
+      <Suspense fallback={null}>
+        <CreditBureauDialog
+          open={cibilDialogOpen}
+          onClose={() => setCibilDialogOpen(false)}
+          applicationId={applicationId}
+          orgId={orgId}
+          applicant={applicant}
+          existingVerification={verifications.find(v => v.verification_type === 'credit_bureau')}
+        />
+      </Suspense>
 
       {/* WhatsApp Chat Dialog */}
       {mobile && (
-        <WhatsAppChatDialog
-          open={whatsappDialogOpen}
-          onOpenChange={setWhatsappDialogOpen}
-          contactId={applicationId}
-          contactName={applicantName}
-          phoneNumber={mobile}
-        />
+        <Suspense fallback={null}>
+          <WhatsAppChatDialog
+            open={whatsappDialogOpen}
+            onOpenChange={setWhatsappDialogOpen}
+            contactId={applicationId}
+            contactName={applicantName}
+            phoneNumber={mobile}
+          />
+        </Suspense>
       )}
 
       {/* Email Chat Dialog */}

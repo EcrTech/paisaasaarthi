@@ -61,69 +61,20 @@ export default function EMIDashboard({ applicationId }: EMIDashboardProps) {
   const { data: emiStats, isLoading } = useQuery({
     queryKey: ["emi-stats", applicationId, orgId],
     queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-
-      // Total EMIs
-      const { count: totalEMIs } = await supabase
-        .from("loan_repayment_schedule")
-        .select("*", { count: "exact", head: true })
-        .eq("loan_application_id", applicationId)
-        .eq("org_id", orgId);
-
-      // Paid EMIs
-      const { count: paidEMIs } = await supabase
-        .from("loan_repayment_schedule")
-        .select("*", { count: "exact", head: true })
-        .eq("loan_application_id", applicationId)
-        .eq("org_id", orgId)
-        .eq("status", "paid");
-
-      // Pending EMIs
-      const { count: pendingEMIs } = await supabase
-        .from("loan_repayment_schedule")
-        .select("*", { count: "exact", head: true })
-        .eq("loan_application_id", applicationId)
-        .eq("org_id", orgId)
-        .eq("status", "pending");
-
-      // Overdue EMIs
-      const { count: overdueEMIs } = await supabase
-        .from("loan_repayment_schedule")
-        .select("*", { count: "exact", head: true })
-        .eq("loan_application_id", applicationId)
-        .eq("org_id", orgId)
-        .or("status.eq.overdue,and(status.eq.pending,due_date.lt." + today + ")");
-
-      // Next EMI
-      const { data: nextEMI } = await supabase
-        .from("loan_repayment_schedule")
-        .select("*")
-        .eq("loan_application_id", applicationId)
-        .eq("org_id", orgId)
-        .in("status", ["pending", "overdue"])
-        .order("due_date", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      // Total amounts
-      const { data: scheduleData } = await supabase
-        .from("loan_repayment_schedule")
-        .select("total_emi, amount_paid")
-        .eq("loan_application_id", applicationId)
-        .eq("org_id", orgId);
-
-      const totalAmount = scheduleData?.reduce((sum, item) => sum + item.total_emi, 0) || 0;
-      const amountPaid = scheduleData?.reduce((sum, item) => sum + item.amount_paid, 0) || 0;
-
-      return {
-        totalEMIs: totalEMIs || 0,
-        paidEMIs: paidEMIs || 0,
-        pendingEMIs: pendingEMIs || 0,
-        overdueEMIs: overdueEMIs || 0,
-        nextEMI,
-        totalAmount,
-        amountPaid,
-        balanceAmount: totalAmount - amountPaid,
+      const { data, error } = await supabase.rpc("get_application_emi_stats", {
+        p_application_id: applicationId,
+        p_org_id: orgId!,
+      });
+      if (error) throw error;
+      return data as {
+        totalEMIs: number;
+        paidEMIs: number;
+        pendingEMIs: number;
+        overdueEMIs: number;
+        totalAmount: number;
+        amountPaid: number;
+        balanceAmount: number;
+        nextEMI: any;
       };
     },
     enabled: !!applicationId && !!orgId,

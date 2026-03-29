@@ -9,8 +9,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { CustomerRelationship } from "@/hooks/useCustomerRelationships";
-import { useState } from "react";
-import { WhatsAppChatDialog } from "./WhatsAppChatDialog";
+import { lazy, Suspense, useState } from "react";
+const WhatsAppChatDialog = lazy(() => import("./WhatsAppChatDialog").then(m => ({ default: m.WhatsAppChatDialog })));
 
 interface CustomerCardProps {
   customer: CustomerRelationship;
@@ -125,13 +125,15 @@ export function CustomerCard({ customer, onViewDetails, onShareReferralLink }: C
         </div>
       </CardContent>
 
-      <WhatsAppChatDialog
-        open={showWhatsAppChat}
-        onOpenChange={setShowWhatsAppChat}
-        contactId={customer.customerId}
-        contactName={customer.name}
-        phoneNumber={customer.mobile}
-      />
+      <Suspense fallback={null}>
+        <WhatsAppChatDialog
+          open={showWhatsAppChat}
+          onOpenChange={setShowWhatsAppChat}
+          contactId={customer.customerId}
+          contactName={customer.name}
+          phoneNumber={customer.mobile}
+        />
+      </Suspense>
     </Card>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/Layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { useNotification } from "@/hooks/useNotification";
-import { WhatsAppChatDialog } from "@/components/LOS/Relationships/WhatsAppChatDialog";
+const WhatsAppChatDialog = lazy(() => import("@/components/LOS/Relationships/WhatsAppChatDialog").then(m => ({ default: m.WhatsAppChatDialog })));
 import { useUnreadWhatsApp } from "@/hooks/useUnreadWhatsApp";
 import { format } from "date-fns";
 
@@ -279,13 +279,15 @@ export default function CallingLeadDetail() {
       </div>
 
       {/* WhatsApp Dialog */}
-      <WhatsAppChatDialog
-        open={whatsappOpen}
-        onOpenChange={setWhatsappOpen}
-        contactId={contact.id}
-        contactName={displayName}
-        phoneNumber={contact.phone}
-      />
+      <Suspense fallback={null}>
+        <WhatsAppChatDialog
+          open={whatsappOpen}
+          onOpenChange={setWhatsappOpen}
+          contactId={contact.id}
+          contactName={displayName}
+          phoneNumber={contact.phone}
+        />
+      </Suspense>
     </DashboardLayout>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock } from "lucide-react";
-import { RuleBuilder } from "@/components/EmailAutomation/RuleBuilder";
+const RuleBuilder = lazy(() => import("@/components/EmailAutomation/RuleBuilder").then(m => ({ default: m.RuleBuilder })));
 import { AutomationAnalytics } from "@/components/EmailAutomation/AutomationAnalytics";
 import { ExecutionHistoryTable } from "@/components/EmailAutomation/ExecutionHistoryTable";
 import { RuleAnalyticsDialog } from "@/components/EmailAutomation/RuleAnalyticsDialog";
@@ -467,11 +467,13 @@ export default function EmailAutomations() {
         </TabsContent>
       </Tabs>
 
-      <RuleBuilder
-        open={isRuleBuilderOpen}
-        onOpenChange={setIsRuleBuilderOpen}
-        editingRule={editingRule}
-      />
+      <Suspense fallback={null}>
+        <RuleBuilder
+          open={isRuleBuilderOpen}
+          onOpenChange={setIsRuleBuilderOpen}
+          editingRule={editingRule}
+        />
+      </Suspense>
 
       <RuleAnalyticsDialog
         open={!!analyticsRuleId}

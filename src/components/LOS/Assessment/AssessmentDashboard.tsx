@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle, XCircle, AlertCircle, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import EligibilityCalculator from "./EligibilityCalculator";
+const EligibilityCalculator = lazy(() => import("./EligibilityCalculator"));
 
 interface AssessmentDashboardProps {
   applicationId: string;
@@ -260,7 +261,9 @@ export default function AssessmentDashboard({ applicationId, orgId }: Assessment
         </TabsList>
 
         <TabsContent value="calculator">
-          <EligibilityCalculator applicationId={applicationId} orgId={orgId} />
+          <Suspense fallback={<div className="py-8 text-center text-muted-foreground">Loading calculator...</div>}>
+            <EligibilityCalculator applicationId={applicationId} orgId={orgId} />
+          </Suspense>
         </TabsContent>
       </Tabs>
     </div>

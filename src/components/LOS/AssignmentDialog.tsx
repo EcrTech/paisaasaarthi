@@ -66,10 +66,10 @@ export function AssignmentDialog({
 
   const assignMutation = useMutation({
     mutationFn: async (userId: string | null) => {
-      const { error } = await supabase
-        .from("loan_applications")
-        .update({ assigned_to: userId })
-        .eq("id", applicationId);
+      const { error } = await supabase.rpc("assign_application", {
+        p_application_id: applicationId,
+        p_new_assignee: userId,
+      });
 
       if (error) throw error;
     },

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { ApplicationListItem } from "@/hooks/useApplicationsList";
-import { WhatsAppChatDialog } from "./WhatsAppChatDialog";
+const WhatsAppChatDialog = lazy(() => import("./WhatsAppChatDialog").then(m => ({ default: m.WhatsAppChatDialog })));
 
 interface ApplicationCardProps {
   application: ApplicationListItem;
@@ -206,13 +206,15 @@ export function ApplicationCard({ application, onViewDetails }: ApplicationCardP
       </CardContent>
 
       {/* WhatsApp Chat Dialog */}
-      <WhatsAppChatDialog
-        open={showWhatsAppChat}
-        onOpenChange={setShowWhatsAppChat}
-        contactId={application.id}
-        contactName={application.applicantName}
-        phoneNumber={application.mobile}
-      />
+      <Suspense fallback={null}>
+        <WhatsAppChatDialog
+          open={showWhatsAppChat}
+          onOpenChange={setShowWhatsAppChat}
+          contactId={application.id}
+          contactName={application.applicantName}
+          phoneNumber={application.mobile}
+        />
+      </Suspense>
     </Card>
   );
 }

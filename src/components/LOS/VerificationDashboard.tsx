@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import PANVerificationDialog from "./Verification/PANVerificationDialog";
 import AadhaarVerificationDialog from "./Verification/AadhaarVerificationDialog";
 import BankAccountVerificationDialog from "./Verification/BankAccountVerificationDialog";
-import CreditBureauDialog from "./Verification/CreditBureauDialog";
+const CreditBureauDialog = lazy(() => import("./Verification/CreditBureauDialog"));
 import VerificationDetailsDialog from "./Verification/VerificationDetailsDialog";
 import { VideoKYCRetryButton } from "./Verification/VideoKYCRetryButton";
 import { VideoKYCViewDialog } from "./Verification/VideoKYCViewDialog";
@@ -617,14 +617,16 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
       )}
 
       {selectedVerification?.type === "credit_bureau" && (
-        <CreditBureauDialog
-          open={true}
-          onClose={() => setSelectedVerification(null)}
-          applicationId={applicationId}
-          orgId={orgId}
-          applicant={primaryApplicant}
-          existingVerification={selectedVerification.data}
-        />
+        <Suspense fallback={null}>
+          <CreditBureauDialog
+            open={true}
+            onClose={() => setSelectedVerification(null)}
+            applicationId={applicationId}
+            orgId={orgId}
+            applicant={primaryApplicant}
+            existingVerification={selectedVerification.data}
+          />
+        </Suspense>
       )}
 
       {selectedVerification?.type === "bank_account" && (

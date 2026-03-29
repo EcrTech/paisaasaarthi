@@ -59,38 +59,24 @@ export function useEMIPayments(applicationId?: string) {
       notes?: string;
     }) => {
       const { data: user } = await supabase.auth.getUser();
-      const paymentNumber = `PMT${Date.now()}`;
 
-      // Insert payment record
-      const { error: paymentError } = await supabase
-        .from("loan_payments")
-        .insert({
-          loan_application_id: payment.applicationId,
-          schedule_id: payment.scheduleId,
-          org_id: orgId!,
-          payment_number: paymentNumber,
-          payment_date: payment.paymentDate,
-          payment_amount: payment.paymentAmount,
-          principal_paid: payment.principalPaid,
-          interest_paid: payment.interestPaid,
-          late_fee_paid: payment.lateFeePaid,
-          payment_method: payment.paymentMethod,
-          transaction_reference: payment.transactionReference,
-          notes: payment.notes,
-          created_by: user?.user?.id,
-        });
+      // Single atomic RPC: inserts loan_payments + updates schedule in one transaction
+      const { error } = await supabase.rpc("record_payment", {
+        p_schedule_id: payment.scheduleId,
+        p_application_id: payment.applicationId,
+        p_org_id: orgId!,
+        p_payment_date: payment.paymentDate,
+        p_payment_amount: payment.paymentAmount,
+        p_principal_paid: payment.principalPaid,
+        p_interest_paid: payment.interestPaid,
+        p_late_fee_paid: payment.lateFeePaid,
+        p_payment_method: payment.paymentMethod,
+        p_transaction_reference: payment.transactionReference || null,
+        p_notes: payment.notes || null,
+        p_created_by: user?.user?.id || null,
+      });
 
-      if (paymentError) throw paymentError;
-
-      // Atomic schedule update - prevents race conditions
-      const { error: updateError } = await supabase
-        .rpc("record_emi_payment_atomic", {
-          p_schedule_id: payment.scheduleId,
-          p_payment_amount: payment.paymentAmount,
-          p_payment_date: payment.paymentDate,
-        });
-
-      if (updateError) throw updateError;
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["emi-payments"] });

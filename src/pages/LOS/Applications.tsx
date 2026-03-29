@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,6 +22,7 @@ import PaginationControls from "@/components/common/PaginationControls";
 import { cn } from "@/lib/utils";
 
 const STAGE_LABELS: Record<string, string> = {
+  lead: "Lead",
   application_login: "Application Login",
   document_collection: "Document Collection",
   field_verification: "Field Verification",
@@ -47,6 +48,7 @@ const STATUS_OPTIONS = [
 
 const STAGE_OPTIONS = [
   { value: "all", label: "All Stages" },
+  { value: "lead", label: "Lead" },
   { value: "application_login", label: "Application Login" },
   { value: "document_collection", label: "Document Collection" },
   { value: "field_verification", label: "Field Verification" },
@@ -111,7 +113,7 @@ const { data: applications = [], isLoading } = useQuery({
           assigned_profile:profiles!loan_applications_assigned_to_fkey(first_name, last_name)
         `)
         .eq("org_id", orgId)
-        .neq("status", "draft")
+        .or("status.neq.draft,current_stage.eq.lead")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -146,7 +148,7 @@ const { data: applications = [], isLoading } = useQuery({
     return pincode && negativeAreas.includes(pincode);
   };
 
-  const filteredApplications = applications.filter((app) => {
+  const filteredApplications = useMemo(() => applications.filter((app) => {
     if (statusFilter !== "all" && app.status !== statusFilter) return false;
     if (stageFilter !== "all" && app.current_stage !== stageFilter) return false;
     
@@ -178,7 +180,7 @@ const { data: applications = [], isLoading } = useQuery({
       applicantName.includes(searchLower) ||
       contactName.includes(searchLower)
     );
-  });
+  }), [applications, statusFilter, stageFilter, dateFrom, dateTo, searchQuery]);
 
   const pagination = usePagination({
     defaultPageSize: 25,

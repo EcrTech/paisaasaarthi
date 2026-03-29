@@ -154,14 +154,8 @@ serve(async (req) => {
         console.error("[surepass-pan-verify] Failed to save verification:", insertError);
       }
 
-      // Update applicant DOB if valid
-      if (panDob && isValid) {
-        await adminClient
-          .from("loan_applicants")
-          .update({ dob: panDob })
-          .eq("loan_application_id", applicationId)
-          .eq("applicant_type", "primary");
-      }
+      // Applicant DOB enrichment is now handled by
+      // DB trigger enrich_applicant_from_verification() on loan_verifications
     }
 
     return new Response(
