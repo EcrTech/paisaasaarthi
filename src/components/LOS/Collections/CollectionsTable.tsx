@@ -18,12 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IndianRupee, Search, Eye, Filter, Smartphone, ArrowUpDown, CalendarIcon, HandCoins, RefreshCw, ChevronDown, ChevronUp, History } from "lucide-react";
+import { IndianRupee, Search, Eye, Filter, ArrowUpDown, CalendarIcon, HandCoins, RefreshCw, ChevronDown, ChevronUp, History } from "lucide-react";
 import { CollectionRecord } from "@/hooks/useCollections";
 import { useNavigate } from "react-router-dom";
 import { ClickToCall } from "@/components/Contact/ClickToCall";
-import { UPICollectionDialog } from "./UPICollectionDialog";
-import { useUPICollection } from "@/hooks/useUPICollection";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -55,14 +53,11 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
   const [dueDateTo, setDueDateTo] = useState<Date | undefined>(undefined);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [upiDialogOpen, setUpiDialogOpen] = useState(false);
-  const [selectedUpiRecord, setSelectedUpiRecord] = useState<CollectionRecord | null>(null);
   const [settleDialogOpen, setSettleDialogOpen] = useState(false);
   const [settleRecord, setSettleRecord] = useState<CollectionRecord | null>(null);
   const [settleNotes, setSettleNotes] = useState("");
   const [reloanRecord, setReloanRecord] = useState<CollectionRecord | null>(null);
   const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
-  const { isCollectionEnabled } = useUPICollection();
   const { orgId } = useOrgContext();
   const pageSize = 25;
 
@@ -426,20 +421,6 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                               <HandCoins className="h-3 w-3 mr-1" />
                               Settle
                             </Button>
-                            {isCollectionEnabled && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs px-2"
-                                onClick={() => {
-                                  setSelectedUpiRecord(record);
-                                  setUpiDialogOpen(true);
-                                }}
-                              >
-                                <Smartphone className="h-3 w-3 mr-1" />
-                                UPI
-                              </Button>
-                            )}
                           </>
                         ) : record.contact_id && (
                           <Button
@@ -521,13 +502,6 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
           </div>
         </div>
       )}
-
-      {/* UPI Collection Dialog */}
-      <UPICollectionDialog
-        open={upiDialogOpen}
-        onOpenChange={setUpiDialogOpen}
-        record={selectedUpiRecord}
-      />
 
       {/* Repeat Loan Dialog */}
       {reloanRecord && orgId && reloanRecord.contact_id && (

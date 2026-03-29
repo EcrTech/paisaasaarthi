@@ -23,8 +23,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
-  Copy,
-  Smartphone
+  Copy
 } from "lucide-react";
 import MandateStatusBadge from "@/components/LOS/Mandate/MandateStatusBadge";
 
@@ -79,18 +78,6 @@ const NupaySettings = () => {
   const [prodEsignApiKey, setProdEsignApiKey] = useState("");
   const [prodRedirectUrl, setProdRedirectUrl] = useState("");
   
-  // Collection 360 Form states
-  const [uatAccessKey, setUatAccessKey] = useState("");
-  const [uatAccessSecret, setUatAccessSecret] = useState("");
-  const [uatCollectionEndpoint, setUatCollectionEndpoint] = useState("https://api-uat.nupaybiz.com");
-  const [uatProviderId, setUatProviderId] = useState("");
-  const [uatCollectionEnabled, setUatCollectionEnabled] = useState(false);
-  const [prodAccessKey, setProdAccessKey] = useState("");
-  const [prodAccessSecret, setProdAccessSecret] = useState("");
-  const [prodCollectionEndpoint, setProdCollectionEndpoint] = useState("https://api.nupaybiz.com");
-  const [prodProviderId, setProdProviderId] = useState("");
-  const [prodCollectionEnabled, setProdCollectionEnabled] = useState(false);
-
   // Fetch Nupay configurations
   const { data: configs, isLoading: configsLoading } = useQuery({
     queryKey: ["nupay-config", orgId],
@@ -113,12 +100,6 @@ const NupaySettings = () => {
         setUatEsignEndpoint((uatConfig as unknown as { esign_api_endpoint?: string }).esign_api_endpoint || "https://esignuat.nupaybiz.com");
         setUatEsignApiKey(uatConfig.esign_api_key || "");
         setUatRedirectUrl(uatConfig.redirect_url || "");
-        // Collection 360 fields
-        setUatAccessKey(uatConfig.access_key || "");
-        setUatAccessSecret(uatConfig.access_secret || "");
-        setUatCollectionEndpoint(uatConfig.collection_api_endpoint || "https://api-uat.nupaybiz.com");
-        setUatProviderId(uatConfig.provider_id || "");
-        setUatCollectionEnabled(uatConfig.collection_enabled || false);
       }
       if (prodConfig) {
         setProdApiKey(prodConfig.api_key || "");
@@ -126,12 +107,6 @@ const NupaySettings = () => {
         setProdEsignEndpoint((prodConfig as unknown as { esign_api_endpoint?: string }).esign_api_endpoint || "https://esign.nupaybiz.com");
         setProdEsignApiKey(prodConfig.esign_api_key || "");
         setProdRedirectUrl(prodConfig.redirect_url || "");
-        // Collection 360 fields
-        setProdAccessKey(prodConfig.access_key || "");
-        setProdAccessSecret(prodConfig.access_secret || "");
-        setProdCollectionEndpoint(prodConfig.collection_api_endpoint || "https://api.nupaybiz.com");
-        setProdProviderId(prodConfig.provider_id || "");
-        setProdCollectionEnabled(prodConfig.collection_enabled || false);
       }
       
       return data as NupayConfig[];
@@ -210,68 +185,6 @@ const NupaySettings = () => {
     },
     onSuccess: () => {
       toast.success("Configuration saved");
-      queryClient.invalidateQueries({ queryKey: ["nupay-config"] });
-    },
-    onError: (error: Error) => {
-      toast.error("Failed to save configuration", { description: error.message });
-    },
-  });
-
-  // Save Collection 360 config mutation
-  const saveCollectionConfigMutation = useMutation({
-    mutationFn: async ({ environment, accessKey, accessSecret, collectionEndpoint, providerId, collectionEnabled }: {
-      environment: "uat" | "production";
-      accessKey: string;
-      accessSecret: string;
-      collectionEndpoint: string;
-      providerId: string;
-      collectionEnabled: boolean;
-    }) => {
-      if (!orgId) throw new Error("No organization selected");
-
-      // Check if config exists
-      const { data: existing } = await supabase
-        .from("nupay_config")
-        .select("id")
-        .eq("org_id", orgId)
-        .eq("environment", environment)
-        .single();
-
-      if (existing) {
-        // Update existing config
-        const { error } = await supabase
-          .from("nupay_config")
-          .update({
-            access_key: accessKey,
-            access_secret: accessSecret,
-            collection_api_endpoint: collectionEndpoint,
-            provider_id: providerId || null,
-            collection_enabled: collectionEnabled,
-          })
-          .eq("id", existing.id);
-
-        if (error) throw error;
-      } else {
-        // Create new config with required fields
-        const { error } = await supabase
-          .from("nupay_config")
-          .insert({
-            org_id: orgId,
-            environment,
-            api_key: "", // Will be set in eMandate tab
-            api_endpoint: environment === "production" ? "https://nach.nupaybiz.com" : "https://nachuat.nupaybiz.com",
-            access_key: accessKey,
-            access_secret: accessSecret,
-            collection_api_endpoint: collectionEndpoint,
-            provider_id: providerId || null,
-            collection_enabled: collectionEnabled,
-          });
-
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      toast.success("Collection 360 configuration saved");
       queryClient.invalidateQueries({ queryKey: ["nupay-config"] });
     },
     onError: (error: Error) => {
@@ -370,14 +283,10 @@ const NupaySettings = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4 max-w-lg">
+          <TabsList className="grid w-full grid-cols-3 max-w-md">
             <TabsTrigger value="configuration" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               eMandate
-            </TabsTrigger>
-            <TabsTrigger value="collection360" className="flex items-center gap-2">
-              <Smartphone className="h-4 w-4" />
-              UPI Collection
             </TabsTrigger>
             <TabsTrigger value="banks" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
@@ -616,206 +525,6 @@ const NupaySettings = () => {
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : null}
                   Save Production Configuration
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Collection 360 Tab */}
-          <TabsContent value="collection360" className="space-y-6 mt-6">
-            {/* UAT Collection 360 */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Smartphone className="h-5 w-5" />
-                      UAT - UPI Collection
-                      {uatCollectionEnabled && (
-                        <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription>Collection 360 API for UPI-based EMI collection (Testing)</CardDescription>
-                  </div>
-                  <Switch
-                    checked={uatCollectionEnabled}
-                    onCheckedChange={setUatCollectionEnabled}
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="uatAccessKey">Access Key</Label>
-                  <Input
-                    id="uatAccessKey"
-                    value={uatAccessKey}
-                    onChange={(e) => setUatAccessKey(e.target.value)}
-                    placeholder="nu_pub_xxx"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="uatAccessSecret">Access Secret</Label>
-                  <Input
-                    id="uatAccessSecret"
-                    type="password"
-                    value={uatAccessSecret}
-                    onChange={(e) => setUatAccessSecret(e.target.value)}
-                    placeholder="nu_prv_xxx"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="uatCollectionEndpoint">API Endpoint</Label>
-                  <Input
-                    id="uatCollectionEndpoint"
-                    value={uatCollectionEndpoint}
-                    onChange={(e) => setUatCollectionEndpoint(e.target.value)}
-                    placeholder="https://api-uat.nupaybiz.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="uatProviderId">Provider ID (Optional)</Label>
-                  <Input
-                    id="uatProviderId"
-                    value={uatProviderId}
-                    onChange={(e) => setUatProviderId(e.target.value)}
-                    placeholder="Service provider identifier"
-                  />
-                </div>
-                <div>
-                  <Label>Webhook URL</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      value={`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`} 
-                      readOnly 
-                      className="bg-muted text-xs" 
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`);
-                        toast.success("Webhook URL copied");
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Configure this URL in Nupay Collection 360 dashboard for payment notifications
-                  </p>
-                </div>
-                <Button
-                  onClick={() => saveCollectionConfigMutation.mutate({
-                    environment: "uat",
-                    accessKey: uatAccessKey,
-                    accessSecret: uatAccessSecret,
-                    collectionEndpoint: uatCollectionEndpoint,
-                    providerId: uatProviderId,
-                    collectionEnabled: uatCollectionEnabled,
-                  })}
-                  disabled={!uatAccessKey || !uatAccessSecret || saveCollectionConfigMutation.isPending}
-                >
-                  {saveCollectionConfigMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : null}
-                  Save UAT Collection Config
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Production Collection 360 */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Smartphone className="h-5 w-5" />
-                      Production - UPI Collection
-                      {prodCollectionEnabled && (
-                        <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription>Collection 360 API for UPI-based EMI collection (Live)</CardDescription>
-                  </div>
-                  <Switch
-                    checked={prodCollectionEnabled}
-                    onCheckedChange={setProdCollectionEnabled}
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="prodAccessKey">Access Key</Label>
-                  <Input
-                    id="prodAccessKey"
-                    value={prodAccessKey}
-                    onChange={(e) => setProdAccessKey(e.target.value)}
-                    placeholder="nu_pub_xxx"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="prodAccessSecret">Access Secret</Label>
-                  <Input
-                    id="prodAccessSecret"
-                    type="password"
-                    value={prodAccessSecret}
-                    onChange={(e) => setProdAccessSecret(e.target.value)}
-                    placeholder="nu_prv_xxx"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="prodCollectionEndpoint">API Endpoint</Label>
-                  <Input
-                    id="prodCollectionEndpoint"
-                    value={prodCollectionEndpoint}
-                    onChange={(e) => setProdCollectionEndpoint(e.target.value)}
-                    placeholder="https://api.nupaybiz.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="prodProviderId">Provider ID (Optional)</Label>
-                  <Input
-                    id="prodProviderId"
-                    value={prodProviderId}
-                    onChange={(e) => setProdProviderId(e.target.value)}
-                    placeholder="Service provider identifier"
-                  />
-                </div>
-                <div>
-                  <Label>Webhook URL</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      value={`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`} 
-                      readOnly 
-                      className="bg-muted text-xs" 
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL || "https://newvgnbygvtnmyomxbmu.supabase.co"}/functions/v1/nupay-collection-webhook`);
-                        toast.success("Webhook URL copied");
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => saveCollectionConfigMutation.mutate({
-                    environment: "production",
-                    accessKey: prodAccessKey,
-                    accessSecret: prodAccessSecret,
-                    collectionEndpoint: prodCollectionEndpoint,
-                    providerId: prodProviderId,
-                    collectionEnabled: prodCollectionEnabled,
-                  })}
-                  disabled={!prodAccessKey || !prodAccessSecret || saveCollectionConfigMutation.isPending}
-                >
-                  {saveCollectionConfigMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : null}
-                  Save Production Collection Config
                 </Button>
               </CardContent>
             </Card>

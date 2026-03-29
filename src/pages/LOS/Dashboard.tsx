@@ -22,7 +22,7 @@ import StaffPerformanceDashboard from "@/components/LOS/Reports/StaffPerformance
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { format, subDays, subMonths, addMonths, addDays, startOfMonth, endOfMonth, eachMonthOfInterval, eachDayOfInterval, getDaysInMonth } from "date-fns";
+import { format, subDays, startOfMonth } from "date-fns";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
@@ -70,370 +70,103 @@ export default function LOSDashboard() {
   const [toDate, setToDate] = useState<Date>(new Date());
   const [chartView, setChartView] = useState<"daily" | "monthly">("daily");
 
-  // Fetch all stats in a single query function with Promise.all for parallel execution
+  // Single RPC replaces 5 parallel queries + client-side dedup/aggregation
   const { data: stats, isLoading } = useQuery({
     queryKey: ["los-stats", orgId],
     queryFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
-
-      // Helper to fetch all rows with pagination (PostgREST caps at 1000 per request)
-      const fetchAllRows = async (buildQuery: () => any) => {
-        const PAGE_SIZE = 1000;
-        let allData: any[] = [];
-        let from = 0;
-        let hasMore = true;
-        while (hasMore) {
-          const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
-          if (error) throw error;
-          allData = allData.concat(data || []);
-          hasMore = (data?.length || 0) === PAGE_SIZE;
-          from += PAGE_SIZE;
-        }
-        return allData;
-      };
-
-      // Lifecycle priority: each contact counted once in their highest stage
-      const STAGE_PRIORITY: Record<string, number> = {
-        disbursed: 6,
-        disbursement_pending: 5,
-        sanctioned: 5,
-        approval_pending: 4,
-        credit_assessment: 3,
-        field_verification: 3,
-        document_collection: 3,
-        application_login: 3,
-        rejected: 1,
-        cancelled: 1,
-        closed: 7,
-      };
-
-      // Dashboard card mapping from lifecycle priority
-      const priorityToCard = (priority: number) => {
-        if (priority >= 7) return "disbursed";    // closed = fully done
-        if (priority >= 6) return "disbursed";
-        if (priority >= 4) return "pendingApproval"; // approval_pending, sanctioned, disbursement_pending
-        if (priority >= 3) return "inProgress";      // application stages
-        return "other";                              // rejected, cancelled
-      };
-
-      // Execute ALL queries in parallel
-      const [
-        allAppsData,
-        approvedAppsData,
-        disbursementsData,
-        pendingEMIsRes,
-        overdueEMIsRes,
-      ] = await Promise.all([
-        // All non-draft apps with contact_id and current_stage (paginated)
-        fetchAllRows(() =>
-          supabase
-            .from("loan_applications")
-            .select("contact_id, current_stage")
-            .eq("org_id", orgId)
-            .neq("status", "draft")
-            .not("contact_id", "is", null)
-        ),
-
-        // Total sanctioned/approved amount (paginated)
-        fetchAllRows(() =>
-          supabase
-            .from("loan_applications")
-            .select("approved_amount")
-            .eq("org_id", orgId)
-            .not("approved_amount", "is", null)
-            .in("status", ["approved", "disbursed", "closed"])
-        ),
-
-        // Total disbursed amount (paginated)
-        fetchAllRows(() =>
-          supabase
-            .from("loan_disbursements")
-            .select("disbursement_amount, loan_applications!inner(org_id)")
-            .eq("status", "completed")
-            .eq("loan_applications.org_id", orgId)
-        ),
-
-        // Pending EMIs
-        supabase
-          .from("loan_repayment_schedule")
-          .select("*", { count: "exact", head: true })
-          .eq("org_id", orgId)
-          .eq("status", "pending"),
-
-        // Overdue EMIs
-        supabase
-          .from("loan_repayment_schedule")
-          .select("*", { count: "exact", head: true })
-          .eq("org_id", orgId)
-          .or(`status.eq.overdue,and(status.eq.pending,due_date.lt.${today})`),
-      ]);
-
-      // Deduplicate: each contact counted once at their highest lifecycle stage
-      const contactHighest = new Map<string, number>();
-      for (const app of allAppsData) {
-        const priority = STAGE_PRIORITY[app.current_stage] || 2;
-        const current = contactHighest.get(app.contact_id) || 0;
-        if (priority > current) {
-          contactHighest.set(app.contact_id, priority);
-        }
-      }
-
-      let pendingApproval = 0;
-      let inProgress = 0;
-      let disbursed = 0;
-      for (const priority of contactHighest.values()) {
-        const card = priorityToCard(priority);
-        if (card === "disbursed") disbursed++;
-        else if (card === "pendingApproval") pendingApproval++;
-        else if (card === "inProgress") inProgress++;
-      }
-
-      const totalSanctioned = approvedAppsData.reduce(
-        (sum: number, app: any) => sum + (app.approved_amount || 0),
-        0
-      );
-
-      const totalDisbursedAmount = disbursementsData.reduce(
-        (sum: number, d: any) => sum + d.disbursement_amount,
-        0
-      );
-
-      return {
-        totalApps: contactHighest.size,
-        pendingApproval,
-        disbursed,
-        inProgress,
-        totalSanctioned,
-        totalDisbursedAmount,
-        pendingEMIs: pendingEMIsRes.count || 0,
-        overdueEMIs: overdueEMIsRes.count || 0,
+      const { data, error } = await supabase.rpc("get_los_dashboard_stats", { p_org_id: orgId });
+      if (error) throw error;
+      return data as {
+        totalApps: number;
+        disbursed: number;
+        pendingApproval: number;
+        inProgress: number;
+        totalSanctioned: number;
+        totalDisbursedAmount: number;
+        pendingEMIs: number;
+        overdueEMIs: number;
       };
     },
     enabled: !!orgId,
   });
 
-  // Stage distribution for chart (count per current_stage)
+  // Stage distribution via RPC (server-side GROUP BY)
   const { data: stageDistribution } = useQuery({
     queryKey: ["los-stage-distribution", orgId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("loan_applications")
-        .select("current_stage")
-        .eq("org_id", orgId)
-        .neq("status", "draft");
+      const { data, error } = await supabase.rpc("get_stage_distribution", { p_org_id: orgId });
       if (error) throw error;
-
-      const counts: Record<string, number> = {};
-      (data || []).forEach((app: any) => {
-        counts[app.current_stage] = (counts[app.current_stage] || 0) + 1;
-      });
-
-      return Object.entries(counts)
-        .map(([stage, count]) => ({
-          stage,
-          label: STAGE_LABELS[stage] || stage,
-          count,
-          fill: STAGE_COLORS[stage] || "#8884d8",
-        }))
-        .sort((a, b) => {
-          const order = Object.keys(STAGE_LABELS);
-          return order.indexOf(a.stage) - order.indexOf(b.stage);
-        });
+      return (data as { stage: string; count: number; sort_order: number }[]).map((d) => ({
+        stage: d.stage,
+        label: STAGE_LABELS[d.stage] || d.stage,
+        count: d.count,
+        fill: STAGE_COLORS[d.stage] || "#8884d8",
+      }));
     },
     enabled: !!orgId,
   });
 
-  // Disbursement trend — daily (current month) or monthly (6 months)
+  // Disbursement trend via RPC (server-side date bucketing)
   const { data: disbursementTrend } = useQuery({
     queryKey: ["los-disbursement-trend", orgId, chartView],
     queryFn: async () => {
-      const isDaily = chartView === "daily";
-      const rangeStart = isDaily
-        ? startOfMonth(new Date()).toISOString().split("T")[0]
-        : (() => { const d = new Date(); d.setMonth(d.getMonth() - 6); return d.toISOString().split("T")[0]; })();
-
-      const { data, error } = await supabase
-        .from("loan_disbursements")
-        .select("disbursement_amount, disbursement_date, loan_applications!inner(org_id)")
-        .eq("status", "completed")
-        .eq("loan_applications.org_id", orgId)
-        .gte("disbursement_date", rangeStart);
-      if (error) throw error;
-
-      const buckets: Record<string, { amount: number; count: number }> = {};
-      (data || []).forEach((d: any) => {
-        const key = isDaily
-          ? d.disbursement_date
-          : format(new Date(d.disbursement_date), "MMM yyyy");
-        if (!buckets[key]) buckets[key] = { amount: 0, count: 0 };
-        buckets[key].amount += d.disbursement_amount;
-        buckets[key].count += 1;
+      const { data, error } = await supabase.rpc("get_disbursement_trend", {
+        p_org_id: orgId,
+        p_daily: chartView === "daily",
       });
-
-      if (isDaily) {
-        const days = eachDayOfInterval({ start: startOfMonth(new Date()), end: new Date() });
-        return days.map((d) => {
-          const key = format(d, "yyyy-MM-dd");
-          return { label: format(d, "dd"), amount: buckets[key]?.amount || 0, count: buckets[key]?.count || 0 };
-        });
-      } else {
-        const result = [];
-        for (let i = 5; i >= 0; i--) {
-          const d = new Date();
-          d.setMonth(d.getMonth() - i);
-          const key = format(d, "MMM yyyy");
-          result.push({ label: format(d, "MMM"), amount: buckets[key]?.amount || 0, count: buckets[key]?.count || 0 });
-        }
-        return result;
-      }
+      if (error) throw error;
+      return data as { label: string; amount: number; count: number }[];
     },
     enabled: !!orgId,
   });
 
-  // Leads by source — supports daily (current month) and monthly (6 months) views
+  // Leads by source via RPC (server-side source+date bucketing)
   const { data: leadsBySourceTrend } = useQuery({
     queryKey: ["los-leads-by-source-trend", orgId, chartView],
     queryFn: async () => {
-      const isDaily = chartView === "daily";
-      const rangeStart = isDaily ? startOfMonth(new Date()) : startOfMonth(subMonths(new Date(), 5));
-
-      const { data, error } = await supabase
-        .from("loan_applications")
-        .select("source, created_at")
-        .eq("org_id", orgId)
-        .neq("status", "draft")
-        .gte("created_at", rangeStart.toISOString());
+      const { data: rpcData, error } = await supabase.rpc("get_leads_by_source_trend", {
+        p_org_id: orgId,
+        p_daily: chartView === "daily",
+      });
       if (error) throw error;
 
-      const sourceSet = new Set<string>();
-      const bucketBySource: Record<string, Record<string, number>> = {};
+      const raw = rpcData as { sources: string[]; data: { label: string; bucket: string; source: string; count: number }[] };
+      const sources = raw.sources || [];
 
-      (data || []).forEach((app: any) => {
-        const src = app.source || "unknown";
-        sourceSet.add(src);
-        const key = isDaily
-          ? format(new Date(app.created_at), "yyyy-MM-dd")
-          : format(new Date(app.created_at), "MMM yyyy");
-        if (!bucketBySource[key]) bucketBySource[key] = {};
-        bucketBySource[key][src] = (bucketBySource[key][src] || 0) + 1;
-      });
-
-      const sources = Array.from(sourceSet);
-
-      let result: Record<string, any>[];
-      if (isDaily) {
-        const days = eachDayOfInterval({
-          start: startOfMonth(new Date()),
-          end: new Date(),
-        });
-        result = days.map((d) => {
-          const key = format(d, "yyyy-MM-dd");
-          const row: Record<string, any> = { label: format(d, "dd") };
-          sources.forEach((src) => { row[src] = bucketBySource[key]?.[src] || 0; });
-          return row;
-        });
-      } else {
-        const months = eachMonthOfInterval({
-          start: rangeStart,
-          end: endOfMonth(new Date()),
-        });
-        result = months.map((m) => {
-          const key = format(m, "MMM yyyy");
-          const row: Record<string, any> = { label: format(m, "MMM") };
-          sources.forEach((src) => { row[src] = bucketBySource[key]?.[src] || 0; });
-          return row;
-        });
+      // Pivot: group by bucket, spread sources as keys
+      const bucketMap = new Map<string, Record<string, any>>();
+      for (const row of raw.data) {
+        if (!bucketMap.has(row.bucket)) {
+          bucketMap.set(row.bucket, { label: row.label });
+        }
+        bucketMap.get(row.bucket)![row.source] = row.count;
       }
+
+      // Fill missing sources with 0
+      const result = Array.from(bucketMap.values()).map((row) => {
+        for (const src of sources) {
+          if (!(src in row)) row[src] = 0;
+        }
+        return row;
+      });
 
       return { data: result, sources };
     },
     enabled: !!orgId,
   });
 
-  // Collections cash flow — daily (current month) or monthly (12 months window)
+  // Collections cash flow via RPC (server-side EMI aggregation)
   const { data: cashFlowData } = useQuery({
     queryKey: ["los-cashflow", orgId, chartView],
     queryFn: async () => {
-      const isDaily = chartView === "daily";
-      const rangeStart = isDaily ? startOfMonth(new Date()) : startOfMonth(subMonths(new Date(), 5));
-      const rangeEnd = isDaily ? endOfMonth(new Date()) : endOfMonth(addMonths(new Date(), 6));
-
-      const { data, error } = await supabase
-        .from("loan_repayment_schedule")
-        .select("due_date, total_emi, amount_paid, payment_date, status, principal_amount, interest_amount, late_fee")
-        .eq("org_id", orgId)
-        .gte("due_date", rangeStart.toISOString().split("T")[0])
-        .lte("due_date", rangeEnd.toISOString().split("T")[0]);
+      const { data, error } = await supabase.rpc("get_cashflow_data", {
+        p_org_id: orgId,
+        p_daily: chartView === "daily",
+      });
       if (error) throw error;
-
-      const today = new Date();
-      const allEmis = data || [];
-
-      let chartData: any[];
-
-      if (isDaily) {
-        const days = eachDayOfInterval({ start: startOfMonth(today), end: endOfMonth(today) });
-        chartData = days.map((d) => {
-          const key = format(d, "yyyy-MM-dd");
-          const dayEmis = allEmis.filter((e: any) => e.due_date === key);
-          const isPast = d <= today;
-          const expected = dayEmis.reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
-          const collected = dayEmis.reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
-          const overdue = dayEmis
-            .filter((e: any) => e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today))
-            .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
-
-          return {
-            label: format(d, "dd"),
-            fullLabel: format(d, "dd MMM"),
-            expected,
-            collected: isPast ? collected : null,
-            projected: !isPast ? expected : (format(d, "yyyy-MM-dd") === format(today, "yyyy-MM-dd") ? expected : null),
-            overdue: isPast ? overdue : null,
-          };
-        });
-      } else {
-        const months = eachMonthOfInterval({ start: rangeStart, end: rangeEnd });
-        chartData = months.map((m) => {
-          const key = format(m, "yyyy-MM");
-          const monthEmis = allEmis.filter((e: any) => e.due_date.startsWith(key));
-          const isPast = m <= startOfMonth(today);
-          const isCurrent = format(m, "yyyy-MM") === format(today, "yyyy-MM");
-          const expected = monthEmis.reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
-          const collected = monthEmis.reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
-          const overdue = monthEmis
-            .filter((e: any) => e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today))
-            .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
-
-          return {
-            label: format(m, "MMM"),
-            fullLabel: format(m, "MMM yyyy"),
-            expected,
-            collected: (isPast || isCurrent) ? collected : null,
-            projected: (!isPast || isCurrent) ? expected : null,
-            overdue: (isPast || isCurrent) ? overdue : null,
-          };
-        });
-      }
-
-      // Summary stats (always from full data)
-      const totalExpected = allEmis
-        .filter((e: any) => new Date(e.due_date) <= today)
-        .reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
-      const totalCollected = allEmis
-        .filter((e: any) => new Date(e.due_date) <= today)
-        .reduce((s: number, e: any) => s + (e.amount_paid || 0), 0);
-      const totalOverdue = allEmis
-        .filter((e: any) => (e.status === "overdue" || (e.status === "pending" && new Date(e.due_date) < today)))
-        .reduce((s: number, e: any) => s + (e.total_emi || 0) - (e.amount_paid || 0), 0);
-      const next3MonthsProjected = allEmis
-        .filter((e: any) => { const d = new Date(e.due_date); return d > today && d <= addMonths(today, 3); })
-        .reduce((s: number, e: any) => s + (e.total_emi || 0), 0);
-      const collectionRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0;
-
-      return {
-        chartData,
-        summary: { totalExpected, totalCollected, totalOverdue, next3MonthsProjected, collectionRate },
+      return data as {
+        chartData: { label: string; fullLabel: string; expected: number; collected: number | null; projected: number | null; overdue: number | null }[];
+        summary: { totalExpected: number; totalCollected: number; totalOverdue: number; next3MonthsProjected: number; collectionRate: number };
       };
     },
     enabled: !!orgId,
