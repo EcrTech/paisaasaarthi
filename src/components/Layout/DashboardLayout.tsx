@@ -17,11 +17,9 @@ import {
   UserCog,
   TrendingUp,
   Lightbulb,
-  UsersRound,
   Layers,
   PhoneCall,
   Package,
-  Award,
   FileText,
   List,
   Sliders,
@@ -29,19 +27,16 @@ import {
   Webhook,
   MessageSquare,
   Mail,
-  Send,
   Database,
   CreditCard,
   Activity,
   Key,
   Star,
   MessageCircle,
-  Phone,
   Sparkles,
   MapPinOff,
   IndianRupee,
   Shield,
-  HardDrive,
 } from "lucide-react";
 import { useNotification } from "@/hooks/useNotification";
 import { OnboardingDialog } from "@/components/Onboarding/OnboardingDialog";
@@ -257,29 +252,6 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               )}
 
-              {isAdmin && canAccessFeature("emandate_settings") && (
-                <Link
-                  to="/los/settings/nupay"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Webhook size={18} />
-                  <span>eMandate Settings</span>
-                </Link>
-              )}
-
-              {isAdmin && canAccessFeature("negative_pincodes") && (
-                <Link
-                  to="/los/negative-pincodes"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <MapPinOff size={18} />
-                  <span>Negative Pin Codes</span>
-                </Link>
-              )}
-
-
               {canAccessFeature("communications") && (
                 <Link
                   to="/communications"
@@ -330,34 +302,6 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                       <span>Users</span>
                     </Link>
                   )}
-                  {canAccessFeature("teams") && (
-                    <Link
-                      to="/teams"
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <UsersRound size={18} />
-                      <span>Teams</span>
-                    </Link>
-                  )}
-                  {canAccessFeature("designations") && (
-                    <Link
-                      to="/admin/designations"
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <Award size={18} />
-                      <span>Designations</span>
-                    </Link>
-                  )}
-                  <Link
-                    to="/admin/access-management"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <Shield size={18} />
-                    <span>Access Management</span>
-                  </Link>
                   <Link
                     to="/admin/dpdp-compliance"
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
@@ -366,61 +310,26 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                     <Shield size={18} />
                     <span>DPDP Compliance</span>
                   </Link>
-                  <Link
-                    to="/admin/data-export"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <HardDrive size={18} />
-                    <span>Data Export & Backup</span>
-                  </Link>
-                </>
-              )}
-
-
-              {isAdmin && (
-                <>
-                  {(canAccessFeature("connectors") || canAccessFeature("api_keys")) && (
-                    <div className="pt-2 pb-1 section-accent-teal pl-3">
-                      <p className="px-3 text-xs font-semibold uppercase tracking-wider gradient-text-primary">
-                        Integration & APIs
-                      </p>
-                    </div>
-                  )}
-                  
-                  {canAccessFeature("connectors") && (
+                  {isAdmin && canAccessFeature("emandate_settings") && (
                     <Link
-                      to="/admin/connectors"
+                      to="/los/settings/nupay"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
                       onClick={() => setSidebarOpen(false)}
                     >
                       <Webhook size={18} />
-                      <span>Webhook Connectors</span>
+                      <span>eMandate Settings</span>
                     </Link>
                   )}
-                  
-                  {canAccessFeature("connectors") && (
+                  {isAdmin && canAccessFeature("negative_pincodes") && (
                     <Link
-                      to="/admin/outbound-webhooks"
+                      to="/los/negative-pincodes"
                       className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
                       onClick={() => setSidebarOpen(false)}
                     >
-                      <Send size={18} />
-                      <span>Outbound Webhooks</span>
+                      <MapPinOff size={18} />
+                      <span>Negative Pin Codes</span>
                     </Link>
                   )}
-                  
-                  {canAccessFeature("exotel_settings") && (
-                    <Link
-                      to="/exotel-settings"
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <Phone size={18} />
-                      <span>Exotel Settings</span>
-                    </Link>
-                  )}
-                  
                 </>
               )}
             </nav>
