@@ -40,7 +40,6 @@ import {
   Sparkles,
   MapPinOff,
   IndianRupee,
-  CheckSquare,
   Shield,
   HardDrive,
 } from "lucide-react";
@@ -50,6 +49,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useModuleTracking } from "@/hooks/useModuleTracking";
 import { NotificationBell } from "./NotificationBell";
 import { QuickDial } from "@/components/Contact/QuickDial";
+import { HelpWidget } from "./HelpWidget";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -313,17 +313,6 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               )}
 
-              {canAccessFeature("tasks") && (
-                <Link
-                  to="/tasks"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <CheckSquare size={18} />
-                  <span>Tasks</span>
-                </Link>
-              )}
-
               {showManagementSection && (
                 <>
                   <div className="pt-2 pb-1 section-accent-teal pl-3">
@@ -477,6 +466,9 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
         </main>
       </div>
       
+      {/* Floating help/ticket widget (bottom-right) */}
+      <HelpWidget />
+
       {/* Onboarding Dialog */}
       {onboardingChecked && needsOnboarding && userRole && (
         <OnboardingDialog
