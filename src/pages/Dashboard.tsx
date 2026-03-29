@@ -3,12 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/Layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, TrendingUp, Phone, Target, ArrowUpRight, ArrowDownRight, CheckSquare } from "lucide-react";
+import { Users, TrendingUp, Phone, Target, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { LoadingState } from "@/components/common/LoadingState";
-import { TaskList } from "@/components/Tasks/TaskList";
-import { useTasks } from "@/hooks/useTasks";
 import { Link } from "react-router-dom";
 import { ArrowRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -105,13 +103,6 @@ export default function Dashboard() {
     staleTime: 2 * 60 * 1000,
   });
 
-
-  // Fetch tasks for analytics
-  const { data: tasksData } = useTasks({ filter: "assigned_to_me" });
-  const allTasks = tasksData?.tasks || [];
-  const pendingTasksCount = allTasks.filter(t => t.status === "pending").length;
-  const inProgressTasksCount = allTasks.filter(t => t.status === "in_progress").length;
-  const overdueTasksCount = allTasks.filter(t => t.isOverdue && t.status !== "completed").length;
 
   // Only show loading during initial auth - not blocking on orgId
   const loading = !isInitialized;
@@ -310,68 +301,6 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Task Analytics Row */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-              <CheckSquare className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{pendingTasksCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Waiting to be started
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-              <CheckSquare className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{inProgressTasksCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Currently working on
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Overdue Tasks</CardTitle>
-              <CheckSquare className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-destructive">{overdueTasksCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Need immediate attention
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* My Tasks Section - Top 5 */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Upcoming Tasks</CardTitle>
-                <CardDescription>Your 5 nearest tasks by due date</CardDescription>
-              </div>
-              <Link to="/tasks">
-                <Button variant="ghost" size="sm">
-                  View All
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <TaskList filter="assigned_to_me" limit={5} showCreateButton={false} />
-          </CardContent>
-        </Card>
 
         {/* Charts Row */}
         <div className="grid gap-4 md:grid-cols-2">

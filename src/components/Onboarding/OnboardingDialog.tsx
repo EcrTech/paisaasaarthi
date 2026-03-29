@@ -127,7 +127,7 @@ const roleSteps: Record<string, OnboardingStep[]> = {
     },
     {
       title: "Explore Your Dashboard",
-      description: "View your personal metrics, today's tasks, and performance at a glance.",
+      description: "View your personal metrics and performance at a glance.",
       action: { label: "View Dashboard", path: "/dashboard" },
     },
     {
@@ -153,7 +153,7 @@ const roleSteps: Record<string, OnboardingStep[]> = {
     },
     {
       title: "Check Your Dashboard",
-      description: "See your assigned tickets, pending tasks, and daily activity summary.",
+      description: "See your assigned tickets and daily activity summary.",
       action: { label: "View Dashboard", path: "/dashboard" },
     },
     {

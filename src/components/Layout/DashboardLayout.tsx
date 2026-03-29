@@ -21,7 +21,6 @@ import {
   Layers,
   PhoneCall,
   Package,
-  CheckSquare,
   Award,
   FileText,
   List,
@@ -281,16 +280,6 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Link>
               )}
 
-              {canAccessFeature("tasks") && (
-                <Link
-                  to="/tasks"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-all duration-200 text-sm"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <CheckSquare size={18} />
-                  <span>Tasks</span>
-                </Link>
-              )}
 
               {canAccessFeature("communications") && (
                 <Link
