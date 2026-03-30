@@ -142,7 +142,7 @@ export default function AadhaarVerificationDialog({
 
   // Send verification link via WhatsApp
   const sendWhatsApp = async (url?: string) => {
-    const linkUrl = url || verificationLink;
+    const linkUrl = url || verificationLink || (existingVerification?.id ? `${window.location.origin}/verify-aadhaar/${existingVerification.id}` : null);
     if (!linkUrl || !applicantPhone) return;
     setSendingWhatsapp(true);
     setWhatsappError(null);
@@ -176,7 +176,7 @@ export default function AadhaarVerificationDialog({
 
   // Send verification link via Email
   const sendEmail = async (url?: string) => {
-    const linkUrl = url || verificationLink;
+    const linkUrl = url || verificationLink || (existingVerification?.id ? `${window.location.origin}/verify-aadhaar/${existingVerification.id}` : null);
     if (!linkUrl || !applicantEmail) return;
     setSendingEmail(true);
     setEmailError(null);
@@ -340,8 +340,19 @@ export default function AadhaarVerificationDialog({
     },
   });
 
-  // Determine if we're in "already initiated" state
+  // Determine if we're in "already initiated" state — reconstruct the link so admin can resend
   const isAlreadyInitiated = !verificationLink && existingVerification?.status === "in_progress";
+  const effectiveLink = verificationLink || (isAlreadyInitiated && existingVerification?.id
+    ? `${window.location.origin}/verify-aadhaar/${existingVerification.id}`
+    : null);
+
+  // Copy link to clipboard (using effective link)
+  const copyEffectiveLink = () => {
+    if (effectiveLink) {
+      navigator.clipboard.writeText(effectiveLink);
+      toast({ title: "Link copied to clipboard" });
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -401,18 +412,20 @@ export default function AadhaarVerificationDialog({
             <div className="space-y-3">
               <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-md">
                 <CheckCircle className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">DigiLocker verification link generated</span>
+                <span className="text-sm font-medium">
+                  {isAlreadyInitiated ? "Verification pending — customer has not completed DigiLocker yet" : "DigiLocker verification link generated"}
+                </span>
               </div>
 
               {/* Link display with copy */}
-              {verificationLink && (
+              {effectiveLink && (
                 <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
                   <Input
-                    value={verificationLink}
+                    value={effectiveLink}
                     readOnly
                     className="text-xs h-8 font-mono"
                   />
-                  <Button variant="outline" size="sm" onClick={copyLink} className="shrink-0">
+                  <Button variant="outline" size="sm" onClick={copyEffectiveLink} className="shrink-0">
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
@@ -439,7 +452,7 @@ export default function AadhaarVerificationDialog({
                       </Button>
                     </div>
                   ) : applicantPhone ? (
-                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendWhatsApp()} disabled={!verificationLink}>
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendWhatsApp()} disabled={!effectiveLink}>
                       Send
                     </Button>
                   ) : null}
@@ -464,7 +477,7 @@ export default function AadhaarVerificationDialog({
                       </Button>
                     </div>
                   ) : applicantEmail ? (
-                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendEmail()} disabled={!verificationLink}>
+                    <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => sendEmail()} disabled={!effectiveLink}>
                       Send
                     </Button>
                   ) : null}
