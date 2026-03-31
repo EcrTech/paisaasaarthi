@@ -57,6 +57,7 @@ export default function BulkPaymentReport() {
           current_stage,
           created_at,
           loan_applicants!inner (
+            id,
             first_name,
             last_name,
             bank_account_holder_name,
@@ -89,15 +90,40 @@ export default function BulkPaymentReport() {
 
       const { data, error } = await query.order("created_at", { ascending: false });
       if (error) throw error;
-      return data || [];
+
+      // Decrypt mobile numbers for all primary applicants
+      const apps = data || [];
+      const applicantIds = apps
+        .map((app: any) => app.loan_applicants?.[0]?.id)
+        .filter(Boolean);
+
+      const decryptedMap: Record<string, string> = {};
+      if (applicantIds.length > 0) {
+        const decryptResults = await Promise.all(
+          applicantIds.map((id: string) =>
+            supabase.rpc("get_applicant_decrypted", { p_applicant_id: id })
+          )
+        );
+        decryptResults.forEach((res) => {
+          const row = res.data as any;
+          if (row?.id) {
+            decryptedMap[row.id] = row.mobile || "";
+          }
+        });
+      }
+
+      return apps.map((app: any) => ({
+        ...app,
+        _decryptedMobile: decryptedMap[app.loan_applicants?.[0]?.id] || "",
+      }));
     },
     enabled: !!orgId,
   });
 
   const mappedRows: BulkPaymentRow[] = records.map((app: any) => {
     const applicant = app.loan_applicants?.[0];
-    const sanction = app.loan_sanctions;
-    const disbursement = app.loan_disbursements;
+    const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions[0] : app.loan_sanctions;
+    const disbursement = Array.isArray(app.loan_disbursements) ? app.loan_disbursements[0] : app.loan_disbursements;
 
     return {
       applicationNumber: app.application_number || "",
@@ -112,7 +138,7 @@ export default function BulkPaymentReport() {
       })(),
       paymentMode: disbursement?.payment_mode || "NEFT",
       email: applicant?.email || "",
-      mobile: applicant?.mobile || "",
+      mobile: app._decryptedMobile || "",
     };
   });
 
