@@ -91,30 +91,26 @@ export default function BulkPaymentReport() {
       const { data, error } = await query.order("created_at", { ascending: false });
       if (error) throw error;
 
-      // Decrypt mobile numbers for all primary applicants
+      // Decrypt PII fields (mobile, bank account, IFSC) for all applications
       const apps = data || [];
-      const applicantIds = apps
-        .map((app: any) => app.loan_applicants?.[0]?.id)
-        .filter(Boolean);
-
-      const decryptedMap: Record<string, string> = {};
-      if (applicantIds.length > 0) {
+      const decryptedMap: Record<string, Record<string, string>> = {};
+      if (apps.length > 0) {
         const decryptResults = await Promise.all(
-          applicantIds.map((id: string) =>
-            supabase.rpc("get_applicant_decrypted", { p_applicant_id: id })
+          apps.map((app: any) =>
+            supabase.rpc("get_decrypted_applicant", { p_application_id: app.id })
           )
         );
-        decryptResults.forEach((res) => {
-          const row = res.data as any;
-          if (row?.id) {
-            decryptedMap[row.id] = row.mobile || "";
+        decryptResults.forEach((res, idx) => {
+          const row = Array.isArray(res.data) ? res.data[0] : res.data;
+          if (row) {
+            decryptedMap[apps[idx].id] = row;
           }
         });
       }
 
       return apps.map((app: any) => ({
         ...app,
-        _decryptedMobile: decryptedMap[app.loan_applicants?.[0]?.id] || "",
+        _decrypted: decryptedMap[app.id] || null,
       }));
     },
     enabled: !!orgId,
@@ -126,16 +122,17 @@ export default function BulkPaymentReport() {
       const applicant = app.loan_applicants?.[0];
       const sanction = app.loan_sanctions;
       const disbursement = app.loan_disbursements;
+      const decrypted = app._decrypted;
 
       return {
         applicationNumber: app.application_number || "",
-        beneficiaryName: applicant?.bank_account_holder_name || `${applicant?.first_name || ""} ${applicant?.last_name || ""}`.trim(),
-        accountNumber: applicant?.bank_account_number || "",
-        ifscCode: applicant?.bank_ifsc_code || "",
+        beneficiaryName: decrypted?.bank_account_holder_name || applicant?.bank_account_holder_name || `${applicant?.first_name || ""} ${applicant?.last_name || ""}`.trim(),
+        accountNumber: decrypted?.bank_account_number || applicant?.bank_account_number || "",
+        ifscCode: decrypted?.bank_ifsc_code || applicant?.bank_ifsc_code || "",
         amount: sanction.net_disbursement_amount,
         paymentMode: disbursement?.payment_mode || "NEFT",
-        email: applicant?.email || "",
-        mobile: app._decryptedMobile || "",
+        email: decrypted?.email || applicant?.email || "",
+        mobile: decrypted?.mobile || "",
       };
     });
 

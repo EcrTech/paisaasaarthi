@@ -126,8 +126,7 @@ export default function ApplicationDetail() {
   });
 
   // Fetch decrypted applicant PII (mobile, email, pan, aadhaar, bank details)
-  const rawApplicantId = application?.loan_applicants?.[0]?.id as string | undefined;
-  const { data: decryptedApplicant } = useDecryptedApplicant(rawApplicantId);
+  const { data: decryptedApplicant } = useDecryptedApplicant(id);
 
   // Fetch parsed document data
   const { data: documents = [] } = useQuery({
@@ -499,6 +498,8 @@ export default function ApplicationDetail() {
     email: decryptedApplicant.email || rawApplicant.email,
     pan_number: decryptedApplicant.pan_number || rawApplicant.pan_number,
     aadhaar_number: decryptedApplicant.aadhaar_number || rawApplicant.aadhaar_number,
+    bank_account_number: decryptedApplicant.bank_account_number || rawApplicant.bank_account_number,
+    bank_ifsc_code: decryptedApplicant.bank_ifsc_code || rawApplicant.bank_ifsc_code,
   } : rawApplicant;
   const tenureDays = application?.tenure_days;
 

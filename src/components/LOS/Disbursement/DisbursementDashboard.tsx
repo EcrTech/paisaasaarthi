@@ -122,18 +122,19 @@ export default function DisbursementDashboard({ applicationId }: DisbursementDas
 
   // Decrypt PII fields using the correct RPC
   const { data: decryptedData, isLoading: loadingApplicant } = useQuery<ApplicantData | null>({
-    queryKey: ["primary-applicant-decrypted", rawApplicant?.id],
+    queryKey: ["primary-applicant-decrypted", applicationId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_applicant_decrypted", {
-        p_applicant_id: rawApplicant!.id,
+      const { data, error } = await supabase.rpc("get_decrypted_applicant", {
+        p_application_id: applicationId,
       });
       if (error) {
         console.error("Error fetching decrypted applicant:", error);
         return null;
       }
-      return data as unknown as ApplicantData | null;
+      const row = Array.isArray(data) ? data[0] : data;
+      return (row as unknown as ApplicantData) || null;
     },
-    enabled: !!rawApplicant?.id,
+    enabled: !!applicationId,
   });
 
   // Merge decrypted fields over raw applicant
@@ -144,6 +145,8 @@ export default function DisbursementDashboard({ applicationId }: DisbursementDas
       email: decryptedData.email || rawApplicant.email,
       pan_number: decryptedData.pan_number || rawApplicant.pan_number,
       aadhaar_number: decryptedData.aadhaar_number || rawApplicant.aadhaar_number,
+      bank_account_number: (decryptedData as any).bank_account_number || (rawApplicant as any).bank_account_number,
+      bank_ifsc_code: (decryptedData as any).bank_ifsc_code || (rawApplicant as any).bank_ifsc_code,
     } : {}),
   } : null;
 
