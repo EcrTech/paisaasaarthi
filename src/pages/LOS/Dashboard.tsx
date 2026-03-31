@@ -17,7 +17,7 @@ import {
   CalendarIcon,
 } from "lucide-react";
 import { LoadingState } from "@/components/common/LoadingState";
-import { Area, AreaChart, Bar, BarChart, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+import { Area, AreaChart, Bar, BarChart, Cell, ComposedChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import StaffPerformanceDashboard from "@/components/LOS/Reports/StaffPerformanceDashboard";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -75,7 +75,7 @@ export default function LOSDashboard() {
   const { permissions } = useLOSPermissions();
   const [fromDate, setFromDate] = useState<Date>(subDays(new Date(), 30));
   const [toDate, setToDate] = useState<Date>(new Date());
-  const [chartView, setChartView] = useState<"daily" | "monthly">("daily");
+  const [chartView, setChartView] = useState<"daily" | "weekly" | "monthly">("weekly");
 
   // Single RPC replaces 5 parallel queries + client-side dedup/aggregation
   const { data: stats, isLoading } = useQuery({
@@ -119,7 +119,7 @@ export default function LOSDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_disbursement_trend", {
         p_org_id: orgId,
-        p_daily: chartView === "daily",
+        p_daily: chartView !== "monthly",
       });
       if (error) throw error;
       return data as { label: string; amount: number; count: number }[];
@@ -133,7 +133,7 @@ export default function LOSDashboard() {
     queryFn: async () => {
       const { data: rpcData, error } = await supabase.rpc("get_leads_by_source_trend", {
         p_org_id: orgId,
-        p_daily: chartView === "daily",
+        p_daily: chartView !== "monthly",
       });
       if (error) throw error;
 
@@ -168,12 +168,12 @@ export default function LOSDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_cashflow_data", {
         p_org_id: orgId,
-        p_daily: chartView === "daily",
+        p_interval: chartView,
       });
       if (error) throw error;
       return data as {
         chartData: { label: string; fullLabel: string; expected: number; collected: number | null; projected: number | null; overdue: number | null }[];
-        summary: { totalExpected: number; totalCollected: number; totalOverdue: number; next3MonthsProjected: number; collectionRate: number };
+        summary: { totalExpected: number; totalCollected: number; totalOverdue: number; totalOutstanding: number; next3MonthsProjected: number; collectionRate: number };
       };
     },
     enabled: !!orgId,
@@ -317,16 +317,17 @@ export default function LOSDashboard() {
           </Card>
         </div>
 
-        {/* Daily / Monthly toggle */}
+        {/* Daily / Weekly / Monthly toggle */}
         <div className="flex items-center gap-2">
-          <Tabs value={chartView} onValueChange={(v) => setChartView(v as "daily" | "monthly")}>
+          <Tabs value={chartView} onValueChange={(v) => setChartView(v as "daily" | "weekly" | "monthly")}>
             <TabsList className="h-8">
               <TabsTrigger value="daily" className="text-xs px-3 h-7">Daily</TabsTrigger>
+              <TabsTrigger value="weekly" className="text-xs px-3 h-7">Weekly</TabsTrigger>
               <TabsTrigger value="monthly" className="text-xs px-3 h-7">Monthly</TabsTrigger>
             </TabsList>
           </Tabs>
           <span className="text-xs text-muted-foreground">
-            {chartView === "daily" ? format(startOfMonth(new Date()), "MMM yyyy") : "Last 6 months"}
+            {chartView === "monthly" ? "Last 6 months" : format(startOfMonth(new Date()), "MMM yyyy")}
           </span>
         </div>
 
@@ -334,7 +335,7 @@ export default function LOSDashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Leads by Source</CardTitle>
-            <CardDescription>{chartView === "daily" ? "Day-wise this month" : "Monthly trend (6 months)"}</CardDescription>
+            <CardDescription>{chartView === "monthly" ? "Monthly trend (6 months)" : "Day-wise this month"}</CardDescription>
           </CardHeader>
           <CardContent>
             {leadsBySourceTrend && leadsBySourceTrend.data.length > 0 && leadsBySourceTrend.sources.length > 0 ? (
@@ -404,7 +405,7 @@ export default function LOSDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Disbursement Trend</CardTitle>
-              <CardDescription>{chartView === "daily" ? "Day-wise this month" : "Last 6 months"}</CardDescription>
+              <CardDescription>{chartView === "monthly" ? "Last 6 months" : "Day-wise this month"}</CardDescription>
             </CardHeader>
             <CardContent>
               {disbursementTrend && disbursementTrend.some(d => d.amount > 0) ? (
@@ -463,135 +464,158 @@ export default function LOSDashboard() {
             <p className="text-sm text-muted-foreground">Actual collections vs projected EMI cash flows</p>
           </div>
 
-          {/* Summary cards */}
-          {cashFlowData?.summary && (
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-              <Card className="shadow-sm">
-                <CardContent className="p-3">
-                  <div className="text-xs text-muted-foreground mb-1">Collection Rate</div>
-                  <div className={cn("text-xl font-bold", cashFlowData.summary.collectionRate >= 80 ? "text-green-600" : cashFlowData.summary.collectionRate >= 50 ? "text-yellow-600" : "text-red-600")}>
-                    {cashFlowData.summary.collectionRate}%
+          {/* Cash flow chart + breakdown side by side */}
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-12">
+            {/* Chart — 8/12 cols */}
+            <Card className="lg:col-span-8">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Cash Flow — Actual vs Projected</CardTitle>
+                <CardDescription>
+                  {chartView === "monthly"
+                    ? "Past 6 months collections and next 6 months projected EMIs"
+                    : chartView === "weekly"
+                    ? "Week-wise this month"
+                    : "Day-wise this month"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {cashFlowData?.chartData && cashFlowData.chartData.some((d: any) => (d.expected || 0) > 0) ? (
+                  <ResponsiveContainer width="100%" height={340}>
+                    <ComposedChart data={cashFlowData.chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                      <YAxis
+                        tick={{ fontSize: 12 }}
+                        tickFormatter={(v) =>
+                          v >= 10000000
+                            ? `${(v / 10000000).toFixed(1)}Cr`
+                            : v >= 100000
+                            ? `${(v / 100000).toFixed(1)}L`
+                            : v >= 1000
+                            ? `${(v / 1000).toFixed(0)}K`
+                            : v.toString()
+                        }
+                      />
+                      <Tooltip
+                        formatter={(value: number | null, name: string) => [
+                          value != null
+                            ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
+                            : "—",
+                          name,
+                        ]}
+                        labelFormatter={(label) => {
+                          const item = cashFlowData.chartData.find((d: any) => d.label === label);
+                          return item?.fullLabel || label;
+                        }}
+                      />
+                      <Legend />
+                      <Bar dataKey="collected" name="Collected" fill="#22C55E" radius={[4, 4, 0, 0]} barSize={chartView === "monthly" ? 30 : undefined} />
+                      <Bar dataKey="overdue" name="Overdue" fill="#EF4444" radius={[4, 4, 0, 0]} barSize={chartView === "monthly" ? 30 : undefined} />
+                      <Line
+                        type="monotone"
+                        dataKey="projected"
+                        name="Projected"
+                        stroke="#3B82F6"
+                        strokeWidth={2.5}
+                        strokeDasharray="6 3"
+                        dot={{ r: 4, fill: "#3B82F6", strokeWidth: 2, stroke: "#fff" }}
+                        connectNulls={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[340px] flex items-center justify-center text-muted-foreground">
+                    No collection data yet
                   </div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm">
-                <CardContent className="p-3">
-                  <div className="text-xs text-muted-foreground mb-1">Total Collected</div>
-                  <div className="text-xl font-bold text-green-600">
-                    {formatCurrency(cashFlowData.summary.totalCollected)}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm">
-                <CardContent className="p-3">
-                  <div className="text-xs text-muted-foreground mb-1">Overdue Amount</div>
-                  <div className="text-xl font-bold text-red-600">
-                    {formatCurrency(cashFlowData.summary.totalOverdue)}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="shadow-sm">
-                <CardContent className="p-3">
-                  <div className="text-xs text-muted-foreground mb-1">Next 3 Months Projected</div>
-                  <div className="text-xl font-bold text-blue-600">
-                    {formatCurrency(cashFlowData.summary.next3MonthsProjected)}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Cash flow chart */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Cash Flow — Actual vs Projected</CardTitle>
-              <CardDescription>{chartView === "daily" ? "Day-wise this month" : "Past 6 months collections and next 6 months projected EMIs"}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {cashFlowData?.chartData && cashFlowData.chartData.some((d: any) => (d.expected || 0) > 0) ? (
-                <ResponsiveContainer width="100%" height={320}>
-                  <AreaChart data={cashFlowData.chartData}>
-                    <defs>
-                      <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#22C55E" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="#22C55E" stopOpacity={0.05} />
-                      </linearGradient>
-                      <linearGradient id="projectedGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.05} />
-                      </linearGradient>
-                      <linearGradient id="overdueGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#EF4444" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                    <YAxis
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(v) =>
-                        v >= 10000000
-                          ? `${(v / 10000000).toFixed(1)}Cr`
-                          : v >= 100000
-                          ? `${(v / 100000).toFixed(1)}L`
-                          : v >= 1000
-                          ? `${(v / 1000).toFixed(0)}K`
-                          : v.toString()
-                      }
-                    />
-                    <Tooltip
-                      formatter={(value: number | null, name: string) => [
-                        value != null
-                          ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
-                          : "—",
-                        name,
-                      ]}
-                      labelFormatter={(label) => {
-                        const item = cashFlowData.chartData.find((d: any) => d.label === label);
-                        return item?.fullLabel || label;
-                      }}
-                    />
-                    <Legend />
-                    <Area
-                      type="monotone"
-                      dataKey="collected"
-                      name="Collected"
-                      stroke="#22C55E"
-                      strokeWidth={2.5}
-                      fill="url(#collectedGradient)"
-                      dot={{ r: 3, fill: "#22C55E", strokeWidth: 2, stroke: "#fff" }}
-                      connectNulls={false}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="projected"
-                      name="Projected"
-                      stroke="#3B82F6"
-                      strokeWidth={2}
-                      strokeDasharray="6 3"
-                      fill="url(#projectedGradient)"
-                      dot={{ r: 3, fill: "#3B82F6", strokeWidth: 2, stroke: "#fff" }}
-                      connectNulls={false}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="overdue"
-                      name="Overdue"
-                      stroke="#EF4444"
-                      strokeWidth={2}
-                      fill="url(#overdueGradient)"
-                      dot={{ r: 3, fill: "#EF4444", strokeWidth: 2, stroke: "#fff" }}
-                      connectNulls={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[320px] flex items-center justify-center text-muted-foreground">
-                  No collection data yet
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            {/* Collection Breakdown — 4/12 cols */}
+            <Card className="lg:col-span-4">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Collection Breakdown</CardTitle>
+                <CardDescription>EMIs due to date</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {cashFlowData?.summary ? (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-0.5">Total Expected</div>
+                      <div className="text-2xl font-bold">
+                        {formatCurrency(cashFlowData.summary.totalExpected)}
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs text-muted-foreground">Collected</div>
+                          <div className="text-lg font-bold text-green-600">
+                            {formatCurrency(cashFlowData.summary.totalCollected)}
+                          </div>
+                        </div>
+                        <div className={cn(
+                          "text-sm font-semibold px-2 py-0.5 rounded",
+                          cashFlowData.summary.collectionRate >= 80
+                            ? "bg-green-100 text-green-700"
+                            : cashFlowData.summary.collectionRate >= 50
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        )}>
+                          {cashFlowData.summary.collectionRate}%
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs text-muted-foreground">Outstanding</div>
+                        <div className="text-lg font-bold text-amber-600">
+                          {formatCurrency(cashFlowData.summary.totalOutstanding)}
+                        </div>
+                        {cashFlowData.summary.totalOverdue > 0 && (
+                          <div className="text-xs text-red-600 mt-0.5">
+                            Overdue: {formatCurrency(cashFlowData.summary.totalOverdue)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Visual bar: collected vs outstanding */}
+                    {cashFlowData.summary.totalExpected > 0 && (
+                      <div>
+                        <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
+                          <div
+                            className="bg-green-500 transition-all"
+                            style={{ width: `${Math.min((cashFlowData.summary.totalCollected / cashFlowData.summary.totalExpected) * 100, 100)}%` }}
+                          />
+                          <div
+                            className="bg-red-400 transition-all"
+                            style={{ width: `${Math.min((cashFlowData.summary.totalOverdue / cashFlowData.summary.totalExpected) * 100, 100)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                          <span>Collected</span>
+                          <span>Overdue</span>
+                          <span>Pending</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="border-t pt-3">
+                      <div className="text-xs text-muted-foreground">Next 3 Months Projected</div>
+                      <div className="text-lg font-bold text-blue-600">
+                        {formatCurrency(cashFlowData.summary.next3MonthsProjected)}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
+                    No data
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Team Performance */}
