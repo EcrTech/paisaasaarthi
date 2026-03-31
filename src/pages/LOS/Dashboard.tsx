@@ -572,15 +572,20 @@ export default function LOSDashboard() {
                         <div className="text-lg font-bold text-amber-600">
                           {formatCurrency(cashFlowData.summary.totalOutstanding)}
                         </div>
-                        {cashFlowData.summary.totalOverdue > 0 && (
-                          <div className="text-xs text-red-600 mt-0.5">
-                            Overdue: {formatCurrency(cashFlowData.summary.totalOverdue)}
+                        <div className="mt-1 space-y-0.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-red-600">Overdue</span>
+                            <span className="font-medium text-red-600">{formatCurrency(cashFlowData.summary.totalOverdue)}</span>
                           </div>
-                        )}
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-yellow-600">Pending</span>
+                            <span className="font-medium text-yellow-600">{formatCurrency(Math.max(cashFlowData.summary.totalOutstanding - cashFlowData.summary.totalOverdue, 0))}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Visual bar: collected vs outstanding */}
+                    {/* Visual bar: collected vs overdue vs pending */}
                     {cashFlowData.summary.totalExpected > 0 && (
                       <div>
                         <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
@@ -592,11 +597,15 @@ export default function LOSDashboard() {
                             className="bg-red-400 transition-all"
                             style={{ width: `${Math.min((cashFlowData.summary.totalOverdue / cashFlowData.summary.totalExpected) * 100, 100)}%` }}
                           />
+                          <div
+                            className="bg-yellow-400 transition-all"
+                            style={{ width: `${Math.min(((cashFlowData.summary.totalOutstanding - cashFlowData.summary.totalOverdue) / cashFlowData.summary.totalExpected) * 100, 100)}%` }}
+                          />
                         </div>
                         <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                          <span>Collected</span>
-                          <span>Overdue</span>
-                          <span>Pending</span>
+                          <span className="text-green-600">Collected</span>
+                          <span className="text-red-500">Overdue</span>
+                          <span className="text-yellow-600">Pending</span>
                         </div>
                       </div>
                     )}
