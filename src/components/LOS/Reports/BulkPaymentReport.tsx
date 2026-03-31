@@ -120,27 +120,24 @@ export default function BulkPaymentReport() {
     enabled: !!orgId,
   });
 
-  const mappedRows: BulkPaymentRow[] = records.map((app: any) => {
-    const applicant = app.loan_applicants?.[0];
-    const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions[0] : app.loan_sanctions;
-    const disbursement = Array.isArray(app.loan_disbursements) ? app.loan_disbursements[0] : app.loan_disbursements;
+  const mappedRows: BulkPaymentRow[] = records
+    .filter((app: any) => app.loan_sanctions?.net_disbursement_amount)
+    .map((app: any) => {
+      const applicant = app.loan_applicants?.[0];
+      const sanction = app.loan_sanctions;
+      const disbursement = app.loan_disbursements;
 
-    return {
-      applicationNumber: app.application_number || "",
-      beneficiaryName: applicant?.bank_account_holder_name || `${applicant?.first_name || ""} ${applicant?.last_name || ""}`.trim(),
-      accountNumber: applicant?.bank_account_number || "",
-      ifscCode: applicant?.bank_ifsc_code || "",
-      amount: sanction?.net_disbursement_amount || (() => {
-        const sanctionedAmt = sanction?.sanctioned_amount || 0;
-        const procFee = sanction?.processing_fee || Math.round(sanctionedAmt * 0.10);
-        const gst = Math.round(procFee * 0.18);
-        return sanctionedAmt - procFee - gst;
-      })(),
-      paymentMode: disbursement?.payment_mode || "NEFT",
-      email: applicant?.email || "",
-      mobile: app._decryptedMobile || "",
-    };
-  });
+      return {
+        applicationNumber: app.application_number || "",
+        beneficiaryName: applicant?.bank_account_holder_name || `${applicant?.first_name || ""} ${applicant?.last_name || ""}`.trim(),
+        accountNumber: applicant?.bank_account_number || "",
+        ifscCode: applicant?.bank_ifsc_code || "",
+        amount: sanction.net_disbursement_amount,
+        paymentMode: disbursement?.payment_mode || "NEFT",
+        email: applicant?.email || "",
+        mobile: app._decryptedMobile || "",
+      };
+    });
 
   const handleDownload = () => {
     if (mappedRows.length === 0) {
