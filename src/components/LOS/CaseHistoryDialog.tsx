@@ -221,6 +221,7 @@ export function CaseHistoryDialog({
     sanctioned: "Sanctioned",
     rejected: "Rejected",
     disbursement_pending: "Disbursement Pending",
+    disbursement_declined: "Disbursement Declined",
     disbursed: "Disbursed",
     closed: "Closed",
     cancelled: "Cancelled",

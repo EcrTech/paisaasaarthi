@@ -32,6 +32,7 @@ const STAGE_LABELS: Record<string, string> = {
   rejected: "Rejected",
   sanction_generated: "Sanction Generated",
   disbursement_pending: "Disbursement Pending",
+  disbursement_declined: "Disbursement Declined",
   disbursed: "Disbursed",
   closed: "Closed",
   cancelled: "Cancelled",

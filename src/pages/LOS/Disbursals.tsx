@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  CreditCard, Search, Eye, Loader2, CheckCircle, 
-  Clock, XCircle, Upload, FileCheck
+import {
+  CreditCard, Search, Eye, Loader2, CheckCircle,
+  Clock, XCircle, Upload, FileCheck, Ban
 } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import ProofUploadDialog from "@/components/LOS/Disbursement/ProofUploadDialog";
+import DeclineDisbursementDialog from "@/components/LOS/Disbursement/DeclineDisbursementDialog";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat("en-IN", {
@@ -46,7 +47,7 @@ type UnifiedDisbursalItem = {
   applicant_name: string;
   approved_amount: number;
   disbursed_amount: number;
-  status: "ready" | "pending" | "completed" | "failed";
+  status: "ready" | "pending" | "completed" | "failed" | "declined";
   utr_number?: string;
   has_proof?: boolean;
   date: string;
@@ -68,6 +69,7 @@ export default function Disbursals() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [uploadDialogItem, setUploadDialogItem] = useState<UnifiedDisbursalItem | null>(null);
+  const [declineDialogItem, setDeclineDialogItem] = useState<UnifiedDisbursalItem | null>(null);
 
   // Fetch all disbursal data in a unified way
   const { data: allDisbursals, isLoading } = useQuery({
@@ -184,7 +186,7 @@ export default function Disbursals() {
               : "N/A",
             approved_amount: Number(d.loan_applications?.approved_amount) || 0,
             disbursed_amount: Number(d.disbursement_amount) || 0,
-            status: d.status as "pending" | "completed" | "failed",
+            status: d.status as "pending" | "completed" | "failed" | "declined",
             utr_number: d.utr_number,
             has_proof: !!d.proof_document_path,
             date: d.created_at,
@@ -230,6 +232,13 @@ export default function Disbursals() {
           <Badge variant="destructive" className="gap-1">
             <XCircle className="h-3 w-3" />
             Failed
+          </Badge>
+        );
+      case "declined":
+        return (
+          <Badge variant="destructive" className="gap-1">
+            <Ban className="h-3 w-3" />
+            Declined
           </Badge>
         );
       default:
@@ -280,6 +289,7 @@ export default function Disbursals() {
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="failed">Failed</SelectItem>
+                    <SelectItem value="declined">Declined</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -340,13 +350,23 @@ export default function Disbursals() {
                         </TableCell>
                         <TableCell className="text-right">
                           {item.status === "ready" ? (
-                            <Button
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setUploadDialogItem(item); }}
-                            >
-                              <Upload className="h-4 w-4 mr-2" />
-                              Complete
-                            </Button>
+                            <div className="flex gap-2 justify-end">
+                              <Button
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); setUploadDialogItem(item); }}
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                Complete
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={(e) => { e.stopPropagation(); setDeclineDialogItem(item); }}
+                              >
+                                <Ban className="h-4 w-4 mr-2" />
+                                Decline
+                              </Button>
+                            </div>
                           ) : (
                             <Button
                               size="sm"
@@ -381,6 +401,16 @@ export default function Disbursals() {
           sanctionId={uploadDialogItem.sanction_id}
           disbursementAmount={uploadDialogItem.disbursed_amount}
           bankDetails={uploadDialogItem.bank_details}
+        />
+      )}
+
+      {/* Decline disbursement dialog */}
+      {declineDialogItem && (
+        <DeclineDisbursementDialog
+          open={!!declineDialogItem}
+          onOpenChange={(open) => !open && setDeclineDialogItem(null)}
+          applicationId={declineDialogItem.application_id}
+          applicantName={declineDialogItem.applicant_name}
         />
       )}
     </DashboardLayout>

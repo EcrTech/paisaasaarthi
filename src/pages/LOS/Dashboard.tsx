@@ -35,6 +35,7 @@ const STAGE_COLORS: Record<string, string> = {
   approval_pending: "#FE9666",
   sanctioned: "#A66999",
   disbursement_pending: "#3B82F6",
+  disbursement_declined: "#EF4444",
   disbursed: "#22C55E",
   rejected: "#FD625E",
   cancelled: "#9CA3AF",
@@ -195,6 +196,7 @@ export default function LOSDashboard() {
     sanctioned: "Sanctioned",
     rejected: "Rejected",
     disbursement_pending: "Disbursement Pending",
+    disbursement_declined: "Disbursement Declined",
     disbursed: "Disbursed",
   };
 
