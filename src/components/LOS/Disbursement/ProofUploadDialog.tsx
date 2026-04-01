@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Upload, Loader2, FileCheck, X, Sparkles, ArrowLeft, CheckCircle, AlertTriangle, Edit2, Eye } from "lucide-react";
 import { DocumentPreviewDialog } from "@/components/LOS/Verification/DocumentPreviewDialog";
+import { calculateLoanDetails } from "@/utils/loanCalculations";
+import { useOrgContext } from "@/hooks/useOrgContext";
 
 interface BankDetails {
   beneficiaryName: string;
@@ -46,6 +48,7 @@ export default function ProofUploadDialog({
   onSuccess,
 }: ProofUploadDialogProps) {
   const queryClient = useQueryClient();
+  const { orgId } = useOrgContext();
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<"upload" | "confirm">("upload");
@@ -208,12 +211,76 @@ export default function ProofUploadDialog({
 
         if (stageError) throw stageError;
         if (!transitioned) throw new Error("Application stage has changed. Please refresh.");
+
+        // Auto-generate repayment schedule so loan appears in Collections
+        try {
+          const { data: app } = await supabase
+            .from("loan_applications")
+            .select("approved_amount, interest_rate, tenure_days")
+            .eq("id", applicationId)
+            .single();
+
+          if (app && sanctionId && orgId) {
+            // Check if schedule already exists
+            const { count } = await supabase
+              .from("loan_repayment_schedule")
+              .select("id", { count: "exact", head: true })
+              .eq("loan_application_id", applicationId);
+
+            if (!count || count === 0) {
+              const { totalRepayment } = calculateLoanDetails(
+                app.approved_amount,
+                app.interest_rate,
+                app.tenure_days
+              );
+              const dailyEMI = Math.round(totalRepayment / app.tenure_days);
+              const dailyInterest = app.approved_amount * (app.interest_rate / 100);
+              let outstandingPrincipal = app.approved_amount;
+              const finalDate = disbursementDate || new Date().toISOString().split("T")[0];
+              const scheduleItems = [];
+
+              for (let i = 1; i <= app.tenure_days; i++) {
+                const interestAmount = Math.round(dailyInterest * 100) / 100;
+                const principalAmount = Math.round((dailyEMI - interestAmount) * 100) / 100;
+                outstandingPrincipal -= principalAmount;
+
+                const dueDate = new Date(finalDate);
+                dueDate.setDate(dueDate.getDate() + i);
+
+                scheduleItems.push({
+                  loan_application_id: applicationId,
+                  sanction_id: sanctionId,
+                  org_id: orgId,
+                  emi_number: i,
+                  due_date: dueDate.toISOString().split("T")[0],
+                  principal_amount: principalAmount,
+                  interest_amount: interestAmount,
+                  total_emi: dailyEMI,
+                  outstanding_principal: Math.max(0, Math.round(outstandingPrincipal * 100) / 100),
+                  status: "pending",
+                  amount_paid: 0,
+                  late_fee: 0,
+                });
+              }
+
+              await supabase
+                .from("loan_repayment_schedule")
+                .insert(scheduleItems);
+            }
+          }
+        } catch (scheduleErr) {
+          console.error("[ProofUpload] Error auto-generating repayment schedule:", scheduleErr);
+          // Non-blocking: disbursement still succeeds even if schedule generation fails
+        }
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loan-disbursements"] });
       queryClient.invalidateQueries({ queryKey: ["unified-disbursals"] });
       queryClient.invalidateQueries({ queryKey: ["loan-applications"] });
+      queryClient.invalidateQueries({ queryKey: ["collections"] });
+      queryClient.invalidateQueries({ queryKey: ["emi-schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["emi-stats"] });
       toast.success(isReupload
         ? `UTR proof updated! UTR: ${utrNumber.trim()}`
         : `Disbursement completed! UTR: ${utrNumber.trim()}`);
