@@ -77,7 +77,8 @@ export function useCustomerRelationships(searchTerm?: string) {
               applicant_type
             ),
             loan_sanctions ( sanctioned_amount ),
-            loan_disbursements ( disbursement_amount, disbursement_date )
+            loan_disbursements ( disbursement_amount, disbursement_date ),
+            loan_repayment_schedule ( total_emi, amount_paid, status, due_date )
           `)
           .eq("org_id", orgId)
           .eq("loan_applicants.applicant_type", "primary")
@@ -175,6 +176,12 @@ export function useCustomerRelationships(searchTerm?: string) {
 
           totalDisbursed += totalDisb;
 
+          // Get repayment schedule data for accurate outstanding calculation
+          const rawSchedules = app.loan_repayment_schedule;
+          const schedules = Array.isArray(rawSchedules) ? rawSchedules : rawSchedules ? [rawSchedules] : [];
+          const totalExpected = schedules.reduce((sum: number, s: any) => sum + (s.total_emi || 0), 0);
+          const totalPaid = schedules.reduce((sum: number, s: any) => sum + (s.amount_paid || 0), 0);
+
           // Bullet payment: due date = disbursement_date + tenure_days
           const firstDisbDate = disbursements[0]?.disbursement_date;
           let dueDate: string | null = null;
@@ -185,21 +192,29 @@ export function useCustomerRelationships(searchTerm?: string) {
           }
 
           const isClosed = app.current_stage === 'closed';
+          const allPaid = schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled');
 
-          // Outstanding = disbursed amount if not closed
-          if (!isClosed) {
-            outstandingAmount += totalDisb;
+          // Outstanding = total expected - total paid (from actual schedule data)
+          if (!isClosed && !allPaid) {
+            outstandingAmount += schedules.length > 0
+              ? Math.max(0, totalExpected - totalPaid)
+              : totalDisb;
           }
 
-          // Overdue = not closed and past due date
+          // Overdue = has past-due unpaid EMIs
+          const todayStr = today.toISOString().split('T')[0];
+          const hasOverdueEMIs = !isClosed && schedules.some((s: any) =>
+            s.due_date < todayStr && s.status !== 'paid' && s.status !== 'settled'
+          );
+
           let daysOverdue = 0;
           if (!isClosed && dueDate) {
             const diff = Math.floor((today.getTime() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24));
-            if (diff > 0) {
-              daysOverdue = diff;
-              overdueLoans++;
-              if (diff > maxDaysOverdue) maxDaysOverdue = diff;
-            }
+            if (diff > 0) daysOverdue = diff;
+          }
+          if (hasOverdueEMIs || daysOverdue > 0) {
+            overdueLoans++;
+            if (daysOverdue > maxDaysOverdue) maxDaysOverdue = daysOverdue;
           }
 
           return {

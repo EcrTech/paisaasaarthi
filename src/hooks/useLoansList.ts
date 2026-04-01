@@ -60,6 +60,12 @@ export function useLoansList(searchTerm?: string) {
             loan_disbursements (
               disbursement_amount,
               disbursement_date
+            ),
+            loan_repayment_schedule (
+              total_emi,
+              amount_paid,
+              status,
+              due_date
             )
           `)
           .eq("org_id", orgId)
@@ -85,6 +91,11 @@ export function useLoansList(searchTerm?: string) {
           const firstDisbursement = disbursements[0];
           const totalDisbursedAmount = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
 
+          // Get repayment schedule data for accurate outstanding calculation
+          const schedules = Array.isArray(app.loan_repayment_schedule) ? app.loan_repayment_schedule : (app.loan_repayment_schedule ? [app.loan_repayment_schedule] : []);
+          const totalExpected = schedules.reduce((sum: number, s: any) => sum + (s.total_emi || 0), 0);
+          const totalPaid = schedules.reduce((sum: number, s: any) => sum + (s.amount_paid || 0), 0);
+
           const fullName = [
             applicant?.first_name,
             applicant?.middle_name,
@@ -99,11 +110,20 @@ export function useLoansList(searchTerm?: string) {
             dueDate = d.toISOString().split('T')[0];
           }
 
-          // Closed = settled, otherwise outstanding = full disbursed amount
           const isClosed = app.current_stage === 'closed';
-          const outstandingAmount = isClosed ? 0 : totalDisbursedAmount;
 
-          // Overdue = not closed and past due date
+          // Outstanding = total expected repayment minus what's been paid
+          // Fall back to disbursed amount if no schedule exists yet
+          const outstandingAmount = isClosed ? 0
+            : schedules.length > 0 ? Math.max(0, totalExpected - totalPaid)
+            : totalDisbursedAmount;
+
+          // Overdue = has any past-due EMIs that aren't fully paid
+          const todayStr = today.toISOString().split('T')[0];
+          const hasOverdueEMIs = !isClosed && schedules.some((s: any) =>
+            s.due_date < todayStr && s.status !== 'paid' && s.status !== 'settled'
+          );
+
           let daysOverdue = 0;
           if (!isClosed && dueDate) {
             const diff = Math.floor((today.getTime() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24));
@@ -111,9 +131,9 @@ export function useLoansList(searchTerm?: string) {
           }
 
           let paymentStatus: "on_track" | "overdue" | "completed" = "on_track";
-          if (isClosed) {
+          if (isClosed || (schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
             paymentStatus = "completed";
-          } else if (daysOverdue > 0) {
+          } else if (hasOverdueEMIs || daysOverdue > 0) {
             paymentStatus = "overdue";
           }
 
