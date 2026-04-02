@@ -40,50 +40,16 @@ export function useCollections() {
   const { data: collections, isLoading } = useQuery({
     queryKey: ["collections", orgId],
     queryFn: async () => {
-      // Fetch all EMI schedules in batches (Supabase caps at 1000 per request)
-      const batchSize = 1000;
-      let allData: any[] = [];
-      let offset = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("loan_repayment_schedule")
-          .select(`
-            id,
-            loan_application_id,
-            due_date,
-            total_emi,
-            principal_amount,
-            interest_amount,
-            amount_paid,
-            status,
-            loan_applications:loan_application_id(
-              application_number,
-              loan_id,
-              requested_amount,
-              interest_rate,
-              tenure_days,
-              contact_id,
-              loan_applicants(first_name, last_name, mobile),
-              loan_disbursements(disbursement_date, disbursement_amount)
-            ),
-            loan_payments(id, transaction_reference, payment_amount, payment_date, payment_method)
-          `)
-          .eq("org_id", orgId!)
-          .order("due_date", { ascending: true })
-          .range(offset, offset + batchSize - 1);
+      // Fetch next due EMI per loan using RPC (one row per loan)
+      const { data, error } = await supabase.rpc("get_collection_records", {
+        p_org_id: orgId!,
+      });
 
-        if (error) throw error;
-        allData = allData.concat(data || []);
-        if (!data || data.length < batchSize) break;
-        offset += batchSize;
-      }
+      if (error) throw error;
 
       // Transform data for table display
-      const records: CollectionRecord[] = allData.map((item: any) => {
-        const applicant = item.loan_applications?.loan_applicants?.[0];
-        const disbData = item.loan_applications?.loan_disbursements;
-        const disbursement = Array.isArray(disbData) ? disbData[0] : disbData;
-        const rawPayments = Array.isArray(item.loan_payments) ? item.loan_payments : [];
+      const records: CollectionRecord[] = (data || []).map((item: any) => {
+        const rawPayments = Array.isArray(item.payments) ? item.payments : [];
         const payments: PaymentRecord[] = rawPayments.map((p: any) => ({
           id: p.id,
           transaction_reference: p.transaction_reference || null,
@@ -93,25 +59,23 @@ export function useCollections() {
         }));
 
         return {
-          id: item.id,
+          id: item.schedule_id,
           loan_application_id: item.loan_application_id,
-          application_number: item.loan_applications?.application_number || "N/A",
-          loan_id: item.loan_applications?.loan_id || null,
-          applicant_name: applicant
-            ? `${applicant.first_name} ${applicant.last_name || ""}`.trim()
-            : "N/A",
-          applicant_phone: applicant?.mobile || "",
+          application_number: item.application_number || "N/A",
+          loan_id: item.loan_id || null,
+          applicant_name: item.applicant_name || "N/A",
+          applicant_phone: item.applicant_phone || "",
           due_date: item.due_date,
           total_emi: item.total_emi,
           principal: item.principal_amount,
           interest: item.interest_amount,
           amount_paid: item.amount_paid || 0,
           status: item.status,
-          loan_amount: disbursement?.disbursement_amount || item.loan_applications?.requested_amount || 0,
-          disbursement_date: disbursement?.disbursement_date || "",
-          interest_rate: item.loan_applications?.interest_rate || 0,
-          tenure_days: item.loan_applications?.tenure_days || 0,
-          contact_id: item.loan_applications?.contact_id,
+          loan_amount: item.loan_amount || 0,
+          disbursement_date: item.disbursement_date || "",
+          interest_rate: item.interest_rate || 0,
+          tenure_days: item.tenure_days || 0,
+          contact_id: item.contact_id,
           payments,
         };
       });
