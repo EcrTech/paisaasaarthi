@@ -57,9 +57,11 @@ export default function LOSDashboard() {
       if (error) throw error;
       return data as {
         totalApps: number;
-        disbursed: number;
-        pendingApproval: number;
         inProgress: number;
+        pendingApproval: number;
+        disbursed: number;
+        closed: number;
+        rejected: number;
         totalSanctioned: number;
         totalDisbursedAmount: number;
         pendingEMIs: number;
@@ -179,8 +181,8 @@ export default function LOSDashboard() {
           </div>
         </div>
 
-        {/* Stats Grid — compact, single row */}
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-8">
+        {/* Stats Grid — compact */}
+        <div className="grid gap-3 grid-cols-3 md:grid-cols-5 lg:grid-cols-9">
           <Card className="shadow-sm">
             <CardContent className="p-3">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
@@ -188,18 +190,6 @@ export default function LOSDashboard() {
                 Applications
               </div>
               <div className="text-xl font-bold">{stats?.totalApps || 0}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Clock className="h-3 w-3 text-yellow-600" />
-                Pending
-              </div>
-              <div className="text-xl font-bold text-yellow-600">
-                {stats?.pendingApproval || 0}
-              </div>
             </CardContent>
           </Card>
 
@@ -218,11 +208,35 @@ export default function LOSDashboard() {
           <Card className="shadow-sm">
             <CardContent className="p-3">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Clock className="h-3 w-3 text-amber-600" />
+                Approved
+              </div>
+              <div className="text-xl font-bold text-amber-600">
+                {stats?.pendingApproval || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                 <CheckCircle className="h-3 w-3 text-green-600" />
                 Disbursed
               </div>
               <div className="text-xl font-bold text-green-600">
                 {stats?.disbursed || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <CheckCircle className="h-3 w-3 text-gray-500" />
+                Closed
+              </div>
+              <div className="text-xl font-bold text-gray-600">
+                {stats?.closed || 0}
               </div>
             </CardContent>
           </Card>

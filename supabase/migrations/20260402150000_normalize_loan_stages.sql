@@ -171,9 +171,11 @@ BEGIN
   contact_cards AS (
     SELECT
       COUNT(*)::int AS total_apps,
-      COUNT(*) FILTER (WHERE max_priority >= 6)::int AS disbursed,
+      COUNT(*) FILTER (WHERE max_priority = 3)::int AS in_progress,
       COUNT(*) FILTER (WHERE max_priority IN (4, 5))::int AS pending_approval,
-      COUNT(*) FILTER (WHERE max_priority = 3)::int AS in_progress
+      COUNT(*) FILTER (WHERE max_priority = 6)::int AS disbursed,
+      COUNT(*) FILTER (WHERE max_priority = 7)::int AS closed,
+      COUNT(*) FILTER (WHERE max_priority = 1)::int AS rejected
     FROM stage_priority
   ),
   sanctioned AS (
@@ -199,9 +201,11 @@ BEGIN
   )
   SELECT json_build_object(
     'totalApps', cc.total_apps,
-    'disbursed', cc.disbursed,
-    'pendingApproval', cc.pending_approval,
     'inProgress', cc.in_progress,
+    'pendingApproval', cc.pending_approval,
+    'disbursed', cc.disbursed,
+    'closed', cc.closed,
+    'rejected', cc.rejected,
     'totalSanctioned', s.total_sanctioned,
     'totalDisbursedAmount', da.total_disbursed,
     'pendingEMIs', e.pending_emis,
@@ -304,12 +308,12 @@ BEGIN
       COALESCE(SUM(d.amount), 0)::bigint AS leads_amount,
       COUNT(*) FILTER (WHERE d.priority = 3)::int AS applications_in_progress,
       COALESCE(SUM(d.amount) FILTER (WHERE d.priority = 3), 0)::bigint AS in_progress_amount,
-      COUNT(*) FILTER (WHERE d.priority >= 4)::int AS approvals,
-      COALESCE(SUM(d.amount) FILTER (WHERE d.priority >= 4), 0)::bigint AS approvals_amount,
-      COUNT(*) FILTER (WHERE d.priority >= 5)::int AS sanctions,
-      COALESCE(SUM(d.amount) FILTER (WHERE d.priority >= 5), 0)::bigint AS sanctions_amount,
-      COUNT(*) FILTER (WHERE d.priority >= 6)::int AS disbursements,
-      COALESCE(SUM(d.amount) FILTER (WHERE d.priority >= 6), 0)::bigint AS total_disbursed_amount
+      COUNT(*) FILTER (WHERE d.priority = 4)::int AS approvals,
+      COALESCE(SUM(d.amount) FILTER (WHERE d.priority = 4), 0)::bigint AS approvals_amount,
+      COUNT(*) FILTER (WHERE d.priority = 5)::int AS sanctions,
+      COALESCE(SUM(d.amount) FILTER (WHERE d.priority = 5), 0)::bigint AS sanctions_amount,
+      COUNT(*) FILTER (WHERE d.priority IN (6, 7))::int AS disbursements,
+      COALESCE(SUM(d.amount) FILTER (WHERE d.priority IN (6, 7)), 0)::bigint AS total_disbursed_amount
     FROM deduped d
     GROUP BY d.assigned_to
   ),
