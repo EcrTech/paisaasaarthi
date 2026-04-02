@@ -40,37 +40,46 @@ export function useCollections() {
   const { data: collections, isLoading } = useQuery({
     queryKey: ["collections", orgId],
     queryFn: async () => {
-      // Get all EMI schedules for disbursed loans
-      const { data, error } = await supabase
-        .from("loan_repayment_schedule")
-        .select(`
-          id,
-          loan_application_id,
-          due_date,
-          total_emi,
-          principal_amount,
-          interest_amount,
-          amount_paid,
-          status,
-          loan_applications:loan_application_id(
-            application_number,
-            loan_id,
-            requested_amount,
-            interest_rate,
-            tenure_days,
-            contact_id,
-            loan_applicants(first_name, last_name, mobile),
-            loan_disbursements(disbursement_date, disbursement_amount)
-          ),
-          loan_payments(id, transaction_reference, payment_amount, payment_date, payment_method)
-        `)
-        .eq("org_id", orgId!)
-        .order("due_date", { ascending: true });
+      // Fetch all EMI schedules in batches (Supabase caps at 1000 per request)
+      const batchSize = 1000;
+      let allData: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("loan_repayment_schedule")
+          .select(`
+            id,
+            loan_application_id,
+            due_date,
+            total_emi,
+            principal_amount,
+            interest_amount,
+            amount_paid,
+            status,
+            loan_applications:loan_application_id(
+              application_number,
+              loan_id,
+              requested_amount,
+              interest_rate,
+              tenure_days,
+              contact_id,
+              loan_applicants(first_name, last_name, mobile),
+              loan_disbursements(disbursement_date, disbursement_amount)
+            ),
+            loan_payments(id, transaction_reference, payment_amount, payment_date, payment_method)
+          `)
+          .eq("org_id", orgId!)
+          .order("due_date", { ascending: true })
+          .range(offset, offset + batchSize - 1);
 
-      if (error) throw error;
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        if (!data || data.length < batchSize) break;
+        offset += batchSize;
+      }
 
       // Transform data for table display
-      const records: CollectionRecord[] = (data || []).map((item: any) => {
+      const records: CollectionRecord[] = allData.map((item: any) => {
         const applicant = item.loan_applications?.loan_applicants?.[0];
         const disbData = item.loan_applications?.loan_disbursements;
         const disbursement = Array.isArray(disbData) ? disbData[0] : disbData;
