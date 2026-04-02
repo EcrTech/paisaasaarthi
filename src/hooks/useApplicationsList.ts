@@ -121,9 +121,9 @@ export function useApplicationsList(searchTerm?: string) {
           panNumber: applicant?.pan_number || "N/A",
           mobile: applicant?.mobile || "N/A",
           email: applicant?.email || null,
-          isApproved: !!app.approved_amount || ["approved", "sanctioned", "disbursed"].includes(app.current_stage),
-          isSanctioned: !!sanction || ["sanctioned", "disbursed"].includes(app.current_stage),
-          isDisbursed: !!disbursement || app.current_stage === "disbursed",
+          isApproved: !!app.approved_amount || ["approved", "disbursement", "disbursed", "closed"].includes(app.current_stage),
+          isSanctioned: !!sanction || ["approved", "disbursement", "disbursed", "closed"].includes(app.current_stage),
+          isDisbursed: !!disbursement || ["disbursed", "closed"].includes(app.current_stage),
         };
       });
 

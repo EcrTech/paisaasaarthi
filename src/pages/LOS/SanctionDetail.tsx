@@ -29,28 +29,7 @@ import DocumentDataVerification from "@/components/LOS/DocumentDataVerification"
 import ApprovalHistory from "@/components/LOS/Approval/ApprovalHistory";
 import VerificationDashboard from "@/components/LOS/VerificationDashboard";
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-muted",
-  in_progress: "bg-blue-500",
-  approved: "bg-green-500",
-  rejected: "bg-red-500",
-  disbursed: "bg-purple-500",
-};
-
-const STAGE_LABELS: Record<string, string> = {
-  application_login: "Application Login",
-  document_collection: "Document Collection",
-  field_verification: "Field Verification",
-  credit_assessment: "Credit Assessment",
-  approval_pending: "Approval Pending",
-  sanctioned: "Sanctioned",
-  rejected: "Rejected",
-  disbursement_pending: "Disbursement Pending",
-  disbursement_declined: "Disbursement Declined",
-  disbursed: "Disbursed",
-  closed: "Closed",
-  cancelled: "Cancelled",
-};
+import { STAGE_LABELS, STATUS_COLORS } from "@/constants/loanStages";
 
 const formatAddress = (address: any) => {
   if (!address) return "N/A";

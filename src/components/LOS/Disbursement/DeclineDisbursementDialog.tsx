@@ -72,24 +72,22 @@ export default function DeclineDisbursementDialog({
         .eq("loan_application_id", applicationId)
         .eq("status", "pending");
 
-      // Transition stage to disbursement_declined
+      // Transition stage to rejected (decline = reject from disbursement)
       const { data: transitioned, error } = await supabase.rpc(
         "transition_loan_stage",
         {
           p_application_id: applicationId,
-          p_expected_current_stage: "disbursement_pending",
-          p_new_stage: "disbursement_declined",
-          p_new_status: "declined",
+          p_expected_current_stage: "disbursement",
+          p_new_stage: "rejected",
         }
       );
 
-      // Also try from sanctioned stage (documents signed but not yet moved to disbursement_pending)
+      // Also try from approved stage
       if (!transitioned) {
         const { error: err2 } = await supabase.rpc("transition_loan_stage", {
           p_application_id: applicationId,
-          p_expected_current_stage: "sanctioned",
-          p_new_stage: "disbursement_declined",
-          p_new_status: "declined",
+          p_expected_current_stage: "approved",
+          p_new_stage: "rejected",
         });
         if (err2) throw err2;
       }

@@ -33,16 +33,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const stageConfig: Record<string, { label: string; color: string }> = {
-  application: { label: "Application", color: "bg-slate-500" },
-  documents: { label: "Documents", color: "bg-blue-500" },
-  verification: { label: "Verification", color: "bg-purple-500" },
-  assessment: { label: "Assessment", color: "bg-amber-500" },
-  approval: { label: "Approval", color: "bg-cyan-500" },
-  sanctioned: { label: "Sanctioned", color: "bg-green-500" },
-  disbursed: { label: "Disbursed", color: "bg-emerald-600" },
-  rejected: { label: "Rejected", color: "bg-red-500" },
-};
+import { STAGE_LABELS, STAGE_COLORS } from "@/constants/loanStages";
+
+const stageConfig: Record<string, { label: string; color: string }> = Object.fromEntries(
+  Object.entries(STAGE_LABELS).map(([key, label]) => [key, { label, color: STAGE_COLORS[key] || "bg-muted" }]),
+);
 
 const tenureOptions = [
   { value: "all", label: "All Tenures" },
@@ -395,11 +390,11 @@ export function ApplicationsTab() {
                 <SelectItem value="all">All Stages</SelectItem>
                 <SelectItem value="application">Application</SelectItem>
                 <SelectItem value="documents">Documents</SelectItem>
-                <SelectItem value="verification">Verification</SelectItem>
-                <SelectItem value="assessment">Assessment</SelectItem>
-                <SelectItem value="approval">Approval</SelectItem>
-                <SelectItem value="sanctioned">Sanctioned</SelectItem>
+                <SelectItem value="evaluation">Evaluation</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="disbursement">Disbursement</SelectItem>
                 <SelectItem value="disbursed">Disbursed</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>

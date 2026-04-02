@@ -125,7 +125,7 @@ serve(async (req) => {
         requested_amount: parseFloat(loanDetails?.amount) || 0,
         tenure_months: loanDetails?.tenure || 12,
         status: "draft",
-        current_stage: "application_login",
+        current_stage: "application",
         source: "public_form",
         form_id: formConfig.id,
         latitude: geolocation?.latitude || null,

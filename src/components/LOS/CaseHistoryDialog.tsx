@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
+import { STAGE_LABELS } from "@/constants/loanStages";
 import {
   Dialog,
   DialogContent,
@@ -212,20 +213,7 @@ export function CaseHistoryDialog({
     return temp.textContent || temp.innerText || '';
   };
 
-  const STAGE_LABELS: Record<string, string> = {
-    application_login: "Application Login",
-    document_collection: "Document Collection",
-    field_verification: "Field Verification",
-    credit_assessment: "Credit Assessment",
-    approval_pending: "Approval Pending",
-    sanctioned: "Sanctioned",
-    rejected: "Rejected",
-    disbursement_pending: "Disbursement Pending",
-    disbursement_declined: "Disbursement Declined",
-    disbursed: "Disbursed",
-    closed: "Closed",
-    cancelled: "Cancelled",
-  };
+  // STAGE_LABELS imported from @/constants/loanStages
 
   const renderTimelineItem = (item: TimelineItem) => {
     switch (item.type) {

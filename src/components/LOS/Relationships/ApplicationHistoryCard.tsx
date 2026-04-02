@@ -10,35 +10,7 @@ interface ApplicationHistoryCardProps {
   application: LoanApplicationSummary;
 }
 
-const stageLabels: Record<string, string> = {
-  application_login: "Application Login",
-  document_collection: "Document Collection",
-  verification: "Verification",
-  credit_assessment: "Credit Assessment",
-  approval_pending: "Approval Pending",
-  approved: "Approved",
-  rejected: "Rejected",
-  sanctioned: "Sanctioned",
-  agreement_pending: "Agreement Pending",
-  disbursement_pending: "Disbursement Pending",
-  disbursed: "Disbursed",
-  closed: "Closed",
-};
-
-const stageBadgeVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  application_login: "outline",
-  document_collection: "outline",
-  verification: "secondary",
-  credit_assessment: "secondary",
-  approval_pending: "secondary",
-  approved: "default",
-  rejected: "destructive",
-  sanctioned: "default",
-  agreement_pending: "secondary",
-  disbursement_pending: "secondary",
-  disbursed: "default",
-  closed: "outline",
-};
+import { STAGE_LABELS as stageLabels, STAGE_BADGE_VARIANTS as stageBadgeVariants } from "@/constants/loanStages";
 
 export function ApplicationHistoryCard({ application }: ApplicationHistoryCardProps) {
   const navigate = useNavigate();

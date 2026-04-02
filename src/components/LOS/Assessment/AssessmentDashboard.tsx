@@ -51,15 +51,13 @@ export default function AssessmentDashboard({ applicationId, orgId }: Assessment
 
   const updateStageMutation = useMutation({
     mutationFn: async (newStage: string) => {
-      const { error } = await supabase
-        .from("loan_applications")
-        .update({
-          current_stage: newStage,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", applicationId);
-
+      const { data, error } = await supabase.rpc("transition_loan_stage", {
+        p_application_id: applicationId,
+        p_expected_current_stage: "evaluation",
+        p_new_stage: newStage,
+      });
       if (error) throw error;
+      if (!data) throw new Error("Stage has already changed. Please refresh the page.");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loan-application-basic", applicationId] });
@@ -132,7 +130,7 @@ export default function AssessmentDashboard({ applicationId, orgId }: Assessment
                 </div>
               </div>
 
-              {isEligible && application?.current_stage === "credit_assessment" && (
+              {isEligible && application?.current_stage === "evaluation" && (
                 <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -141,7 +139,7 @@ export default function AssessmentDashboard({ applicationId, orgId }: Assessment
                         Assessment complete! Ready for approval.
                       </p>
                     </div>
-                    <Button onClick={() => updateStageMutation.mutate("approval_pending")}>
+                    <Button onClick={() => updateStageMutation.mutate("approved")}>
                       Move to Approval
                     </Button>
                   </div>

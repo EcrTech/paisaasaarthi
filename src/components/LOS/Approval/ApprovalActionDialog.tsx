@@ -136,14 +136,12 @@ export default function ApprovalActionDialog({
       }
 
       // Update application - guarded stage transition
-      const newStage = action === "approve" ? "sanctioned" : "rejected";
-      const newStatus = action === "approve" ? "approved" : "rejected";
+      const newStage = action === "approve" ? "approved" : "rejected";
       const { data: transitionResult, error: updateError } = await supabase
         .rpc("transition_loan_stage", {
           p_application_id: applicationId,
-          p_expected_current_stage: "approval_pending",
+          p_expected_current_stage: "evaluation",
           p_new_stage: newStage,
-          p_new_status: newStatus,
           p_approved_by: action === "approve" ? userId : null,
           p_approved_amount: approvedAmount,
           p_tenure_days: tenureDays,

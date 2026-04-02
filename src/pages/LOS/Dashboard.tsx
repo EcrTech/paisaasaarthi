@@ -27,35 +27,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
 
-const STAGE_COLORS: Record<string, string> = {
-  application_login: "#8AD4EB",
-  document_collection: "#01B8AA",
-  field_verification: "#168980",
-  credit_assessment: "#F2C80F",
-  approval_pending: "#FE9666",
-  sanctioned: "#A66999",
-  disbursement_pending: "#3B82F6",
-  disbursement_declined: "#EF4444",
-  disbursed: "#22C55E",
-  rejected: "#FD625E",
-  cancelled: "#9CA3AF",
-  closed: "#6366F1",
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  referral_link: "Referral Link",
-  referral: "Referral",
-  public_form: "Public Form",
-  bulk_upload: "Bulk Upload",
-  bulk_import: "Bulk Import",
-  loan_application: "Loan Application",
-  "Google Ads": "Google Ads",
-  "Meta Ads": "Meta Ads",
-  "Reapply Quick": "Reapply Quick",
-  "Repeat Loan": "Repeat Loan",
-  Direct: "Direct",
-  unknown: "Unknown",
-};
+import { STAGE_LABELS, STAGE_CHART_COLORS, SOURCE_LABELS } from "@/constants/loanStages";
 
 // Distinct color palette for lead sources — cycled for any number of sources
 const SOURCE_COLOR_PALETTE = [
@@ -107,7 +79,7 @@ export default function LOSDashboard() {
         stage: d.stage,
         label: STAGE_LABELS[d.stage] || d.stage,
         count: d.count,
-        fill: STAGE_COLORS[d.stage] || "#8884d8",
+        fill: STAGE_CHART_COLORS[d.stage] || "#8884d8",
       }));
     },
     enabled: !!orgId,
@@ -185,19 +157,6 @@ export default function LOSDashboard() {
       currency: "INR",
       maximumFractionDigits: 0,
     }).format(amount);
-  };
-
-  const STAGE_LABELS: Record<string, string> = {
-    application_login: "Application Login",
-    document_collection: "Document Collection",
-    field_verification: "Field Verification",
-    credit_assessment: "Credit Assessment",
-    approval_pending: "Approval Pending",
-    sanctioned: "Sanctioned",
-    rejected: "Rejected",
-    disbursement_pending: "Disbursement Pending",
-    disbursement_declined: "Disbursement Declined",
-    disbursed: "Disbursed",
   };
 
   if (isLoading) {

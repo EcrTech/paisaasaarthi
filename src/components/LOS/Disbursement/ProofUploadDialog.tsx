@@ -205,7 +205,7 @@ export default function ProofUploadDialog({
         const { data: transitioned, error: stageError } = await supabase
           .rpc("transition_loan_stage", {
             p_application_id: applicationId,
-            p_expected_current_stage: "disbursement_pending",
+            p_expected_current_stage: "disbursement",
             p_new_stage: "disbursed",
           });
 

@@ -354,15 +354,14 @@ export default function PipelineBoard() {
   // Deduplicate by phone number: keep most processed stage, fallback to latest
   const applications = (() => {
     const stagePriority: Record<string, number> = {
-      'application_login': 1,
-      'video_kyc': 2,
-      'credit_assessment': 3,
-      'assessment': 3,
-      'approval_pending': 4,
+      'application': 1,
+      'documents': 2,
+      'evaluation': 3,
+      'approved': 4,
       'rejected': 4,
-      'sanctioned': 5,
-      'disbursement_pending': 6,
-      'disbursed': 7,
+      'disbursement': 5,
+      'disbursed': 6,
+      'closed': 7,
     };
 
     const grouped: Record<string, typeof rawApplications[0]> = {};

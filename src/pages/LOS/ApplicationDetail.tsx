@@ -34,30 +34,7 @@ import { MandateStatusCard } from "@/components/LOS/Mandate/MandateStatusCard";
 import { RepeatLoanDialog } from "@/components/LOS/RepeatLoanDialog";
 import VerificationDashboard from "@/components/LOS/VerificationDashboard";
 
-const STAGE_LABELS: Record<string, string> = {
-  lead: "Lead",
-  application_login: "Application Login",
-  document_collection: "Document Collection",
-  field_verification: "Field Verification",
-  credit_assessment: "Credit Assessment",
-  approval_pending: "Approval Pending",
-  sanctioned: "Sanctioned",
-  rejected: "Rejected",
-  disbursement_pending: "Disbursement Pending",
-  disbursement_declined: "Disbursement Declined",
-  disbursed: "Disbursed",
-  closed: "Closed",
-  cancelled: "Cancelled",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  new: "bg-yellow-500",
-  draft: "bg-muted",
-  in_progress: "bg-blue-500",
-  approved: "bg-green-500",
-  rejected: "bg-red-500",
-  disbursed: "bg-purple-500",
-};
+import { STAGE_LABELS, STATUS_COLORS } from "@/constants/loanStages";
 
 
 export default function ApplicationDetail() {
@@ -342,9 +319,8 @@ export default function ApplicationDetail() {
     mutationFn: async () => {
       const { data, error } = await supabase.rpc("transition_loan_stage", {
         p_application_id: application?.id,
-        p_expected_current_stage: "application_login",
-        p_new_stage: "credit_assessment",
-        p_new_status: "in_progress",
+        p_expected_current_stage: "application",
+        p_new_stage: "evaluation",
       });
       if (error) throw error;
       if (!data) throw new Error("Stage has already changed. Please refresh the page.");
@@ -370,13 +346,12 @@ export default function ApplicationDetail() {
       if (seqError) throw seqError;
       const applicationNumber = `LA-${yearMonth}-${String(seqVal).padStart(5, "0")}`;
 
-      // Update application: set proper number, stage, and status
+      // Update application: set proper number and stage (status auto-synced via trigger)
       const { error: updateError } = await supabase
         .from("loan_applications")
         .update({
           application_number: applicationNumber,
-          current_stage: "application_login",
-          status: "in_progress",
+          current_stage: "application",
           updated_at: new Date().toISOString(),
         })
         .eq("id", application?.id)
@@ -537,7 +512,7 @@ export default function ApplicationDetail() {
   ]);
 
   // Determine if application is locked (disbursed without active repeat loan)
-  const isLocked = application?.current_stage === "disbursed";
+  const isLocked = ["disbursed", "closed"].includes(application?.current_stage);
 
   if (isLoading || isOrgLoading) {
     return (
@@ -1124,13 +1099,13 @@ export default function ApplicationDetail() {
             </Card>
           )}
 
-          {/* Start Assessment - shown when at application_login stage */}
-          {application.current_stage === "application_login" && (
+          {/* Start Assessment - shown when at application stage */}
+          {application.current_stage === "application" && (
             <Card>
               <CardHeader>
                 <CardTitle>Start Assessment</CardTitle>
                 <CardDescription>
-                  Move this application to Credit Assessment to begin the review process
+                  Move this application to Evaluation to begin the review process
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1143,22 +1118,22 @@ export default function ApplicationDetail() {
                   ) : (
                     <Calculator className="h-4 w-4 mr-2" />
                   )}
-                  Start Credit Assessment
+                  Start Evaluation
                 </Button>
               </CardContent>
             </Card>
           )}
 
           {/* Income & Assessment - shown until approval */}
-          {!["sanctioned", "disbursement_pending", "disbursed", "closed"].includes(application.current_stage) && (
+          {!["approved", "disbursement", "disbursed", "closed"].includes(application.current_stage) && (
             <>
               <IncomeSummary applicationId={application.id} orgId={orgId} />
               <AssessmentDashboard applicationId={application.id} orgId={orgId} />
             </>
           )}
 
-          {/* Approval Actions - Only shown when stage is approval_pending */}
-          {application.current_stage === "approval_pending" && (
+          {/* Approval Actions - Only shown when stage is evaluation (pending approval) */}
+          {application.current_stage === "evaluation" && (
             <Card>
               <CardHeader>
                 <CardTitle>Approval Actions</CardTitle>
@@ -1187,18 +1162,18 @@ export default function ApplicationDetail() {
             </Card>
           )}
 
-          {/* Approval History - shown for approval stages and beyond */}
-          {["approval_pending", "sanctioned", "disbursement_pending", "disbursed", "closed"].includes(application.current_stage) && (
+          {/* Approval History - shown for evaluation stage and beyond */}
+          {["evaluation", "approved", "disbursement", "disbursed", "closed"].includes(application.current_stage) && (
             <ApprovalHistory applicationId={id!} />
           )}
 
-          {/* Full Application Summary for sanctioned stages */}
-          {["sanctioned", "disbursement_pending", "disbursed"].includes(application.current_stage) && (
+          {/* Full Application Summary for approved stages */}
+          {["approved", "disbursement", "disbursed"].includes(application.current_stage) && (
             <ApplicationSummary applicationId={id!} orgId={orgId!} />
           )}
 
           {/* Disbursement Section */}
-          {application.current_stage === "disbursement_pending" && (
+          {application.current_stage === "disbursement" && (
             <DisbursementForm applicationId={id!} />
           )}
 
@@ -1207,8 +1182,8 @@ export default function ApplicationDetail() {
             <DisbursementStatus applicationId={id!} />
           )}
 
-          {/* NACH / eMandate Status - visible for disbursement_pending and disbursed */}
-          {["disbursement_pending", "disbursed"].includes(application.current_stage) && (
+          {/* NACH / eMandate Status - visible for disbursement and disbursed */}
+          {["disbursement", "disbursed"].includes(application.current_stage) && (
             <MandateStatusCard applicationId={id!} />
           )}
         </div>

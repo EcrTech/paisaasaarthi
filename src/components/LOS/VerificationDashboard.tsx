@@ -162,15 +162,13 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
 
   const updateStageMutation = useMutation({
     mutationFn: async (newStage: string) => {
-      const { error } = await supabase
-        .from("loan_applications")
-        .update({ 
-          current_stage: newStage,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", applicationId);
-
+      const { data, error } = await supabase.rpc("transition_loan_stage", {
+        p_application_id: applicationId,
+        p_expected_current_stage: application?.current_stage || "application",
+        p_new_stage: newStage,
+      });
       if (error) throw error;
+      if (!data) throw new Error("Stage has already changed. Please refresh the page.");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loan-application-basic", applicationId] });
@@ -204,7 +202,7 @@ export default function VerificationDashboard({ applicationId, orgId }: Verifica
   const handleMoveToAssessment = () => {
     // Allow moving forward if all verifications are processed (even with failures)
     if (allVerificationsComplete || allVerificationsProcessed) {
-      updateStageMutation.mutate("credit_assessment");
+      updateStageMutation.mutate("evaluation");
     }
   };
 

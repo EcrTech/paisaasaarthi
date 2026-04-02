@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
         tenure_days: basicInfo.tenureDays,
         interest_rate: 1, // 1% daily interest rate
         status: 'draft',
-        current_stage: 'video_kyc',
+        current_stage: 'application',
         application_number: tempAppNumber,
         source: 'referral',
       })

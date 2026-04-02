@@ -139,8 +139,8 @@ export default function Sanctions() {
       const { data: transitioned, error: stageError } = await supabase
         .rpc("transition_loan_stage", {
           p_application_id: app.id,
-          p_expected_current_stage: "sanctioned",
-          p_new_stage: "disbursement_pending",
+          p_expected_current_stage: "approved",
+          p_new_stage: "disbursement",
         });
       
       if (stageError) throw stageError;

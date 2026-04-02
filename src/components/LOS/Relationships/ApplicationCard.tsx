@@ -22,19 +22,13 @@ interface ApplicationCardProps {
   onViewDetails: (application: ApplicationListItem) => void;
 }
 
-const stageConfig: Record<string, { label: string; color: string; order: number }> = {
-  application: { label: "Application", color: "bg-slate-500", order: 1 },
-  documents: { label: "Documents", color: "bg-blue-500", order: 2 },
-  verification: { label: "Verification", color: "bg-purple-500", order: 3 },
-  assessment: { label: "Assessment", color: "bg-indigo-500", order: 4 },
-  approval: { label: "Approval", color: "bg-amber-500", order: 5 },
-  sanctioned: { label: "Sanctioned", color: "bg-cyan-500", order: 6 },
-  disbursed: { label: "Disbursed", color: "bg-green-500", order: 7 },
-  rejected: { label: "Rejected", color: "bg-red-500", order: 0 },
-  closed: { label: "Closed", color: "bg-gray-500", order: 8 },
-};
+import { LOAN_STAGES, STAGE_LABELS, STAGE_COLORS, STAGE_ORDER, PROGRESS_STAGES } from "@/constants/loanStages";
 
-const stages = ["application", "documents", "verification", "assessment", "approval", "sanctioned", "disbursed"];
+const stageConfig: Record<string, { label: string; color: string; order: number }> = Object.fromEntries(
+  LOAN_STAGES.map((s) => [s.value, { label: s.label, color: s.color, order: s.order }]),
+);
+
+const stages = [...PROGRESS_STAGES];
 
 export function ApplicationCard({ application, onViewDetails }: ApplicationCardProps) {
   const [showWhatsAppChat, setShowWhatsAppChat] = useState(false);

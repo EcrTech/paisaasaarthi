@@ -62,8 +62,7 @@ export function RepeatLoanDialog({
           requested_amount: Number(requestedAmount),
           tenure_days: Number(tenureDays),
           source: "repeat_loan",
-          status: "in_progress",
-          current_stage: "assessment",
+          current_stage: "evaluation",
           parent_application_id: applicationId,
           assigned_to: user?.user?.id,
         } as any)

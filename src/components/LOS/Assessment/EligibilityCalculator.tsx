@@ -115,7 +115,7 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
     enabled: !!applicationId,
   });
 
-  const isFinalized = application?.status === "approved" || application?.status === "rejected" || !["assessment", "credit_assessment"].includes(application?.current_stage);
+  const isFinalized = application?.status === "approved" || application?.status === "rejected" || !["evaluation"].includes(application?.current_stage);
   // Fetch salary slip documents for income calculation
   const { data: salaryDocs = [] } = useQuery({
     queryKey: ["loan-salary-docs", applicationId],
@@ -415,7 +415,7 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
         .single();
 
       const currentStage = currentApp?.current_stage;
-      if (!currentStage || !["assessment", "credit_assessment"].includes(currentStage)) {
+      if (!currentStage || !["evaluation"].includes(currentStage)) {
         throw new Error("Application is no longer in assessment stage. Please refresh and try again.");
       }
 
@@ -424,8 +424,7 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
         .rpc("transition_loan_stage", {
           p_application_id: applicationId,
           p_expected_current_stage: currentStage,
-          p_new_stage: "approval_pending",
-          p_new_status: "in_progress",
+          p_new_stage: "approved",
           p_approved_amount: approvedAmount,
           p_tenure_days: tenureDays,
           p_interest_rate: interestRate,
@@ -463,7 +462,7 @@ export default function EligibilityCalculator({ applicationId, orgId }: Eligibil
         .single();
 
       const currentStage = currentApp?.current_stage;
-      if (!currentStage || !["assessment", "credit_assessment"].includes(currentStage)) {
+      if (!currentStage || !["evaluation"].includes(currentStage)) {
         throw new Error("Application is no longer in assessment stage. Please refresh and try again.");
       }
 

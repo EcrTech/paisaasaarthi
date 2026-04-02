@@ -21,63 +21,13 @@ import { usePagination } from "@/hooks/usePagination";
 import PaginationControls from "@/components/common/PaginationControls";
 import { cn } from "@/lib/utils";
 
-const STAGE_LABELS: Record<string, string> = {
-  lead: "Lead",
-  application_login: "Application Login",
-  document_collection: "Document Collection",
-  field_verification: "Field Verification",
-  credit_assessment: "Credit Assessment",
-  approval_pending: "Approval Pending",
-  approved: "Approved",
-  rejected: "Rejected",
-  sanction_generated: "Sanction Generated",
-  disbursement_pending: "Disbursement Pending",
-  disbursement_declined: "Disbursement Declined",
-  disbursed: "Disbursed",
-  closed: "Closed",
-  cancelled: "Cancelled",
-};
-
-const STATUS_OPTIONS = [
-  { value: "all", label: "All Statuses" },
-  { value: "draft", label: "Draft" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
-  { value: "disbursed", label: "Disbursed" },
-];
-
-const STAGE_OPTIONS = [
-  { value: "all", label: "All Stages" },
-  { value: "lead", label: "Lead" },
-  { value: "application_login", label: "Application Login" },
-  { value: "document_collection", label: "Document Collection" },
-  { value: "field_verification", label: "Field Verification" },
-  { value: "credit_assessment", label: "Credit Assessment" },
-  { value: "approval_pending", label: "Approval Pending" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
-  { value: "sanction_generated", label: "Sanction Generated" },
-  { value: "disbursement_pending", label: "Disbursement Pending" },
-  { value: "disbursed", label: "Disbursed" },
-  { value: "closed", label: "Closed" },
-];
-
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-muted",
-  in_progress: "bg-blue-500",
-  approved: "bg-green-500",
-  rejected: "bg-red-500",
-  disbursed: "bg-purple-500",
-  new: "bg-yellow-500",
-};
+import { STAGE_LABELS, STAGE_OPTIONS, STATUS_COLORS } from "@/constants/loanStages";
 
 export default function Applications() {
   const navigate = useNavigate();
   const { orgId } = useOrgContext();
   const { permissions } = useLOSPermissions();
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
@@ -150,7 +100,6 @@ const { data: applications = [], isLoading } = useQuery({
   };
 
   const filteredApplications = useMemo(() => applications.filter((app) => {
-    if (statusFilter !== "all" && app.status !== statusFilter) return false;
     if (stageFilter !== "all" && app.current_stage !== stageFilter) return false;
     
     // Date range filter
@@ -181,7 +130,7 @@ const { data: applications = [], isLoading } = useQuery({
       applicantName.includes(searchLower) ||
       contactName.includes(searchLower)
     );
-  }), [applications, statusFilter, stageFilter, dateFrom, dateTo, searchQuery]);
+  }), [applications, stageFilter, dateFrom, dateTo, searchQuery]);
 
   const pagination = usePagination({
     defaultPageSize: 25,
@@ -244,18 +193,6 @@ const { data: applications = [], isLoading } = useQuery({
               className="pl-9"
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <Select value={stageFilter} onValueChange={setStageFilter}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Filter by stage" />

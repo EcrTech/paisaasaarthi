@@ -24,32 +24,7 @@ interface ApprovalQueueProps {
 
 const PAGE_SIZE = 25;
 
-const STAGE_LABELS: Record<string, string> = {
-  application_login: "Application Login",
-  document_collection: "Document Collection",
-  field_verification: "Field Verification",
-  credit_assessment: "Credit Assessment",
-  approval_pending: "Approval Pending",
-  sanctioned: "Sanctioned",
-  rejected: "Rejected",
-  disbursement_pending: "Disbursement Pending",
-  disbursement_declined: "Disbursement Declined",
-  disbursed: "Disbursed",
-  closed: "Closed",
-  cancelled: "Cancelled",
-};
-
-const STAGE_COLORS: Record<string, string> = {
-  application_login: "bg-muted text-muted-foreground",
-  document_collection: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-  field_verification: "bg-orange-500/10 text-orange-600 border-orange-500/20",
-  credit_assessment: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  approval_pending: "bg-purple-500/10 text-purple-600 border-purple-500/20",
-  sanctioned: "bg-green-500/10 text-green-600 border-green-500/20",
-  rejected: "bg-red-500/10 text-red-600 border-red-500/20",
-  disbursement_pending: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
-  disbursed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-};
+import { STAGE_LABELS, STAGE_BADGE_COLORS as STAGE_COLORS } from "@/constants/loanStages";
 
 export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
   const navigate = useNavigate();
