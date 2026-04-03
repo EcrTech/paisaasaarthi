@@ -55,7 +55,8 @@ export function useLoansList(searchTerm?: string) {
               applicant_type
             ),
             loan_sanctions (
-              sanctioned_amount
+              sanctioned_amount,
+              net_disbursement_amount
             ),
             loan_disbursements (
               disbursement_amount,
@@ -88,7 +89,11 @@ export function useLoansList(searchTerm?: string) {
           const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions[0] : app.loan_sanctions;
           const disbursements = Array.isArray(app.loan_disbursements) ? app.loan_disbursements : (app.loan_disbursements ? [app.loan_disbursements] : []);
           const firstDisbursement = disbursements[0];
-          const totalDisbursedAmount = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
+          const totalDisbursedFromRecords = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
+          // Fall back to sanction net_disbursement_amount when no disbursement records exist
+          const totalDisbursedAmount = totalDisbursedFromRecords > 0
+            ? totalDisbursedFromRecords
+            : (sanction?.net_disbursement_amount || sanction?.sanctioned_amount || 0);
 
           // Get repayment schedule data for accurate outstanding calculation
           const schedules = Array.isArray(app.loan_repayment_schedule) ? app.loan_repayment_schedule : (app.loan_repayment_schedule ? [app.loan_repayment_schedule] : []);
