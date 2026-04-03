@@ -98,7 +98,7 @@ export default function EMIDashboard({ applicationId }: EMIDashboardProps) {
 
 
   if (isLoading) {
-    return <LoadingState message="Loading EMI dashboard..." />;
+    return <LoadingState message="Loading repayment details..." />;
   }
 
   return (
@@ -110,7 +110,7 @@ export default function EMIDashboard({ applicationId }: EMIDashboardProps) {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600" />
-                Paid EMIs
+                Paid
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -118,7 +118,7 @@ export default function EMIDashboard({ applicationId }: EMIDashboardProps) {
                 {emiStats.paidEMIs}
               </div>
               <div className="text-xs text-muted-foreground mt-1">
-                of {emiStats.totalEMIs} installments
+                of {emiStats.totalEMIs} payment(s)
               </div>
             </CardContent>
           </Card>
@@ -127,7 +127,7 @@ export default function EMIDashboard({ applicationId }: EMIDashboardProps) {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Clock className="h-4 w-4 text-blue-600" />
-                Pending EMIs
+                Pending
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -141,7 +141,7 @@ export default function EMIDashboard({ applicationId }: EMIDashboardProps) {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-red-600" />
-                Overdue EMIs
+                Overdue
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -167,20 +167,20 @@ export default function EMIDashboard({ applicationId }: EMIDashboardProps) {
         </div>
       )}
 
-      {/* Next EMI Alert */}
+      {/* Next Payment Due */}
       {emiStats?.nextEMI && (
         <Card className="border-primary">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              Next EMI Due
+              Next Payment Due
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <div className="text-sm text-muted-foreground">
-                  EMI #{emiStats.nextEMI.emi_number}
+                  Payment #{emiStats.nextEMI.emi_number}
                 </div>
                 <div className="text-2xl font-bold">
                   {formatCurrency(emiStats.nextEMI.total_emi)}

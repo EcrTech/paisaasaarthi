@@ -62,46 +62,33 @@ export function useEMISchedule(applicationId?: string) {
       tenureDays: number;
       disbursementDate: string;
     }) => {
-      // Use shared calculation utility for daily flat rate model
+      // Bullet payment: single repayment due at maturity (disbursement + tenure)
       const { totalInterest, totalRepayment } = calculateLoanDetails(
         loanAmount,
         interestRate,
         tenureDays
       );
 
-      const dailyEMI = Math.round(totalRepayment / tenureDays);
-      const dailyInterest = loanAmount * (interestRate / 100);
-      const dailyPrincipal = dailyEMI - dailyInterest;
-      let outstandingPrincipal = loanAmount;
-      const scheduleItems = [];
+      const dueDate = new Date(disbursementDate);
+      dueDate.setDate(dueDate.getDate() + tenureDays);
+      const dueDateStr = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
 
-      for (let i = 1; i <= tenureDays; i++) {
-        const interestAmount = Math.round(dailyInterest * 100) / 100;
-        const principalAmount = Math.round((dailyEMI - interestAmount) * 100) / 100;
-        outstandingPrincipal -= principalAmount;
-
-        const dueDate = new Date(disbursementDate);
-        dueDate.setDate(dueDate.getDate() + i);
-
-        scheduleItems.push({
+      const { error } = await supabase
+        .from("loan_repayment_schedule")
+        .insert({
           loan_application_id: applicationId,
           sanction_id: sanctionId,
           org_id: orgId!,
-          emi_number: i,
-          due_date: `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`,
-          principal_amount: principalAmount,
-          interest_amount: interestAmount,
-          total_emi: dailyEMI,
-          outstanding_principal: Math.max(0, Math.round(outstandingPrincipal * 100) / 100),
+          emi_number: 1,
+          due_date: dueDateStr,
+          principal_amount: loanAmount,
+          interest_amount: Math.round(totalInterest),
+          total_emi: Math.round(totalRepayment),
+          outstanding_principal: loanAmount,
           status: "pending",
           amount_paid: 0,
           late_fee: 0,
         });
-      }
-
-      const { error } = await supabase
-        .from("loan_repayment_schedule")
-        .insert(scheduleItems);
 
       if (error) throw error;
     },

@@ -41,7 +41,7 @@ export default function EMIScheduleGenerator({
       <Alert>
         <Calculator className="h-4 w-4" />
         <AlertDescription>
-          EMI schedule has already been generated with {schedule.length} installments.
+          Repayment schedule has already been generated with {schedule.length} payment(s).
         </AlertDescription>
       </Alert>
     );
@@ -52,10 +52,10 @@ export default function EMIScheduleGenerator({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calculator className="h-5 w-5" />
-          Generate Daily Repayment Schedule
+          Generate Repayment Schedule
         </CardTitle>
         <CardDescription>
-          Create a repayment schedule based on the approved loan terms
+          Create a bullet payment schedule based on the approved loan terms
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

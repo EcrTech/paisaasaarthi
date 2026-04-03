@@ -45,7 +45,7 @@ export default function EMIScheduleTable({ applicationId }: EMIScheduleTableProp
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading EMI schedule..." />;
+    return <LoadingState message="Loading repayment schedule..." />;
   }
 
   if (!schedule || schedule.length === 0) {
@@ -53,7 +53,7 @@ export default function EMIScheduleTable({ applicationId }: EMIScheduleTableProp
       <Card>
         <CardContent className="p-6">
           <div className="text-center text-muted-foreground">
-            No EMI schedule generated yet
+            No repayment schedule generated yet
           </div>
         </CardContent>
       </Card>
@@ -75,7 +75,7 @@ export default function EMIScheduleTable({ applicationId }: EMIScheduleTableProp
               Repayment Schedule
             </CardTitle>
             <div className="text-sm text-muted-foreground">
-              {schedule.length} EMIs
+              {schedule.length} payment(s)
             </div>
           </div>
         </CardHeader>
@@ -113,11 +113,11 @@ export default function EMIScheduleTable({ applicationId }: EMIScheduleTableProp
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>EMI #</TableHead>
+                  <TableHead>#</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead className="text-right">Principal</TableHead>
                   <TableHead className="text-right">Interest</TableHead>
-                  <TableHead className="text-right">EMI Amount</TableHead>
+                  <TableHead className="text-right">Total Due</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Status</TableHead>
