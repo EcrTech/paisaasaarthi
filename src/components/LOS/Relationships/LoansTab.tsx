@@ -77,21 +77,25 @@ export function LoansTab() {
 
     const filename = `loans-${format(new Date(), "yyyy-MM-dd")}${statusFilter !== "all" ? `_${statusFilter}` : ""}`;
 
+    const statusLabel = statusFilter !== "all" ? (paymentStatusConfig[statusFilter]?.label || statusFilter) : "All";
+    const filterInfo = [`"Filter: Status = ${statusLabel}${debouncedSearch ? `, Search = ${debouncedSearch}` : ""}"`];
+
     const headers = [
       "Loan ID", "Application #", "Customer", "PAN", "Mobile",
-      "Disbursed", "Outstanding", "Disbursement Date", "Due Date",
+      "Sanctioned Amount", "Disbursed Amount", "Outstanding", "Disbursement Date", "Due Date",
       "Days Overdue", "Status",
     ];
 
     const rows = filteredLoans.map((l) => [
       l.loanId, l.applicationNumber, `"${l.applicantName}"`, l.panNumber, l.mobile,
-      l.disbursedAmount, l.outstandingAmount,
+      l.sanctionedAmount, l.disbursedAmount, l.outstandingAmount,
       l.disbursementDate ? format(new Date(l.disbursementDate), "dd/MM/yyyy") : "",
       l.dueDate ? format(new Date(l.dueDate), "dd/MM/yyyy") : "",
-      l.daysOverdue, l.paymentStatus,
+      l.daysOverdue,
+      paymentStatusConfig[l.paymentStatus]?.label || l.paymentStatus,
     ]);
 
-    const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const csvContent = [filterInfo, headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
