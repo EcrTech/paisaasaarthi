@@ -123,72 +123,68 @@ export function LoansTab() {
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <Banknote className="h-5 w-5 text-primary" />
+              <Banknote className="h-4 w-4 text-primary" />
               <div>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-xl font-bold">{stats.total}</p>
                 <p className="text-xs text-muted-foreground">Total Loans</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-green-500" />
+              <TrendingUp className="h-4 w-4 text-green-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.onTrack}</p>
+                <p className="text-xl font-bold">{stats.onTrack}</p>
                 <p className="text-xs text-muted-foreground">On Track</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500" />
+              <AlertCircle className="h-4 w-4 text-red-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.overdue}</p>
+                <p className="text-xl font-bold">{stats.overdue}</p>
                 <p className="text-xs text-muted-foreground">Overdue</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-blue-500" />
+              <CheckCircle className="h-4 w-4 text-blue-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.completed}</p>
+                <p className="text-xl font-bold">{stats.completed}</p>
                 <p className="text-xs text-muted-foreground">Settled</p>
               </div>
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Financial Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <IndianRupee className="h-5 w-5 text-green-600" />
+              <IndianRupee className="h-4 w-4 text-green-600" />
               <div>
-                <p className="text-2xl font-bold">{formatCurrency(stats.totalDisbursed)}</p>
+                <p className="text-xl font-bold">{formatCurrency(stats.totalDisbursed)}</p>
                 <p className="text-xs text-muted-foreground">Total Disbursed</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <IndianRupee className="h-5 w-5 text-orange-500" />
+              <IndianRupee className="h-4 w-4 text-orange-500" />
               <div>
-                <p className="text-2xl font-bold">{formatCurrency(stats.totalOutstanding)}</p>
+                <p className="text-xl font-bold">{formatCurrency(stats.totalOutstanding)}</p>
                 <p className="text-xs text-muted-foreground">Total Outstanding</p>
               </div>
             </div>
