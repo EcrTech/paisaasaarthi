@@ -28,10 +28,11 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { Search, Banknote, Download, TrendingUp, AlertCircle, CheckCircle, IndianRupee, Eye, Clock } from "lucide-react";
 
 const paymentStatusConfig: Record<string, { label: string; color: string }> = {
-  disbursement_pending: { label: "Disbursement Pending", color: "bg-amber-500" },
-  on_track: { label: "On Track", color: "bg-green-500" },
+  disbursement_pending: { label: "Disb. Pending", color: "bg-amber-500" },
+  due: { label: "Due", color: "bg-blue-500" },
+  due_today: { label: "Due Today", color: "bg-orange-500" },
   overdue: { label: "Overdue", color: "bg-red-500" },
-  completed: { label: "Settled", color: "bg-blue-500" },
+  paid: { label: "Paid", color: "bg-emerald-500" },
 };
 
 const formatCurrency = (amount: number) =>
@@ -102,14 +103,15 @@ export function LoansTab() {
 
   // Summary stats — count actual loans
   const computeStats = () => {
-    if (!loans || loans.length === 0) return { total: 0, disbursementPending: 0, onTrack: 0, overdue: 0, completed: 0, totalDisbursed: 0, totalOutstanding: 0 };
+    if (!loans || loans.length === 0) return { total: 0, disbursementPending: 0, due: 0, dueToday: 0, overdue: 0, paid: 0, totalDisbursed: 0, totalOutstanding: 0 };
 
-    const counts = { total: loans.length, disbursementPending: 0, onTrack: 0, overdue: 0, completed: 0 };
+    const counts = { total: loans.length, disbursementPending: 0, due: 0, dueToday: 0, overdue: 0, paid: 0 };
     for (const loan of loans) {
       if (loan.paymentStatus === "disbursement_pending") counts.disbursementPending++;
+      else if (loan.paymentStatus === "due") counts.due++;
+      else if (loan.paymentStatus === "due_today") counts.dueToday++;
       else if (loan.paymentStatus === "overdue") counts.overdue++;
-      else if (loan.paymentStatus === "on_track") counts.onTrack++;
-      else if (loan.paymentStatus === "completed") counts.completed++;
+      else if (loan.paymentStatus === "paid") counts.paid++;
     }
 
     return {
@@ -123,69 +125,46 @@ export function LoansTab() {
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/10 to-sky-500/5 border border-sky-500/20 p-5 transition-all hover:shadow-lg hover:shadow-sky-500/10 hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Loans</span>
-          </div>
-          <p className="text-3xl font-extrabold text-foreground">{stats.total}</p>
-          <div className="absolute bottom-0 right-0 opacity-[0.07]">
-            <Banknote className="h-16 w-16 -mb-2 -mr-2" />
-          </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/10 to-sky-500/5 border border-sky-500/20 p-4 transition-all hover:shadow-lg hover:shadow-sky-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.total}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Banknote className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-5 transition-all hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Disb. Pending</span>
-          </div>
-          <p className="text-3xl font-extrabold text-foreground">{stats.disbursementPending}</p>
-          <div className="absolute bottom-0 right-0 opacity-[0.07]">
-            <Clock className="h-16 w-16 -mb-2 -mr-2" />
-          </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-4 transition-all hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Disb. Pending</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.disbursementPending}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Clock className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-5 transition-all hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">On Track</span>
-          </div>
-          <p className="text-3xl font-extrabold text-foreground">{stats.onTrack}</p>
-          <div className="absolute bottom-0 right-0 opacity-[0.07]">
-            <TrendingUp className="h-16 w-16 -mb-2 -mr-2" />
-          </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-4 transition-all hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Due</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.due}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><TrendingUp className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-500/10 to-red-500/5 border border-red-500/20 p-5 transition-all hover:shadow-lg hover:shadow-red-500/10 hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Overdue</span>
-          </div>
-          <p className="text-3xl font-extrabold text-foreground">{stats.overdue}</p>
-          <div className="absolute bottom-0 right-0 opacity-[0.07]">
-            <AlertCircle className="h-16 w-16 -mb-2 -mr-2" />
-          </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500/10 to-orange-500/5 border border-orange-500/20 p-4 transition-all hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Due Today</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.dueToday}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><AlertCircle className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-5 transition-all hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Settled</span>
-          </div>
-          <p className="text-3xl font-extrabold text-foreground">{stats.completed}</p>
-          <div className="absolute bottom-0 right-0 opacity-[0.07]">
-            <CheckCircle className="h-16 w-16 -mb-2 -mr-2" />
-          </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-500/10 to-red-500/5 border border-red-500/20 p-4 transition-all hover:shadow-lg hover:shadow-red-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Overdue</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.overdue}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><AlertCircle className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 to-violet-500/5 border border-violet-500/20 p-5 transition-all hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Disbursed</span>
-          </div>
-          <p className="text-2xl font-extrabold text-foreground">{formatCurrency(stats.totalDisbursed)}</p>
-          <div className="absolute bottom-0 right-0 opacity-[0.07]">
-            <IndianRupee className="h-16 w-16 -mb-2 -mr-2" />
-          </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-4 transition-all hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Paid</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.paid}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><CheckCircle className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500/10 to-orange-500/5 border border-orange-500/20 p-5 transition-all hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-1">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Outstanding</span>
-          </div>
-          <p className="text-2xl font-extrabold text-foreground">{formatCurrency(stats.totalOutstanding)}</p>
-          <div className="absolute bottom-0 right-0 opacity-[0.07]">
-            <IndianRupee className="h-16 w-16 -mb-2 -mr-2" />
-          </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 to-violet-500/5 border border-violet-500/20 p-4 transition-all hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Disbursed</span>
+          <p className="text-xl font-extrabold text-foreground mt-1">{formatCurrency(stats.totalDisbursed)}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><IndianRupee className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-500/10 to-rose-500/5 border border-rose-500/20 p-4 transition-all hover:shadow-lg hover:shadow-rose-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Outstanding</span>
+          <p className="text-xl font-extrabold text-foreground mt-1">{formatCurrency(stats.totalOutstanding)}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><IndianRupee className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
       </div>
 
@@ -220,10 +199,11 @@ export function LoansTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Loans</SelectItem>
-                <SelectItem value="disbursement_pending">Disbursement Pending</SelectItem>
-                <SelectItem value="on_track">On Track</SelectItem>
+                <SelectItem value="disbursement_pending">Disb. Pending</SelectItem>
+                <SelectItem value="due">Due</SelectItem>
+                <SelectItem value="due_today">Due Today</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="completed">Settled</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
               </SelectContent>
             </Select>
           </div>

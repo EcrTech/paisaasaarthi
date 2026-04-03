@@ -19,7 +19,7 @@ export interface LoanListItem {
   mobile: string;
   email: string | null;
   outstandingAmount: number;
-  paymentStatus: "on_track" | "overdue" | "completed" | "disbursement_pending";
+  paymentStatus: "disbursement_pending" | "due" | "due_today" | "overdue" | "paid";
 }
 
 export function useLoansList(searchTerm?: string) {
@@ -122,11 +122,13 @@ export function useLoansList(searchTerm?: string) {
             : schedules.length > 0 ? Math.max(0, totalExpected - totalPaid)
             : totalDisbursedAmount;
 
-          // Overdue = has any past-due EMIs that aren't fully paid
           const todayStr = today.toISOString().split('T')[0];
-          const hasOverdueEMIs = !isClosed && schedules.some((s: any) =>
-            s.due_date < todayStr && s.status !== 'paid' && s.status !== 'settled'
-          );
+          const isPendingDisbursement = ['approved', 'disbursement'].includes(app.current_stage);
+
+          // Find earliest unpaid EMI due date for "due today" check
+          const unpaidSchedules = schedules.filter((s: any) => s.status !== 'paid' && s.status !== 'settled');
+          const hasOverdueEMIs = !isClosed && unpaidSchedules.some((s: any) => s.due_date < todayStr);
+          const hasDueToday = !isClosed && unpaidSchedules.some((s: any) => s.due_date === todayStr);
 
           let daysOverdue = 0;
           if (!isClosed && dueDate) {
@@ -134,15 +136,15 @@ export function useLoansList(searchTerm?: string) {
             if (diff > 0) daysOverdue = diff;
           }
 
-          const isDisbursed = ['disbursed', 'closed'].includes(app.current_stage);
-          const isPendingDisbursement = ['approved', 'disbursement'].includes(app.current_stage);
-          let paymentStatus: "on_track" | "overdue" | "completed" | "disbursement_pending" = "on_track";
+          let paymentStatus: "disbursement_pending" | "due" | "due_today" | "overdue" | "paid" = "due";
           if (isPendingDisbursement) {
             paymentStatus = "disbursement_pending";
-          } else if (isClosed || (isDisbursed && schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
-            paymentStatus = "completed";
+          } else if (isClosed || (schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
+            paymentStatus = "paid";
           } else if (hasOverdueEMIs || daysOverdue > 0) {
             paymentStatus = "overdue";
+          } else if (hasDueToday) {
+            paymentStatus = "due_today";
           }
 
           return {
