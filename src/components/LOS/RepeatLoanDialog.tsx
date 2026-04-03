@@ -50,7 +50,7 @@ export function RepeatLoanDialog({
       });
       if (seqError) throw seqError;
 
-      const applicationNumber = `APP-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(seqData).padStart(5, "0")}`;
+      const applicationNumber = `LA-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(seqData).padStart(5, "0")}`;
 
       // Create repeat loan application
       const { data: newApp, error } = await supabase
