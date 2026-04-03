@@ -256,94 +256,46 @@ export function ApplicationsTab() {
     <div className="space-y-6">
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" />
-              <div>
-                <p className="text-xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.application}</p>
-                <p className="text-xs text-muted-foreground">Application</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-blue-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.evaluation}</p>
-                <p className="text-xs text-muted-foreground">Evaluation</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.approved}</p>
-                <p className="text-xs text-muted-foreground">Approved</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-cyan-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.disbursement}</p>
-                <p className="text-xs text-muted-foreground">Disbursement</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <Banknote className="h-4 w-4 text-green-600" />
-              <div>
-                <p className="text-xl font-bold">{stats.disbursed}</p>
-                <p className="text-xs text-muted-foreground">Disbursed</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-gray-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.closed}</p>
-                <p className="text-xs text-muted-foreground">Closed</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-red-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.rejected}</p>
-                <p className="text-xs text-muted-foreground">Rejected</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/10 to-sky-500/5 border border-sky-500/20 p-4 transition-all hover:shadow-lg hover:shadow-sky-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.total}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><FileText className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-4 transition-all hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Application</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.application}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Clock className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-4 transition-all hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Evaluation</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.evaluation}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Search className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-4 transition-all hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Approved</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.approved}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><CheckCircle className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 border border-cyan-500/20 p-4 transition-all hover:shadow-lg hover:shadow-cyan-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Disbursement</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.disbursement}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><FileText className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 to-violet-500/5 border border-violet-500/20 p-4 transition-all hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Disbursed</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.disbursed}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Banknote className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-500/10 to-gray-500/5 border border-gray-500/20 p-4 transition-all hover:shadow-lg hover:shadow-gray-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Closed</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.closed}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><CheckCircle className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-500/10 to-red-500/5 border border-red-500/20 p-4 transition-all hover:shadow-lg hover:shadow-red-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Rejected</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{stats.rejected}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><XCircle className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
       </div>
 
       {/* Filters */}

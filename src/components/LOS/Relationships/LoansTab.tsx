@@ -124,72 +124,60 @@ export function LoansTab() {
     <div className="space-y-6">
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <Banknote className="h-4 w-4 text-primary" />
-              <div>
-                <p className="text-xl font-bold">{stats.total}</p>
-                <p className="text-xs text-muted-foreground">Total Loans</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-green-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.onTrack}</p>
-                <p className="text-xs text-muted-foreground">On Track</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.overdue}</p>
-                <p className="text-xs text-muted-foreground">Overdue</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-blue-500" />
-              <div>
-                <p className="text-xl font-bold">{stats.completed}</p>
-                <p className="text-xs text-muted-foreground">Settled</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <IndianRupee className="h-4 w-4 text-green-600" />
-              <div>
-                <p className="text-xl font-bold">{formatCurrency(stats.totalDisbursed)}</p>
-                <p className="text-xs text-muted-foreground">Total Disbursed</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4 pb-3 px-3">
-            <div className="flex items-center gap-2">
-              <IndianRupee className="h-4 w-4 text-orange-500" />
-              <div>
-                <p className="text-xl font-bold">{formatCurrency(stats.totalOutstanding)}</p>
-                <p className="text-xs text-muted-foreground">Total Outstanding</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/10 to-sky-500/5 border border-sky-500/20 p-5 transition-all hover:shadow-lg hover:shadow-sky-500/10 hover:-translate-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Loans</span>
+          </div>
+          <p className="text-3xl font-extrabold text-foreground">{stats.total}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]">
+            <Banknote className="h-16 w-16 -mb-2 -mr-2" />
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-5 transition-all hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">On Track</span>
+          </div>
+          <p className="text-3xl font-extrabold text-foreground">{stats.onTrack}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]">
+            <TrendingUp className="h-16 w-16 -mb-2 -mr-2" />
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-500/10 to-red-500/5 border border-red-500/20 p-5 transition-all hover:shadow-lg hover:shadow-red-500/10 hover:-translate-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Overdue</span>
+          </div>
+          <p className="text-3xl font-extrabold text-foreground">{stats.overdue}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]">
+            <AlertCircle className="h-16 w-16 -mb-2 -mr-2" />
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-5 transition-all hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Settled</span>
+          </div>
+          <p className="text-3xl font-extrabold text-foreground">{stats.completed}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]">
+            <CheckCircle className="h-16 w-16 -mb-2 -mr-2" />
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 to-violet-500/5 border border-violet-500/20 p-5 transition-all hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Disbursed</span>
+          </div>
+          <p className="text-2xl font-extrabold text-foreground">{formatCurrency(stats.totalDisbursed)}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]">
+            <IndianRupee className="h-16 w-16 -mb-2 -mr-2" />
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-5 transition-all hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Outstanding</span>
+          </div>
+          <p className="text-2xl font-extrabold text-foreground">{formatCurrency(stats.totalOutstanding)}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]">
+            <IndianRupee className="h-16 w-16 -mb-2 -mr-2" />
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
