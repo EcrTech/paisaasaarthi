@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { useApplicationsList, ApplicationListItem } from "@/hooks/useApplicationsList";
 import { ApplicationDetailDialog } from "./ApplicationDetailDialog";
+import { usePagination } from "@/hooks/usePagination";
+import PaginationControls from "@/components/common/PaginationControls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,6 +88,7 @@ export function ApplicationsTab() {
     setTenureFilter("all");
     setSanctionedFilter("all");
     setDisbursedFilter("all");
+    pagination.setPage(1);
   };
 
   const hasActiveFilters = 
@@ -99,8 +102,8 @@ export function ApplicationsTab() {
     sanctionedFilter !== "all" ||
     disbursedFilter !== "all";
 
-  // Filter applications
-  const filteredApplications = applications?.filter((app) => {
+  // Filter applications — memoized for pagination
+  const filteredApplications = useMemo(() => applications?.filter((app) => {
     // Stage filter
     if (stageFilter !== "all" && app.currentStage !== stageFilter) {
       return false;
@@ -166,7 +169,13 @@ export function ApplicationsTab() {
     if (disbursedFilter === "no" && app.isDisbursed) return false;
 
     return true;
-  }) || [];
+  }) || [], [applications, stageFilter, statusFilter, fromDate, toDate, minAmount, maxAmount, tenureFilter, sanctionedFilter, disbursedFilter]);
+
+  const pagination = usePagination({ defaultPageSize: 100, totalRecords: filteredApplications.length });
+  const paginatedApplications = useMemo(() => {
+    const start = (pagination.currentPage - 1) * pagination.pageSize;
+    return filteredApplications.slice(start, start + pagination.pageSize);
+  }, [filteredApplications, pagination.currentPage, pagination.pageSize]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -246,31 +255,17 @@ export function ApplicationsTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Summary stats — each contact counted once at their highest lifecycle stage
-  // Priority: Disbursed > Sanctioned > Approved > Pending > Rejected
+  // Summary stats — count applications by lifecycle stage
   const computeStats = () => {
     if (!applications || applications.length === 0) return { total: 0, approved: 0, sanctioned: 0, disbursed: 0, pending: 0, rejected: 0 };
 
-    const contactHighest = new Map<string, string>();
-    const PRIORITY: Record<string, number> = { disbursed: 5, sanctioned: 4, approved: 3, pending: 2, rejected: 1 };
-
+    const counts = { total: applications.length, approved: 0, sanctioned: 0, disbursed: 0, pending: 0, rejected: 0 };
     for (const app of applications) {
-      if (!app.contactId) continue;
-      let stage = "pending";
-      if (app.isDisbursed) stage = "disbursed";
-      else if (app.isSanctioned) stage = "sanctioned";
-      else if (app.isApproved) stage = "approved";
-      else if (app.status === "rejected") stage = "rejected";
-
-      const current = contactHighest.get(app.contactId);
-      if (!current || PRIORITY[stage] > PRIORITY[current]) {
-        contactHighest.set(app.contactId, stage);
-      }
-    }
-
-    const counts = { total: contactHighest.size, approved: 0, sanctioned: 0, disbursed: 0, pending: 0, rejected: 0 };
-    for (const stage of contactHighest.values()) {
-      counts[stage as keyof typeof counts]++;
+      if (app.isDisbursed) counts.disbursed++;
+      else if (app.isSanctioned) counts.sanctioned++;
+      else if (app.isApproved) counts.approved++;
+      else if (app.status === "rejected") counts.rejected++;
+      else counts.pending++;
     }
     return counts;
   };
@@ -388,6 +383,7 @@ export function ApplicationsTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Stages</SelectItem>
+                <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="application">Application</SelectItem>
                 <SelectItem value="documents">Documents</SelectItem>
                 <SelectItem value="evaluation">Evaluation</SelectItem>
@@ -606,7 +602,7 @@ export function ApplicationsTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredApplications.map((app) => {
+                  {paginatedApplications.map((app) => {
                     const stage = stageConfig[app.currentStage] || { label: app.currentStage, color: "bg-gray-500" };
                     return (
                       <TableRow 
@@ -668,6 +664,19 @@ export function ApplicationsTab() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {filteredApplications.length > 0 && (
+        <PaginationControls
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalRecords={filteredApplications.length}
+          startRecord={pagination.startRecord}
+          endRecord={pagination.endRecord}
+          onPageChange={pagination.setPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
       )}
 
       <ApplicationDetailDialog

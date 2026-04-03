@@ -54,7 +54,7 @@ export function useApplicationsList(searchTerm?: string) {
             approved_amount,
             tenure_days,
             created_at,
-            loan_applicants!inner (
+            loan_applicants (
               first_name,
               middle_name,
               last_name,
@@ -90,7 +90,8 @@ export function useApplicationsList(searchTerm?: string) {
       const data = allData;
 
       let applications: ApplicationListItem[] = (data || []).map((app: any) => {
-        const applicant = app.loan_applicants?.[0];
+        // loan_applicants is now a left join; pick the first primary applicant if available
+        const applicant = Array.isArray(app.loan_applicants) ? app.loan_applicants[0] : null;
         const sanction = app.loan_sanctions?.[0];
         const disbursement = app.loan_disbursements?.[0];
 
