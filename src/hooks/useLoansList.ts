@@ -19,7 +19,7 @@ export interface LoanListItem {
   mobile: string;
   email: string | null;
   outstandingAmount: number;
-  paymentStatus: "on_track" | "overdue" | "completed";
+  paymentStatus: "on_track" | "overdue" | "completed" | "disbursement_pending";
 }
 
 export function useLoansList(searchTerm?: string) {
@@ -135,8 +135,11 @@ export function useLoansList(searchTerm?: string) {
           }
 
           const isDisbursed = ['disbursed', 'closed'].includes(app.current_stage);
-          let paymentStatus: "on_track" | "overdue" | "completed" = "on_track";
-          if (isClosed || (isDisbursed && schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
+          const isPendingDisbursement = ['approved', 'disbursement'].includes(app.current_stage);
+          let paymentStatus: "on_track" | "overdue" | "completed" | "disbursement_pending" = "on_track";
+          if (isPendingDisbursement) {
+            paymentStatus = "disbursement_pending";
+          } else if (isClosed || (isDisbursed && schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
             paymentStatus = "completed";
           } else if (hasOverdueEMIs || daysOverdue > 0) {
             paymentStatus = "overdue";

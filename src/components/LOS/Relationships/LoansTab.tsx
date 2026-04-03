@@ -25,9 +25,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { LoadingState } from "@/components/common/LoadingState";
 import { EmptyState } from "@/components/common/EmptyState";
-import { Search, Banknote, Download, TrendingUp, AlertCircle, CheckCircle, IndianRupee, Eye } from "lucide-react";
+import { Search, Banknote, Download, TrendingUp, AlertCircle, CheckCircle, IndianRupee, Eye, Clock } from "lucide-react";
 
 const paymentStatusConfig: Record<string, { label: string; color: string }> = {
+  disbursement_pending: { label: "Disbursement Pending", color: "bg-amber-500" },
   on_track: { label: "On Track", color: "bg-green-500" },
   overdue: { label: "Overdue", color: "bg-red-500" },
   completed: { label: "Settled", color: "bg-blue-500" },
@@ -55,9 +56,7 @@ export function LoansTab() {
   const { data: loans, isLoading } = useLoansList(debouncedSearch);
 
   const filteredLoans = useMemo(() => (loans || []).filter((loan) => {
-    if (statusFilter === "on_track") return loan.paymentStatus === "on_track";
-    if (statusFilter === "overdue") return loan.paymentStatus === "overdue";
-    if (statusFilter === "completed") return loan.paymentStatus === "completed";
+    if (statusFilter !== "all") return loan.paymentStatus === statusFilter;
     return true;
   }), [loans, statusFilter]);
 
@@ -103,11 +102,12 @@ export function LoansTab() {
 
   // Summary stats — count actual loans
   const computeStats = () => {
-    if (!loans || loans.length === 0) return { total: 0, onTrack: 0, overdue: 0, completed: 0, totalDisbursed: 0, totalOutstanding: 0 };
+    if (!loans || loans.length === 0) return { total: 0, disbursementPending: 0, onTrack: 0, overdue: 0, completed: 0, totalDisbursed: 0, totalOutstanding: 0 };
 
-    const counts = { total: loans.length, onTrack: 0, overdue: 0, completed: 0 };
+    const counts = { total: loans.length, disbursementPending: 0, onTrack: 0, overdue: 0, completed: 0 };
     for (const loan of loans) {
-      if (loan.paymentStatus === "overdue") counts.overdue++;
+      if (loan.paymentStatus === "disbursement_pending") counts.disbursementPending++;
+      else if (loan.paymentStatus === "overdue") counts.overdue++;
       else if (loan.paymentStatus === "on_track") counts.onTrack++;
       else if (loan.paymentStatus === "completed") counts.completed++;
     }
@@ -123,7 +123,7 @@ export function LoansTab() {
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/10 to-sky-500/5 border border-sky-500/20 p-5 transition-all hover:shadow-lg hover:shadow-sky-500/10 hover:-translate-y-1">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Loans</span>
@@ -131,6 +131,15 @@ export function LoansTab() {
           <p className="text-3xl font-extrabold text-foreground">{stats.total}</p>
           <div className="absolute bottom-0 right-0 opacity-[0.07]">
             <Banknote className="h-16 w-16 -mb-2 -mr-2" />
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-5 transition-all hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Disb. Pending</span>
+          </div>
+          <p className="text-3xl font-extrabold text-foreground">{stats.disbursementPending}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]">
+            <Clock className="h-16 w-16 -mb-2 -mr-2" />
           </div>
         </div>
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-5 transition-all hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
@@ -169,7 +178,7 @@ export function LoansTab() {
             <IndianRupee className="h-16 w-16 -mb-2 -mr-2" />
           </div>
         </div>
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-5 transition-all hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-1">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500/10 to-orange-500/5 border border-orange-500/20 p-5 transition-all hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-1">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Outstanding</span>
           </div>
@@ -211,6 +220,7 @@ export function LoansTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Loans</SelectItem>
+                <SelectItem value="disbursement_pending">Disbursement Pending</SelectItem>
                 <SelectItem value="on_track">On Track</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="completed">Settled</SelectItem>
