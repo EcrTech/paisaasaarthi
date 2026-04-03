@@ -66,7 +66,7 @@ export function useCustomerRelationships(searchTerm?: string) {
             approved_amount,
             tenure_days,
             created_at,
-            loan_applicants!inner (
+            loan_applicants (
               first_name,
               middle_name,
               last_name,
@@ -76,13 +76,13 @@ export function useCustomerRelationships(searchTerm?: string) {
               aadhaar_number,
               applicant_type
             ),
-            loan_sanctions ( sanctioned_amount ),
+            loan_sanctions ( sanctioned_amount, net_disbursement_amount ),
             loan_disbursements ( disbursement_amount, disbursement_date ),
             loan_repayment_schedule ( total_emi, amount_paid, status, due_date )
           `)
           .eq("org_id", orgId)
           .eq("loan_applicants.applicant_type", "primary")
-          .not("loan_id", "is", null)
+          .in("current_stage", ["approved", "disbursement", "disbursed", "closed"])
           .order("created_at", { ascending: false })
           .range(from, from + PAGE_SIZE - 1);
 
@@ -91,11 +91,6 @@ export function useCustomerRelationships(searchTerm?: string) {
         hasMore = (batch?.length || 0) === PAGE_SIZE;
         from += PAGE_SIZE;
       }
-
-      // Keep only disbursed/closed loans
-      const disbursedApps = allApps.filter((app: any) =>
-        ['disbursed', 'closed'].includes(app.current_stage)
-      );
 
       // Group by PAN (fallback to mobile) to deduplicate customers
       const customerMap = new Map<string, {
@@ -109,7 +104,7 @@ export function useCustomerRelationships(searchTerm?: string) {
         apps: any[];
       }>();
 
-      for (const app of disbursedApps) {
+      for (const app of allApps) {
         const applicant = Array.isArray(app.loan_applicants)
           ? app.loan_applicants[0]
           : app.loan_applicants;
@@ -169,10 +164,15 @@ export function useCustomerRelationships(searchTerm?: string) {
         const appSummaries: LoanApplicationSummary[] = sortedApps.map((app: any) => {
           const rawDisb = app.loan_disbursements;
           const disbursements = Array.isArray(rawDisb) ? rawDisb : rawDisb ? [rawDisb] : [];
-          const totalDisb = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
+          const totalDisbFromRecords = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
 
           const rawSanction = app.loan_sanctions;
           const sanction = Array.isArray(rawSanction) ? rawSanction[0] : rawSanction;
+
+          // Fall back to sanction amount when no disbursement records
+          const totalDisb = totalDisbFromRecords > 0
+            ? totalDisbFromRecords
+            : (sanction?.net_disbursement_amount || sanction?.sanctioned_amount || 0);
 
           totalDisbursed += totalDisb;
 

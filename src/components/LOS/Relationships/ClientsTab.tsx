@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { useCustomerRelationships, CustomerRelationship } from "@/hooks/useCustomerRelationships";
 import { CustomerDetailDialog } from "./CustomerDetailDialog";
+import { usePagination } from "@/hooks/usePagination";
+import PaginationControls from "@/components/common/PaginationControls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,11 +47,18 @@ export function ClientsTab() {
 
   const { data: customers, isLoading } = useCustomerRelationships(debouncedSearch);
 
-  const filteredCustomers = (customers || []).filter((c) => {
+  const filteredCustomers = useMemo(() => (customers || []).filter((c) => {
     if (statusFilter === "active") return c.outstandingAmount > 0;
     if (statusFilter === "overdue") return c.overdueLoans > 0;
+    if (statusFilter === "cleared") return c.outstandingAmount === 0;
     return true;
-  });
+  }), [customers, statusFilter]);
+
+  const pagination = usePagination({ defaultPageSize: 100, totalRecords: filteredCustomers.length });
+  const paginatedCustomers = useMemo(() => {
+    const start = (pagination.currentPage - 1) * pagination.pageSize;
+    return filteredCustomers.slice(start, start + pagination.pageSize);
+  }, [filteredCustomers, pagination.currentPage, pagination.pageSize]);
 
   const handleViewDetails = (customer: CustomerRelationship) => {
     setSelectedCustomer(customer);
@@ -90,58 +99,46 @@ export function ClientsTab() {
   };
 
   const total = customers?.length || 0;
+  const activeClients = customers?.filter((c) => c.outstandingAmount > 0).length || 0;
+  const overdueClients = customers?.filter((c) => c.overdueLoans > 0).length || 0;
+  const clearedClients = customers?.filter((c) => c.outstandingAmount === 0).length || 0;
   const totalDisbursed = customers?.reduce((sum, c) => sum + c.disbursedAmount, 0) || 0;
   const totalOutstanding = customers?.reduce((sum, c) => sum + c.outstandingAmount, 0) || 0;
-  const overdueClients = customers?.filter((c) => c.overdueLoans > 0).length || 0;
 
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-2xl font-bold">{total}</p>
-                <p className="text-xs text-muted-foreground">Total Clients</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <IndianRupee className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-lg font-bold">{formatCurrency(totalDisbursed)}</p>
-                <p className="text-xs text-muted-foreground">Total Disbursed</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <IndianRupee className="h-5 w-5 text-orange-500" />
-              <div>
-                <p className="text-lg font-bold">{formatCurrency(totalOutstanding)}</p>
-                <p className="text-xs text-muted-foreground">Total Outstanding</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500" />
-              <div>
-                <p className="text-2xl font-bold">{overdueClients}</p>
-                <p className="text-xs text-muted-foreground">Overdue Clients</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/10 to-sky-500/5 border border-sky-500/20 p-4 transition-all hover:shadow-lg hover:shadow-sky-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Clients</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{total}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Users className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-4 transition-all hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Active</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{activeClients}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Users className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-500/10 to-red-500/5 border border-red-500/20 p-4 transition-all hover:shadow-lg hover:shadow-red-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Overdue</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{overdueClients}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><AlertCircle className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 p-4 transition-all hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cleared</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{clearedClients}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><Users className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500/10 to-violet-500/5 border border-violet-500/20 p-4 transition-all hover:shadow-lg hover:shadow-violet-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Disbursed</span>
+          <p className="text-xl font-extrabold text-foreground mt-1">{formatCurrency(totalDisbursed)}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><IndianRupee className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500/10 to-orange-500/5 border border-orange-500/20 p-4 transition-all hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Outstanding</span>
+          <p className="text-xl font-extrabold text-foreground mt-1">{formatCurrency(totalOutstanding)}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><IndianRupee className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
       </div>
 
       {/* Search & Filter */}
@@ -175,8 +172,9 @@ export function ClientsTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Clients</SelectItem>
-                <SelectItem value="active">With Outstanding</SelectItem>
-                <SelectItem value="overdue">With Overdue Loans</SelectItem>
+                <SelectItem value="active">Active (Outstanding)</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="cleared">Cleared</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -220,7 +218,7 @@ export function ClientsTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCustomers.map((customer) => (
+                  {paginatedCustomers.map((customer) => (
                     <TableRow
                       key={customer.customerId}
                       className="cursor-pointer hover:bg-muted/50"
@@ -272,6 +270,19 @@ export function ClientsTab() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {filteredCustomers.length > 0 && (
+        <PaginationControls
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalRecords={filteredCustomers.length}
+          startRecord={pagination.startRecord}
+          endRecord={pagination.endRecord}
+          onPageChange={pagination.setPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
       )}
 
       <CustomerDetailDialog
