@@ -70,7 +70,7 @@ export function useLoansList(searchTerm?: string) {
           `)
           .eq("org_id", orgId)
           .eq("loan_applicants.applicant_type", "primary")
-          .not("loan_id", "is", null)
+          .in("current_stage", ["approved", "disbursement", "disbursed", "closed"])
           .order("created_at", { ascending: false })
           .range(from, from + PAGE_SIZE - 1);
 
@@ -83,7 +83,6 @@ export function useLoansList(searchTerm?: string) {
       const today = new Date();
 
       let loans: LoanListItem[] = (data || [])
-        .filter((app: any) => ['disbursed', 'closed'].includes(app.current_stage))
         .map((app: any) => {
           const applicant = Array.isArray(app.loan_applicants) ? app.loan_applicants[0] : app.loan_applicants;
           const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions[0] : app.loan_sanctions;
@@ -130,8 +129,9 @@ export function useLoansList(searchTerm?: string) {
             if (diff > 0) daysOverdue = diff;
           }
 
+          const isDisbursed = ['disbursed', 'closed'].includes(app.current_stage);
           let paymentStatus: "on_track" | "overdue" | "completed" = "on_track";
-          if (isClosed || (schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
+          if (isClosed || (isDisbursed && schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
             paymentStatus = "completed";
           } else if (hasOverdueEMIs || daysOverdue > 0) {
             paymentStatus = "overdue";
