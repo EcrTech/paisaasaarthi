@@ -81,81 +81,7 @@ export default function Disbursals() {
 
       const unified: UnifiedDisbursalItem[] = [];
 
-      // 1. Fetch applications ready for disbursal (all documents signed, no disbursement)
-      const { data: applications } = await supabase
-        .from("loan_applications")
-        .select(`
-          id,
-          application_number,
-          loan_id,
-          approved_amount,
-          current_stage,
-          created_at,
-          loan_sanctions!inner(id, processing_fee)
-        `)
-        .eq("org_id", orgId)
-        .in("current_stage", ["approved", "disbursement"])
-        .order("created_at", { ascending: false });
-
-      if (applications) {
-        for (const app of applications) {
-          const { data: docs } = await supabase
-            .from("loan_generated_documents")
-            .select("document_type, customer_signed")
-            .eq("loan_application_id", app.id);
-
-          const combinedSigned = docs?.find(d => d.document_type === "combined_loan_pack")?.customer_signed;
-          const sanctionSigned = docs?.find(d => d.document_type === "sanction_letter")?.customer_signed;
-          const agreementSigned = docs?.find(d => d.document_type === "loan_agreement")?.customer_signed;
-          const documentsReady = combinedSigned || (sanctionSigned && agreementSigned);
-
-          // Check if disbursement already exists
-          const { data: existingDisbursement } = await supabase
-            .from("loan_disbursements")
-            .select("id")
-            .eq("loan_application_id", app.id)
-            .maybeSingle();
-
-          if (documentsReady && !existingDisbursement) {
-            // Fetch applicant name
-            const { data: applicants } = await supabase
-              .from("loan_applicants")
-              .select("first_name, last_name, bank_account_number, bank_ifsc_code, bank_name, bank_account_holder_name")
-              .eq("loan_application_id", app.id)
-              .eq("applicant_type", "primary")
-              .order("bank_account_number", { ascending: false, nullsFirst: false })
-              .limit(1);
-            const applicant = applicants?.[0] || null;
-
-            const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions[0] : app.loan_sanctions;
-            const approvedAmount = Number(app.approved_amount) || 0;
-            const processingFee = Number(sanction?.processing_fee) || Math.round(approvedAmount * 0.10);
-            const gstOnPf = Math.round(processingFee * 0.18);
-            const netAmount = approvedAmount - processingFee - gstOnPf;
-
-            unified.push({
-              id: app.id,
-              application_id: app.id,
-              loan_id: app.loan_id,
-              application_number: app.application_number,
-              applicant_name: applicant ? `${applicant.first_name} ${applicant.last_name || ""}`.trim() : "N/A",
-              approved_amount: approvedAmount,
-              disbursed_amount: netAmount,
-              status: "ready",
-              date: app.created_at,
-              sanction_id: sanction?.id,
-              bank_details: applicant?.bank_account_number ? {
-                beneficiaryName: applicant.bank_account_holder_name || `${applicant.first_name} ${applicant.last_name || ""}`.trim(),
-                accountNumber: applicant.bank_account_number,
-                ifscCode: applicant.bank_ifsc_code || "",
-                bankName: applicant.bank_name || "",
-              } : undefined,
-            });
-          }
-        }
-      }
-
-      // 2. Fetch all existing disbursements
+      // 1. Fetch all existing disbursements
       const { data: disbursements } = await supabase
         .from("loan_disbursements")
         .select(`
@@ -172,19 +98,22 @@ export default function Disbursals() {
         .eq("loan_applications.org_id", orgId)
         .order("created_at", { ascending: false });
 
+      const disbursedAppIds = new Set<string>();
+
       if (disbursements) {
         for (const d of disbursements) {
+          disbursedAppIds.add(d.loan_application_id);
           const primaryApplicant = d.loan_applications?.loan_applicants?.find(
             (a: { applicant_type: string }) => a.applicant_type === "primary"
           );
-          
+
           unified.push({
             id: d.id,
             application_id: d.loan_application_id,
             loan_id: d.loan_applications?.loan_id || null,
             application_number: d.loan_applications?.application_number || "",
-            applicant_name: primaryApplicant 
-              ? `${primaryApplicant.first_name} ${primaryApplicant.last_name || ""}`.trim() 
+            applicant_name: primaryApplicant
+              ? `${primaryApplicant.first_name} ${primaryApplicant.last_name || ""}`.trim()
               : "N/A",
             approved_amount: Number(d.loan_applications?.approved_amount) || 0,
             disbursed_amount: Number(d.disbursement_amount) || 0,
@@ -194,6 +123,76 @@ export default function Disbursals() {
             date: d.created_at,
             transaction_date: d.disbursement_date,
             disbursement_number: d.disbursement_number,
+          });
+        }
+      }
+
+      // 2. Fetch all sanctioned-stage applications that don't have a disbursement record yet
+      const { data: applications } = await supabase
+        .from("loan_applications")
+        .select(`
+          id,
+          application_number,
+          loan_id,
+          approved_amount,
+          current_stage,
+          created_at,
+          loan_sanctions(id, processing_fee),
+          loan_applicants!inner(first_name, last_name, applicant_type, bank_account_number, bank_ifsc_code, bank_name, bank_account_holder_name)
+        `)
+        .eq("org_id", orgId)
+        .eq("loan_applicants.applicant_type", "primary")
+        .in("current_stage", ["approved", "disbursement", "disbursed", "closed"])
+        .order("created_at", { ascending: false });
+
+      if (applications) {
+        for (const app of applications) {
+          // Skip if already covered by a disbursement record
+          if (disbursedAppIds.has(app.id)) continue;
+
+          const applicant = app.loan_applicants?.[0] || null;
+          const sanction = Array.isArray(app.loan_sanctions) ? app.loan_sanctions?.[0] : app.loan_sanctions;
+          const approvedAmount = Number(app.approved_amount) || 0;
+          const processingFee = Number(sanction?.processing_fee) || Math.round(approvedAmount * 0.10);
+          const gstOnPf = Math.round(processingFee * 0.18);
+          const netAmount = approvedAmount - processingFee - gstOnPf;
+
+          // Determine status based on stage and document readiness
+          let status: UnifiedDisbursalItem["status"] = "ready";
+          if (app.current_stage === "approved" || app.current_stage === "disbursement") {
+            // Check if documents are signed
+            const { data: docs } = await supabase
+              .from("loan_generated_documents")
+              .select("document_type, customer_signed")
+              .eq("loan_application_id", app.id);
+
+            const combinedSigned = docs?.find(d => d.document_type === "combined_loan_pack")?.customer_signed;
+            const sanctionSigned = docs?.find(d => d.document_type === "sanction_letter")?.customer_signed;
+            const agreementSigned = docs?.find(d => d.document_type === "loan_agreement")?.customer_signed;
+            const documentsReady = combinedSigned || (sanctionSigned && agreementSigned);
+            status = documentsReady ? "ready" : "pending";
+          } else {
+            // disbursed/closed without a disbursement record — show as completed (data gap)
+            status = "completed";
+          }
+
+          unified.push({
+            id: app.id,
+            application_id: app.id,
+            loan_id: app.loan_id,
+            application_number: app.application_number,
+            applicant_name: applicant ? `${applicant.first_name} ${applicant.last_name || ""}`.trim() : "N/A",
+            approved_amount: approvedAmount,
+            disbursed_amount: netAmount,
+            status,
+            date: app.created_at,
+            sanction_id: sanction?.id,
+            bank_details: applicant?.bank_account_number ? {
+              beneficiaryName: applicant.bank_account_holder_name || `${applicant.first_name} ${applicant.last_name || ""}`.trim(),
+              accountNumber: applicant.bank_account_number,
+              ifscCode: applicant.bank_ifsc_code || "",
+              bankName: applicant.bank_name || "",
+            } : undefined,
           });
         }
       }
