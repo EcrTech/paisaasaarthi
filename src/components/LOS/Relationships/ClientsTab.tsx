@@ -24,7 +24,11 @@ import {
 } from "@/components/ui/table";
 import { LoadingState } from "@/components/common/LoadingState";
 import { EmptyState } from "@/components/common/EmptyState";
-import { Search, Users, Download, IndianRupee, AlertCircle, Eye } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Search, Users, Download, IndianRupee, AlertCircle, Eye, RefreshCw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { STAGE_LABELS } from "@/constants/loanStages";
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -34,6 +38,7 @@ const formatCurrency = (amount: number) =>
   }).format(amount);
 
 export function ClientsTab() {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -48,6 +53,7 @@ export function ClientsTab() {
   const { data: customers, isLoading } = useCustomerRelationships(debouncedSearch);
 
   const filteredCustomers = useMemo(() => (customers || []).filter((c) => {
+    if (statusFilter === "repeat") return c.totalLoans > 1;
     if (statusFilter === "active") return c.outstandingAmount > 0;
     if (statusFilter === "overdue") return c.overdueLoans > 0;
     if (statusFilter === "cleared") return c.outstandingAmount === 0;
@@ -99,6 +105,7 @@ export function ClientsTab() {
   };
 
   const total = customers?.length || 0;
+  const repeatBorrowers = customers?.filter((c) => c.totalLoans > 1).length || 0;
   const activeClients = customers?.filter((c) => c.outstandingAmount > 0).length || 0;
   const overdueClients = customers?.filter((c) => c.overdueLoans > 0).length || 0;
   const clearedClients = customers?.filter((c) => c.outstandingAmount === 0).length || 0;
@@ -108,11 +115,16 @@ export function ClientsTab() {
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500/10 to-sky-500/5 border border-sky-500/20 p-4 transition-all hover:shadow-lg hover:shadow-sky-500/10 hover:-translate-y-1">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Clients</span>
           <p className="text-2xl font-extrabold text-foreground mt-1">{total}</p>
           <div className="absolute bottom-0 right-0 opacity-[0.07]"><Users className="h-14 w-14 -mb-2 -mr-2" /></div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/20 p-4 transition-all hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Repeat Borrowers</span>
+          <p className="text-2xl font-extrabold text-foreground mt-1">{repeatBorrowers}</p>
+          <div className="absolute bottom-0 right-0 opacity-[0.07]"><RefreshCw className="h-14 w-14 -mb-2 -mr-2" /></div>
         </div>
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 p-4 transition-all hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Active</span>
@@ -172,6 +184,7 @@ export function ClientsTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Clients</SelectItem>
+                <SelectItem value="repeat">Repeat Borrowers</SelectItem>
                 <SelectItem value="active">Active (Outstanding)</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="cleared">Cleared</SelectItem>
@@ -227,7 +240,48 @@ export function ClientsTab() {
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell className="text-sm">{customer.mobile}</TableCell>
                       <TableCell className="font-mono text-sm">{customer.panNumber}</TableCell>
-                      <TableCell className="text-center">{customer.totalLoans}</TableCell>
+                      <TableCell className="text-center">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center"
+                            >
+                              <Badge
+                                variant={customer.totalLoans > 1 ? "default" : "secondary"}
+                                className={`cursor-pointer ${customer.totalLoans > 1 ? "bg-amber-500 hover:bg-amber-600" : ""}`}
+                              >
+                                {customer.totalLoans} {customer.totalLoans > 1 ? "Loans" : "Loan"}
+                              </Badge>
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80 p-0" align="start" onClick={(e) => e.stopPropagation()}>
+                            <div className="p-3 border-b">
+                              <p className="text-sm font-semibold">{customer.name} — Loan History</p>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto divide-y">
+                              {customer.applications.map((app) => (
+                                <div key={app.applicationId} className="px-3 py-2 flex items-center justify-between gap-2 text-sm hover:bg-muted/50">
+                                  <div className="min-w-0">
+                                    <button
+                                      onClick={() => navigate(`/los/applications/${app.applicationId}?mode=review`)}
+                                      className="text-primary hover:underline font-mono text-xs font-medium truncate block"
+                                    >
+                                      {app.applicationNumber}
+                                    </button>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {STAGE_LABELS[app.currentStage] || app.currentStage} · {app.disbursedAmount ? formatCurrency(app.disbursedAmount) : "—"}
+                                    </p>
+                                  </div>
+                                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                    {format(new Date(app.createdAt), "dd MMM yy")}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(customer.disbursedAmount)}
                       </TableCell>
