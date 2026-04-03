@@ -108,23 +108,6 @@ export function ApplicationsTab() {
     if (stageFilter !== "all" && app.currentStage !== stageFilter) {
       return false;
     }
-    
-    // Status filter
-    if (statusFilter === "approved" && !app.isApproved) {
-      return false;
-    }
-    if (statusFilter === "sanctioned" && !app.isSanctioned) {
-      return false;
-    }
-    if (statusFilter === "disbursed" && !app.isDisbursed) {
-      return false;
-    }
-    if (statusFilter === "pending" && (app.isApproved || app.status === "rejected")) {
-      return false;
-    }
-    if (statusFilter === "rejected" && app.status !== "rejected") {
-      return false;
-    }
 
     // Date range filter
     if (fromDate || toDate) {
@@ -255,17 +238,15 @@ export function ApplicationsTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Summary stats — count applications by lifecycle stage
+  // Summary stats — count applications by actual current_stage
   const computeStats = () => {
-    if (!applications || applications.length === 0) return { total: 0, approved: 0, sanctioned: 0, disbursed: 0, pending: 0, rejected: 0 };
+    if (!applications || applications.length === 0) return { total: 0, application: 0, evaluation: 0, approved: 0, disbursement: 0, disbursed: 0, closed: 0, rejected: 0 };
 
-    const counts = { total: applications.length, approved: 0, sanctioned: 0, disbursed: 0, pending: 0, rejected: 0 };
+    const counts = { total: applications.length, application: 0, evaluation: 0, approved: 0, disbursement: 0, disbursed: 0, closed: 0, rejected: 0 };
     for (const app of applications) {
-      if (app.isDisbursed) counts.disbursed++;
-      else if (app.isSanctioned) counts.sanctioned++;
-      else if (app.isApproved) counts.approved++;
-      else if (app.status === "rejected") counts.rejected++;
-      else counts.pending++;
+      const stage = app.currentStage as keyof typeof counts;
+      if (stage in counts) counts[stage]++;
+      else counts.application++; // lead, documents → group under application
     }
     return counts;
   };
@@ -274,68 +255,90 @@ export function ApplicationsTab() {
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
+              <FileText className="h-4 w-4 text-primary" />
               <div>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-xl font-bold">{stats.total}</p>
                 <p className="text-xs text-muted-foreground">Total</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-amber-500" />
+              <Clock className="h-4 w-4 text-amber-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.pending}</p>
-                <p className="text-xs text-muted-foreground">Pending</p>
+                <p className="text-xl font-bold">{stats.application}</p>
+                <p className="text-xs text-muted-foreground">Application</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
+              <Search className="h-4 w-4 text-blue-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.approved}</p>
+                <p className="text-xl font-bold">{stats.evaluation}</p>
+                <p className="text-xs text-muted-foreground">Evaluation</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <div>
+                <p className="text-xl font-bold">{stats.approved}</p>
                 <p className="text-xs text-muted-foreground">Approved</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-cyan-500" />
+              <FileText className="h-4 w-4 text-cyan-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.sanctioned}</p>
-                <p className="text-xs text-muted-foreground">Sanctioned</p>
+                <p className="text-xl font-bold">{stats.disbursement}</p>
+                <p className="text-xs text-muted-foreground">Disbursement</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <Banknote className="h-5 w-5 text-green-600" />
+              <Banknote className="h-4 w-4 text-green-600" />
               <div>
-                <p className="text-2xl font-bold">{stats.disbursed}</p>
+                <p className="text-xl font-bold">{stats.disbursed}</p>
                 <p className="text-xs text-muted-foreground">Disbursed</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 pb-3 px-3">
             <div className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-500" />
+              <CheckCircle className="h-4 w-4 text-gray-500" />
               <div>
-                <p className="text-2xl font-bold">{stats.rejected}</p>
+                <p className="text-xl font-bold">{stats.closed}</p>
+                <p className="text-xs text-muted-foreground">Closed</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-3">
+            <div className="flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-red-500" />
+              <div>
+                <p className="text-xl font-bold">{stats.rejected}</p>
                 <p className="text-xs text-muted-foreground">Rejected</p>
               </div>
             </div>
@@ -391,19 +394,6 @@ export function ApplicationsTab() {
                 <SelectItem value="disbursement">Disbursement</SelectItem>
                 <SelectItem value="disbursed">Disbursed</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="sanctioned">Sanctioned</SelectItem>
-                <SelectItem value="disbursed">Disbursed</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>
