@@ -88,7 +88,7 @@ export function useEMISchedule(applicationId?: string) {
           sanction_id: sanctionId,
           org_id: orgId!,
           emi_number: i,
-          due_date: dueDate.toISOString().split("T")[0],
+          due_date: `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`,
           principal_amount: principalAmount,
           interest_amount: interestAmount,
           total_emi: dailyEMI,
@@ -120,7 +120,7 @@ export function useEMISchedule(applicationId?: string) {
 
   const updateOverdueStatusMutation = useMutation({
     mutationFn: async () => {
-      const today = new Date().toISOString().split("T")[0];
+      const d = new Date(); const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       
       const { error } = await supabase
         .from("loan_repayment_schedule")

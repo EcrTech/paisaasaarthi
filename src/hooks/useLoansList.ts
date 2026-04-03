@@ -82,6 +82,8 @@ export function useLoansList(searchTerm?: string) {
       }
 
       const today = new Date();
+      // Use local date (not UTC) so IST comparisons are correct
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
       let loans: LoanListItem[] = (data || [])
         .map((app: any) => {
@@ -106,12 +108,12 @@ export function useLoansList(searchTerm?: string) {
             applicant?.last_name,
           ].filter(Boolean).join(" ");
 
-          // Bullet payment: due date = disbursement_date + tenure_days
-          let dueDate: string | null = null;
+          // Maturity date: disbursement_date + tenure_days (fallback for loans without schedule)
+          let maturityDate: string | null = null;
           if (firstDisbursement?.disbursement_date && app.tenure_days) {
             const d = new Date(firstDisbursement.disbursement_date);
             d.setDate(d.getDate() + app.tenure_days);
-            dueDate = d.toISOString().split('T')[0];
+            maturityDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           }
 
           const isClosed = app.current_stage === 'closed';
@@ -122,17 +124,34 @@ export function useLoansList(searchTerm?: string) {
             : schedules.length > 0 ? Math.max(0, totalExpected - totalPaid)
             : totalDisbursedAmount;
 
-          const todayStr = today.toISOString().split('T')[0];
           const isPendingDisbursement = ['approved', 'disbursement'].includes(app.current_stage);
 
-          // Find earliest unpaid EMI due date for "due today" check
-          const unpaidSchedules = schedules.filter((s: any) => s.status !== 'paid' && s.status !== 'settled');
-          const hasOverdueEMIs = !isClosed && unpaidSchedules.some((s: any) => s.due_date < todayStr);
-          const hasDueToday = !isClosed && unpaidSchedules.some((s: any) => s.due_date === todayStr);
+          // Unpaid EMIs sorted by due date — use date substring for clean comparison
+          const unpaidSchedules = schedules
+            .filter((s: any) => s.status !== 'paid' && s.status !== 'settled')
+            .map((s: any) => ({ ...s, due_date_str: (s.due_date || '').substring(0, 10) }));
+
+          const hasOverdueEMIs = !isClosed && unpaidSchedules.some((s: any) => s.due_date_str < todayStr);
+          const hasDueToday = !isClosed && unpaidSchedules.some((s: any) => s.due_date_str === todayStr);
+
+          // Due date: show earliest overdue EMI date, or next upcoming EMI date, or maturity
+          let dueDate: string | null = null;
+          if (unpaidSchedules.length > 0) {
+            const overdue = unpaidSchedules.filter((s: any) => s.due_date_str < todayStr);
+            if (overdue.length > 0) {
+              dueDate = overdue.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
+            } else {
+              const upcoming = unpaidSchedules.filter((s: any) => s.due_date_str >= todayStr);
+              if (upcoming.length > 0) {
+                dueDate = upcoming.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
+              }
+            }
+          }
+          if (!dueDate) dueDate = maturityDate;
 
           let daysOverdue = 0;
-          if (!isClosed && dueDate) {
-            const diff = Math.floor((today.getTime() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24));
+          if (!isClosed && hasOverdueEMIs && dueDate) {
+            const diff = Math.floor((today.getTime() - new Date(dueDate + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24));
             if (diff > 0) daysOverdue = diff;
           }
 
@@ -141,7 +160,7 @@ export function useLoansList(searchTerm?: string) {
             paymentStatus = "disbursement_pending";
           } else if (isClosed || (schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
             paymentStatus = "paid";
-          } else if (hasOverdueEMIs || daysOverdue > 0) {
+          } else if (hasOverdueEMIs) {
             paymentStatus = "overdue";
           } else if (hasDueToday) {
             paymentStatus = "due_today";

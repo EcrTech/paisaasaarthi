@@ -96,8 +96,8 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
   };
 
   const getStatusBadge = (status: string, dueDate: string) => {
-    const today = new Date().toISOString().split("T")[0];
-    const isOverdue = status === "pending" && dueDate < today;
+    const d = new Date(); const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const isOverdue = status === "pending" && dueDate.substring(0, 10) < today;
 
     if (status === "paid") {
       return <Badge className="bg-green-100 text-green-800 text-xs">Paid</Badge>;
@@ -155,11 +155,11 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
 
     // Status filter
     if (statusFilter !== "all") {
-      const today = new Date().toISOString().split("T")[0];
+      const dt = new Date(); const today = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
       filtered = filtered.filter((c) => {
         const effectiveStatus = getEffectiveStatus(c);
         if (statusFilter === "overdue") {
-          return effectiveStatus === "overdue" || (effectiveStatus === "pending" && c.due_date < today);
+          return effectiveStatus === "overdue" || (effectiveStatus === "pending" && c.due_date.substring(0, 10) < today);
         }
         return effectiveStatus === statusFilter;
       });

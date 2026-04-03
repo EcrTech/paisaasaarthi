@@ -188,7 +188,7 @@ export function useCustomerRelationships(searchTerm?: string) {
           if (firstDisbDate && app.tenure_days) {
             const d = new Date(firstDisbDate);
             d.setDate(d.getDate() + app.tenure_days);
-            dueDate = d.toISOString().split('T')[0];
+            dueDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           }
 
           const isClosed = app.current_stage === 'closed';
@@ -202,7 +202,7 @@ export function useCustomerRelationships(searchTerm?: string) {
           }
 
           // Overdue = has past-due unpaid EMIs
-          const todayStr = today.toISOString().split('T')[0];
+          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
           const hasOverdueEMIs = !isClosed && schedules.some((s: any) =>
             s.due_date < todayStr && s.status !== 'paid' && s.status !== 'settled'
           );

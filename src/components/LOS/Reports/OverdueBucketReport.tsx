@@ -42,18 +42,18 @@ export default function OverdueBucketReport() {
           due_date,
           total_emi,
           amount_paid,
-          principal,
-          interest,
+          principal_amount,
+          interest_amount,
           status,
           loan_applications:loan_application_id(
             application_number,
             loan_id,
-            loan_applicants(first_name, last_name, phone)
+            loan_applicants(first_name, last_name, mobile)
           )
         `)
         .eq("org_id", orgId!)
         .in("status", ["pending", "partially_paid"])
-        .lt("due_date", new Date().toISOString().split("T")[0])
+        .lt("due_date", (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })())
         .order("due_date", { ascending: true });
 
       if (error) throw error;
@@ -81,14 +81,14 @@ export default function OverdueBucketReport() {
         due_date: item.due_date,
         total_emi: item.total_emi,
         amount_paid: item.amount_paid || 0,
-        principal: item.principal,
-        interest: item.interest,
+        principal: item.principal_amount,
+        interest: item.interest_amount,
         application_number: item.loan_applications?.application_number || "N/A",
         loan_id: item.loan_applications?.loan_id || null,
         applicant_name: applicant
           ? `${applicant.first_name} ${applicant.last_name || ""}`.trim()
           : "N/A",
-        applicant_phone: applicant?.phone || "",
+        applicant_phone: applicant?.mobile || "",
         days_overdue: daysOverdue,
         bucket,
       };
