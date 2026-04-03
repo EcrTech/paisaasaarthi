@@ -45,7 +45,7 @@ export function useLoansList(searchTerm?: string) {
             application_number,
             current_stage,
             tenure_days,
-            loan_applicants!inner (
+            loan_applicants (
               first_name,
               middle_name,
               last_name,

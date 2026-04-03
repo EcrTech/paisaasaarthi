@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { useLoansList, LoanListItem } from "@/hooks/useLoansList";
 import { LoanDetailDialog } from "./LoanDetailDialog";
+import { usePagination } from "@/hooks/usePagination";
+import PaginationControls from "@/components/common/PaginationControls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,12 +54,18 @@ export function LoansTab() {
 
   const { data: loans, isLoading } = useLoansList(debouncedSearch);
 
-  const filteredLoans = (loans || []).filter((loan) => {
+  const filteredLoans = useMemo(() => (loans || []).filter((loan) => {
     if (statusFilter === "on_track") return loan.paymentStatus === "on_track";
     if (statusFilter === "overdue") return loan.paymentStatus === "overdue";
     if (statusFilter === "completed") return loan.paymentStatus === "completed";
     return true;
-  });
+  }), [loans, statusFilter]);
+
+  const pagination = usePagination({ defaultPageSize: 100, totalRecords: filteredLoans.length });
+  const paginatedLoans = useMemo(() => {
+    const start = (pagination.currentPage - 1) * pagination.pageSize;
+    return filteredLoans.slice(start, start + pagination.pageSize);
+  }, [filteredLoans, pagination.currentPage, pagination.pageSize]);
 
   const handleViewDetails = (loan: LoanListItem) => {
     setSelectedLoan(loan);
@@ -93,26 +101,15 @@ export function LoansTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Summary stats — deduplicate by contactId
+  // Summary stats — count actual loans
   const computeStats = () => {
     if (!loans || loans.length === 0) return { total: 0, onTrack: 0, overdue: 0, completed: 0, totalDisbursed: 0, totalOutstanding: 0 };
 
-    const PRIORITY: Record<string, number> = { overdue: 3, on_track: 2, completed: 1 };
-    const contactHighest = new Map<string, string>();
-
+    const counts = { total: loans.length, onTrack: 0, overdue: 0, completed: 0 };
     for (const loan of loans) {
-      const key = loan.contactId || loan.id;
-      const current = contactHighest.get(key);
-      if (!current || (PRIORITY[loan.paymentStatus] || 0) > (PRIORITY[current] || 0)) {
-        contactHighest.set(key, loan.paymentStatus);
-      }
-    }
-
-    const counts = { total: contactHighest.size, onTrack: 0, overdue: 0, completed: 0 };
-    for (const status of contactHighest.values()) {
-      if (status === "overdue") counts.overdue++;
-      else if (status === "on_track") counts.onTrack++;
-      else if (status === "completed") counts.completed++;
+      if (loan.paymentStatus === "overdue") counts.overdue++;
+      else if (loan.paymentStatus === "on_track") counts.onTrack++;
+      else if (loan.paymentStatus === "completed") counts.completed++;
     }
 
     return {
@@ -126,7 +123,18 @@ export function LoansTab() {
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-xs text-muted-foreground">Total Loans</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
@@ -265,7 +273,7 @@ export function LoansTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLoans.map((loan) => {
+                  {paginatedLoans.map((loan) => {
                     const statusConfig = paymentStatusConfig[loan.paymentStatus] || { label: loan.paymentStatus, color: "bg-gray-500" };
 
                     return (
@@ -328,6 +336,19 @@ export function LoansTab() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {filteredLoans.length > 0 && (
+        <PaginationControls
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalRecords={filteredLoans.length}
+          startRecord={pagination.startRecord}
+          endRecord={pagination.endRecord}
+          onPageChange={pagination.setPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
       )}
 
       <LoanDetailDialog
