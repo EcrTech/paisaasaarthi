@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
@@ -17,6 +17,8 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { calculateLoanDetails, formatCurrency } from "@/utils/loanCalculations";
+import { usePagination } from "@/hooks/usePagination";
+import PaginationControls from "@/components/common/PaginationControls";
 import UploadSignedDocumentDialog from "@/components/LOS/Sanction/UploadSignedDocumentDialog";
 
 interface SanctionApplication {
@@ -193,7 +195,7 @@ export default function Sanctions() {
   // Get unique approvers for filter dropdown
   const approvers = [...new Set(applications?.map(app => app.approver_name).filter(Boolean) || [])];
 
-  const filteredApplications = applications?.filter((app) => {
+  const filteredApplications = useMemo(() => applications?.filter((app) => {
     // Search filter (name, loan_id, application_number)
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
@@ -202,28 +204,38 @@ export default function Sanctions() {
       const matchesAppNumber = app.application_number?.toLowerCase().includes(search);
       if (!matchesName && !matchesLoanId && !matchesAppNumber) return false;
     }
-    
+
     // Status filter
     if (statusFilter !== "all" && getAppStatus(app) !== statusFilter) return false;
-    
+
     // Amount filter
     const minAmt = minAmount ? parseFloat(minAmount) : null;
     const maxAmt = maxAmount ? parseFloat(maxAmount) : null;
     if (minAmt && app.approved_amount < minAmt) return false;
     if (maxAmt && app.approved_amount > maxAmt) return false;
-    
+
     // Date filter
     if (dateRange?.from) {
       const appDate = new Date(app.updated_at);
       if (appDate < dateRange.from) return false;
       if (dateRange.to && appDate > new Date(dateRange.to.setHours(23, 59, 59, 999))) return false;
     }
-    
+
     // Approved by filter
     if (approvedByFilter !== "all" && app.approver_name !== approvedByFilter) return false;
-    
+
     return true;
-  }) || [];
+  }) || [], [applications, searchTerm, statusFilter, minAmount, maxAmount, dateRange, approvedByFilter]);
+
+  const pagination = usePagination({
+    defaultPageSize: 100,
+    totalRecords: filteredApplications.length,
+  });
+
+  const paginatedApplications = filteredApplications.slice(
+    (pagination.currentPage - 1) * pagination.pageSize,
+    pagination.currentPage * pagination.pageSize
+  );
 
   const hasActiveFilters = searchTerm || statusFilter !== "all" || minAmount || maxAmount || dateRange || approvedByFilter !== "all";
 
@@ -369,28 +381,29 @@ export default function Sanctions() {
                 </p>
               </div>
             ) : (
+              <div className="space-y-4">
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="text-sm">
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Loan ID</TableHead>
-                      <TableHead>Application No.</TableHead>
-                      <TableHead>Applicant</TableHead>
-                      <TableHead>Loan Type</TableHead>
-                      <TableHead className="text-right">Approved Amount</TableHead>
-                      <TableHead className="text-right">Tenure</TableHead>
-                      <TableHead className="text-right">Interest Rate</TableHead>
-                      <TableHead className="text-right">Processing Fee</TableHead>
-                      <TableHead className="text-right">Net Disbursal</TableHead>
-                      <TableHead className="text-right">Total Interest</TableHead>
-                      <TableHead className="text-right">Total Repayment</TableHead>
-                      <TableHead>Approved By</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Loan ID</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Application No.</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Applicant</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Loan Type</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Approved Amount</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Tenure</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Interest Rate</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Processing Fee</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Net Disbursal</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Total Interest</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Total Repayment</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Approved By</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Status</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredApplications.map((app) => {
+                    {paginatedApplications.map((app) => {
                       const loanCalc = calculateLoanDetails(
                         app.approved_amount || 0,
                         app.interest_rate || 1,
@@ -507,6 +520,19 @@ export default function Sanctions() {
                     })}
                   </TableBody>
                 </Table>
+              </div>
+                <div className="px-2">
+                  <PaginationControls
+                    currentPage={pagination.currentPage}
+                    totalPages={pagination.totalPages}
+                    pageSize={pagination.pageSize}
+                    totalRecords={filteredApplications.length}
+                    startRecord={pagination.startRecord}
+                    endRecord={pagination.endRecord}
+                    onPageChange={pagination.setPage}
+                    onPageSizeChange={pagination.setPageSize}
+                  />
+                </div>
               </div>
             )}
           </CardContent>

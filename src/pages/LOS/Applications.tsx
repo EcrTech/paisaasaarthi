@@ -133,7 +133,7 @@ const { data: applications = [], isLoading } = useQuery({
   }), [applications, stageFilter, dateFrom, dateTo, searchQuery]);
 
   const pagination = usePagination({
-    defaultPageSize: 25,
+    defaultPageSize: 100,
     totalRecords: filteredApplications.length,
   });
 

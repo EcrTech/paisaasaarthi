@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/Layout/DashboardLayout";
@@ -28,6 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { usePagination } from "@/hooks/usePagination";
+import PaginationControls from "@/components/common/PaginationControls";
 import ProofUploadDialog from "@/components/LOS/Disbursement/ProofUploadDialog";
 import DeclineDisbursementDialog from "@/components/LOS/Disbursement/DeclineDisbursementDialog";
 
@@ -246,16 +248,26 @@ export default function Disbursals() {
     }
   };
 
-  const filteredDisbursals = allDisbursals?.filter(d => {
-    const matchesSearch = 
+  const filteredDisbursals = useMemo(() => allDisbursals?.filter(d => {
+    const matchesSearch =
       d.disbursement_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.applicant_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.application_number?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = statusFilter === "all" || d.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
+  }) || [], [allDisbursals, searchQuery, statusFilter]);
+
+  const pagination = usePagination({
+    defaultPageSize: 100,
+    totalRecords: filteredDisbursals.length,
   });
+
+  const paginatedDisbursals = filteredDisbursals.slice(
+    (pagination.currentPage - 1) * pagination.pageSize,
+    pagination.currentPage * pagination.pageSize
+  );
 
   return (
     <DashboardLayout>
@@ -300,25 +312,26 @@ export default function Disbursals() {
               <div className="flex items-center justify-center h-48">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-            ) : filteredDisbursals && filteredDisbursals.length > 0 ? (
-              <div className="rounded-md border">
-                <Table>
+            ) : filteredDisbursals.length > 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-md border">
+                <Table className="text-sm">
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Loan ID</TableHead>
-                      <TableHead>Application #</TableHead>
-                      <TableHead>Applicant</TableHead>
-                      <TableHead>Approved Amount</TableHead>
-                      <TableHead>Disbursed Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>UTR</TableHead>
-                      <TableHead>Transaction Date</TableHead>
-                      <TableHead>Proof</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Loan ID</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Application #</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Applicant</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Approved Amount</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Disbursed Amount</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Status</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">UTR</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Transaction Date</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs">Proof</TableHead>
+                      <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredDisbursals.map((item) => (
+                    {paginatedDisbursals.map((item) => (
                       <TableRow
                         key={item.id}
                         className="cursor-pointer"
@@ -381,6 +394,19 @@ export default function Disbursals() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+                <div className="px-2">
+                  <PaginationControls
+                    currentPage={pagination.currentPage}
+                    totalPages={pagination.totalPages}
+                    pageSize={pagination.pageSize}
+                    totalRecords={filteredDisbursals.length}
+                    startRecord={pagination.startRecord}
+                    endRecord={pagination.endRecord}
+                    onPageChange={pagination.setPage}
+                    onPageSizeChange={pagination.setPageSize}
+                  />
+                </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">

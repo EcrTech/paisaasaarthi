@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { LoadingState } from "@/components/common/LoadingState";
 import { EmptyState } from "@/components/common/EmptyState";
+import PaginationControls from "@/components/common/PaginationControls";
 import { Eye, FileText, Search, CalendarIcon, X, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,8 @@ interface ApprovalQueueProps {
   userId: string;
 }
 
-const PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 100;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 import { STAGE_LABELS, STAGE_BADGE_COLORS as STAGE_COLORS } from "@/constants/loanStages";
 
@@ -40,6 +42,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [selectedProductType, setSelectedProductType] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   // Debounce search input
   useEffect(() => {
@@ -109,6 +112,7 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
       dateTo?.toISOString(),
       selectedProductType,
       currentPage,
+      pageSize,
     ],
     queryFn: async () => {
       // Step 1: If search term, find matching applicant application IDs by name/phone
@@ -182,8 +186,8 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
       }
 
       // Ordering + pagination
-      const from = (currentPage - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
       query = query.order("created_at", { ascending: false }).range(from, to);
 
       const { data, error, count } = await query;
@@ -196,7 +200,9 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
 
   const applications = queryResult?.applications || [];
   const totalCount = queryResult?.totalCount || 0;
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const totalPages = Math.ceil(totalCount / pageSize);
+  const startRecord = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endRecord = Math.min(currentPage * pageSize, totalCount);
 
   const uniqueAssignees = filterOptions?.uniqueAssignees || [];
   const uniqueProductTypes = filterOptions?.uniqueProductTypes || [];
@@ -431,17 +437,17 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
             />
           ) : (
             <>
-              <Table>
+              <Table className="text-sm">
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Loan ID</TableHead>
-                    <TableHead>Application #</TableHead>
-                    <TableHead>Applicant</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Current Stage</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Assigned To</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="font-semibold text-foreground py-2 text-xs">Loan ID</TableHead>
+                    <TableHead className="font-semibold text-foreground py-2 text-xs">Application #</TableHead>
+                    <TableHead className="font-semibold text-foreground py-2 text-xs">Applicant</TableHead>
+                    <TableHead className="font-semibold text-foreground py-2 text-xs">Amount</TableHead>
+                    <TableHead className="font-semibold text-foreground py-2 text-xs">Current Stage</TableHead>
+                    <TableHead className="font-semibold text-foreground py-2 text-xs">Created</TableHead>
+                    <TableHead className="font-semibold text-foreground py-2 text-xs">Assigned To</TableHead>
+                    <TableHead className="font-semibold text-foreground py-2 text-xs text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -479,55 +485,16 @@ export default function ApprovalQueue({ orgId, userId }: ApprovalQueueProps) {
               </Table>
 
               {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between text-sm mt-4 pt-4 border-t">
-                  <span className="text-muted-foreground">
-                    Showing {(currentPage - 1) * PAGE_SIZE + 1} to{" "}
-                    {Math.min(currentPage * PAGE_SIZE, totalCount)} of {totalCount}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 px-3"
-                      onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
-                    >
-                      First
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 px-3"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      Prev
-                    </Button>
-                    <span className="px-3 text-muted-foreground">
-                      Page {currentPage} of {totalPages}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 px-3"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                    >
-                      Next
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 px-3"
-                      onClick={() => setCurrentPage(totalPages)}
-                      disabled={currentPage === totalPages}
-                    >
-                      Last
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalRecords={totalCount}
+                startRecord={startRecord}
+                endRecord={endRecord}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(newSize) => { setPageSize(newSize); setCurrentPage(1); }}
+              />
             </>
           )}
         </CardContent>

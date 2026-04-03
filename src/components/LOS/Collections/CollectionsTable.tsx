@@ -37,6 +37,8 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { RepeatLoanDialog } from "@/components/LOS/RepeatLoanDialog";
 import { useOrgContext } from "@/hooks/useOrgContext";
+import { usePagination } from "@/hooks/usePagination";
+import PaginationControls from "@/components/common/PaginationControls";
 
 interface CollectionsTableProps {
   collections: CollectionRecord[];
@@ -52,14 +54,12 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
   const [dueDateFrom, setDueDateFrom] = useState<Date | undefined>(undefined);
   const [dueDateTo, setDueDateTo] = useState<Date | undefined>(undefined);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [currentPage, setCurrentPage] = useState(1);
   const [settleDialogOpen, setSettleDialogOpen] = useState(false);
   const [settleRecord, setSettleRecord] = useState<CollectionRecord | null>(null);
   const [settleNotes, setSettleNotes] = useState("");
   const [reloanRecord, setReloanRecord] = useState<CollectionRecord | null>(null);
   const [expandedPayments, setExpandedPayments] = useState<Set<string>>(new Set());
   const { orgId } = useOrgContext();
-  const pageSize = 25;
 
   const togglePaymentExpand = (id: string) => {
     setExpandedPayments(prev => {
@@ -184,12 +184,15 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     return filtered;
   }, [collections, searchTerm, statusFilter, dueDateFrom, dueDateTo, sortDirection]);
 
-  const paginatedCollections = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredCollections.slice(start, start + pageSize);
-  }, [filteredCollections, currentPage]);
+  const pagination = usePagination({
+    defaultPageSize: 100,
+    totalRecords: filteredCollections.length,
+  });
 
-  const totalPages = Math.ceil(filteredCollections.length / pageSize);
+  const paginatedCollections = filteredCollections.slice(
+    (pagination.currentPage - 1) * pagination.pageSize,
+    pagination.currentPage * pagination.pageSize
+  );
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -205,7 +208,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
   const clearDateFilters = () => {
     setDueDateFrom(undefined);
     setDueDateTo(undefined);
-    setCurrentPage(1);
+    pagination.setPage(1);
   };
 
   return (
@@ -219,12 +222,12 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setCurrentPage(1);
+              pagination.setPage(1);
             }}
             className="pl-8 h-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); pagination.setPage(1); }}>
           <SelectTrigger className="w-[130px] h-9">
             <Filter className="h-3.5 w-3.5 mr-1.5" />
             <SelectValue placeholder="Status" />
@@ -249,7 +252,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="single" selected={dueDateFrom} onSelect={(d) => { setDueDateFrom(d); setCurrentPage(1); }} initialFocus className="p-3 pointer-events-auto" />
+              <Calendar mode="single" selected={dueDateFrom} onSelect={(d) => { setDueDateFrom(d); pagination.setPage(1); }} initialFocus className="p-3 pointer-events-auto" />
             </PopoverContent>
           </Popover>
           <Popover>
@@ -260,7 +263,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="single" selected={dueDateTo} onSelect={(d) => { setDueDateTo(d); setCurrentPage(1); }} initialFocus className="p-3 pointer-events-auto" />
+              <Calendar mode="single" selected={dueDateTo} onSelect={(d) => { setDueDateTo(d); pagination.setPage(1); }} initialFocus className="p-3 pointer-events-auto" />
             </PopoverContent>
           </Popover>
           {(dueDateFrom || dueDateTo) && (
@@ -452,56 +455,16 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">
-            Showing {(currentPage - 1) * pageSize + 1} to{" "}
-            {Math.min(currentPage * pageSize, filteredCollections.length)} of{" "}
-            {filteredCollections.length}
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-            >
-              First
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              Prev
-            </Button>
-            <span className="px-2">
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-            >
-              Last
-            </Button>
-          </div>
-        </div>
-      )}
+      <PaginationControls
+        currentPage={pagination.currentPage}
+        totalPages={pagination.totalPages}
+        pageSize={pagination.pageSize}
+        totalRecords={filteredCollections.length}
+        startRecord={pagination.startRecord}
+        endRecord={pagination.endRecord}
+        onPageChange={pagination.setPage}
+        onPageSizeChange={pagination.setPageSize}
+      />
 
       {/* Repeat Loan Dialog */}
       {reloanRecord && orgId && reloanRecord.contact_id && (
