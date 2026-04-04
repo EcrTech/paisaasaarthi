@@ -78,7 +78,8 @@ export function useCustomerRelationships(searchTerm?: string) {
             ),
             loan_sanctions ( sanctioned_amount, net_disbursement_amount ),
             loan_disbursements ( disbursement_amount, disbursement_date ),
-            loan_repayment_schedule ( total_emi, amount_paid, status, due_date )
+            loan_repayment_schedule ( total_emi, amount_paid, status, due_date ),
+            nupay_mandates ( first_collection_date, status )
           `)
           .eq("org_id", orgId)
           .eq("loan_applicants.applicant_type", "primary")
@@ -182,37 +183,48 @@ export function useCustomerRelationships(searchTerm?: string) {
           const totalExpected = schedules.reduce((sum: number, s: any) => sum + (s.total_emi || 0), 0);
           const totalPaid = schedules.reduce((sum: number, s: any) => sum + (s.amount_paid || 0), 0);
 
-          // Bullet payment: due date = disbursement_date + tenure_days
+          // NACH mandate: use latest accepted mandate's first_collection_date
+          const rawMandates = app.nupay_mandates;
+          const mandates = Array.isArray(rawMandates) ? rawMandates : rawMandates ? [rawMandates] : [];
+          const acceptedMandates = mandates.filter((m: any) => m.status === 'accepted');
+          const latestMandate = acceptedMandates.length > 0
+            ? acceptedMandates.sort((a: any, b: any) => (b.first_collection_date || '').localeCompare(a.first_collection_date || ''))[0]
+            : null;
+          const nachCollectionDate = latestMandate?.first_collection_date?.substring(0, 10) || null;
+
+          // Maturity date fallback: disbursement_date + tenure_days
           const firstDisbDate = disbursements[0]?.disbursement_date;
-          let dueDate: string | null = null;
+          let maturityDate: string | null = null;
           if (firstDisbDate && app.tenure_days) {
             const d = new Date(firstDisbDate);
             d.setDate(d.getDate() + app.tenure_days);
-            dueDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            maturityDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           }
+
+          // Due date: NACH first_collection_date > schedule > maturity
+          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+          let dueDate: string | null = nachCollectionDate || maturityDate;
 
           const isClosed = app.current_stage === 'closed';
           const allPaid = schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled');
 
           // Outstanding = total expected - total paid (from actual schedule data)
-          if (!isClosed && !allPaid) {
-            outstandingAmount += schedules.length > 0
-              ? Math.max(0, totalExpected - totalPaid)
-              : totalDisb;
-          }
+          const appOutstanding = isClosed || allPaid ? 0
+            : schedules.length > 0 ? Math.max(0, totalExpected - totalPaid)
+            : totalDisb;
+          outstandingAmount += appOutstanding;
 
-          // Overdue = has past-due unpaid EMIs
-          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-          const hasOverdueEMIs = !isClosed && schedules.some((s: any) =>
-            s.due_date < todayStr && s.status !== 'paid' && s.status !== 'settled'
-          );
+          // Overdue: use NACH date exclusively when mandate exists, else fall back to schedule
+          const isOverdue = !isClosed && !allPaid && (nachCollectionDate
+            ? nachCollectionDate < todayStr && appOutstanding > 0
+            : schedules.some((s: any) => s.due_date < todayStr && s.status !== 'paid' && s.status !== 'settled'));
 
           let daysOverdue = 0;
           if (!isClosed && dueDate) {
-            const diff = Math.floor((today.getTime() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24));
+            const diff = Math.floor((today.getTime() - new Date(dueDate + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24));
             if (diff > 0) daysOverdue = diff;
           }
-          if (hasOverdueEMIs || daysOverdue > 0) {
+          if (isOverdue) {
             overdueLoans++;
             if (daysOverdue > maxDaysOverdue) maxDaysOverdue = daysOverdue;
           }
