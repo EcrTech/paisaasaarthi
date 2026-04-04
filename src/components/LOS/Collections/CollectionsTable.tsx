@@ -80,10 +80,11 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "-";
-    return new Date(dateString).toLocaleDateString("en-IN", {
+    return new Date(dateString + (dateString.includes("T") ? "" : "T00:00:00")).toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "short",
       year: "2-digit",
+      timeZone: "Asia/Kolkata",
     });
   };
 
@@ -119,8 +120,8 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     if (!record.disbursement_date || !record.interest_rate) {
       return record.total_emi;
     }
-    const disbDate = new Date(record.disbursement_date);
-    const dueDate = new Date(record.due_date);
+    const disbDate = new Date(record.disbursement_date + "T00:00:00");
+    const dueDate = new Date(record.due_date + "T00:00:00");
     const totalDays = Math.max(1, Math.round((dueDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
     const totalInterest = Math.round(record.principal * (record.interest_rate / 100) * totalDays);
     return record.principal + totalInterest;
@@ -131,7 +132,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     if (!record.disbursement_date || !record.interest_rate) {
       return record.total_emi;
     }
-    const disbDate = new Date(record.disbursement_date);
+    const disbDate = new Date(record.disbursement_date + "T00:00:00");
     const today = new Date();
     const actualDays = Math.max(1, Math.round((today.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
     const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
@@ -196,7 +197,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
 
   // Calculate stats
   const stats = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const d = new Date(); const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     return {
       total: filteredCollections.length,
       pending: filteredCollections.filter((c) => { const s = getEffectiveStatus(c); return s === "pending" && c.due_date >= today; }).length,
@@ -540,7 +541,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                 onSettleLoan({
                   scheduleId: settleRecord.id,
                   settlementAmount,
-                  settlementDate: new Date().toISOString().split("T")[0],
+                  settlementDate: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })(),
                   notes: settleNotes || undefined,
                 });
                 setSettleDialogOpen(false);

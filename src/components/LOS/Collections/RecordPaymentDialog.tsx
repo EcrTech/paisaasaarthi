@@ -51,7 +51,7 @@ export function RecordPaymentDialog({
   const [transactionRef, setTransactionRef] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [paymentDate, setPaymentDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
+    (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })()
   );
 
   // Recalculate interest pro-rata based on payment date
@@ -60,8 +60,8 @@ export function RecordPaymentDialog({
       return { adjustedInterest: record?.interest || 0, adjustedTotal: record?.total_emi || 0 };
     }
 
-    const disbDate = new Date(record.disbursement_date);
-    const pmtDate = new Date(paymentDate);
+    const disbDate = new Date(record.disbursement_date + "T00:00:00");
+    const pmtDate = new Date(paymentDate + "T00:00:00");
     const actualDays = Math.max(1, Math.round((pmtDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
 
     // Interest = Principal × Rate% × Days / 365
@@ -185,7 +185,7 @@ export function RecordPaymentDialog({
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-green-600 font-medium">{formatCurrency(p.payment_amount)}</span>
-                        <span className="text-muted-foreground">{new Date(p.payment_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}</span>
+                        <span className="text-muted-foreground">{new Date(p.payment_date + (p.payment_date.includes("T") ? "" : "T00:00:00")).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit", timeZone: "Asia/Kolkata" })}</span>
                       </div>
                     </div>
                   ))}

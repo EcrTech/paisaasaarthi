@@ -23,6 +23,7 @@ interface DisbursalRow {
   state: string;
   panCard: string;
   loanAmount: number;
+  netDisbursement: number;
   repayDate: string;
   tenure: number;
   roi: number;
@@ -41,7 +42,7 @@ export default function DisbursalReport({ fromDate, toDate }: DisbursalReportPro
   const { orgId } = useOrgContext();
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["disbursal-report", orgId, fromDate.toISOString(), toDate.toISOString()],
+    queryKey: ["disbursal-report", orgId, format(fromDate, "yyyy-MM-dd"), format(toDate, "yyyy-MM-dd")],
     queryFn: async () => {
       if (!orgId) return [];
 
@@ -64,7 +65,8 @@ export default function DisbursalReport({ fromDate, toDate }: DisbursalReportPro
               sanctioned_rate,
               sanctioned_tenure_days,
               processing_fee,
-              gst_amount
+              gst_amount,
+              net_disbursement_amount
             ),
             loan_repayment_schedule(due_date, emi_number)
           )
@@ -116,8 +118,9 @@ export default function DisbursalReport({ fromDate, toDate }: DisbursalReportPro
           : null;
 
         const sanctionedAmount = sanction?.sanctioned_amount || d.disbursement_amount || 0;
-        const processingFee = sanction?.processing_fee || Math.round(sanctionedAmount * 0.10);
-        const gstFee = sanction?.gst_amount || Math.round(processingFee * 0.18);
+        const processingFee = sanction?.processing_fee || 0;
+        const gstFee = sanction?.gst_amount || 0;
+        const netDisbursement = sanction?.net_disbursement_amount || d.disbursement_amount || (sanctionedAmount - processingFee - gstFee);
 
         return {
           loanNo: app?.loan_id || "",
@@ -127,14 +130,15 @@ export default function DisbursalReport({ fromDate, toDate }: DisbursalReportPro
           state: contactStateMap[app?.contact_id] || "",
           panCard: primaryApplicant?.pan_number || "",
           loanAmount: sanctionedAmount,
+          netDisbursement,
           repayDate: repayDate
-            ? format(new Date(repayDate), "dd-MM-yyyy")
+            ? format(new Date(repayDate + "T00:00:00"), "dd-MM-yyyy")
             : "",
           tenure: sanction?.sanctioned_tenure_days || app?.tenure_days || 0,
           roi: sanction?.sanctioned_rate || 0,
           disbursalReferenceNo: d.utr_number || "",
           disbursalDate: d.disbursement_date
-            ? format(new Date(d.disbursement_date), "dd-MM-yyyy")
+            ? format(new Date(d.disbursement_date + "T00:00:00"), "dd-MM-yyyy")
             : "",
           processingFee,
           gstFee,
@@ -155,32 +159,34 @@ export default function DisbursalReport({ fromDate, toDate }: DisbursalReportPro
     const sheetData = rows.map((r) => ({
       "Loan No": r.loanNo,
       "Name": r.name,
-      "state": r.state,
-      "PanCard": r.panCard,
+      "State": r.state,
+      "PAN Card": r.panCard,
       "Loan Amount": r.loanAmount,
+      "Processing Fee": r.processingFee,
+      "GST Fee": r.gstFee,
+      "Net Disbursement": r.netDisbursement,
       "Repay Date": r.repayDate,
       "Tenure": r.tenure,
       "ROI": r.roi,
-      "Disbursal ReferenceNo": r.disbursalReferenceNo,
+      "Disbursal Reference No": r.disbursalReferenceNo,
       "Disbursal Date": r.disbursalDate,
-      "Processing Fee": r.processingFee,
-      "GST Fee": r.gstFee,
     }));
 
     const ws = XLSX.utils.json_to_sheet(sheetData);
     ws["!cols"] = [
       { wch: 14 }, // Loan No
       { wch: 28 }, // Name
-      { wch: 16 }, // state
-      { wch: 14 }, // PanCard
+      { wch: 16 }, // State
+      { wch: 14 }, // PAN Card
       { wch: 14 }, // Loan Amount
+      { wch: 16 }, // Processing Fee
+      { wch: 12 }, // GST Fee
+      { wch: 16 }, // Net Disbursement
       { wch: 14 }, // Repay Date
       { wch: 10 }, // Tenure
       { wch: 8 },  // ROI
-      { wch: 22 }, // Disbursal ReferenceNo
+      { wch: 22 }, // Disbursal Reference No
       { wch: 16 }, // Disbursal Date
-      { wch: 16 }, // Processing Fee
-      { wch: 12 }, // GST Fee
     ];
 
     const wb = XLSX.utils.book_new();
