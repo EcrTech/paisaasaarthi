@@ -140,10 +140,13 @@ export function useLoansList(searchTerm?: string) {
             .filter((s: any) => s.status !== 'paid' && s.status !== 'settled')
             .map((s: any) => ({ ...s, due_date_str: (s.due_date || '').substring(0, 10) }));
 
-          const nachOverdue = !isClosed && nachCollectionDate && nachCollectionDate < todayStr && outstandingAmount > 0;
-          const nachDueToday = !isClosed && nachCollectionDate && nachCollectionDate === todayStr;
-          const hasOverdueEMIs = nachOverdue || (!isClosed && unpaidSchedules.some((s: any) => s.due_date_str < todayStr));
-          const hasDueToday = nachDueToday || (!isClosed && unpaidSchedules.some((s: any) => s.due_date_str === todayStr));
+          // When NACH mandate exists, use its date exclusively for overdue/due-today checks
+          const hasOverdueEMIs = !isClosed && (nachCollectionDate
+            ? nachCollectionDate < todayStr && outstandingAmount > 0
+            : unpaidSchedules.some((s: any) => s.due_date_str < todayStr));
+          const hasDueToday = !isClosed && (nachCollectionDate
+            ? nachCollectionDate === todayStr
+            : unpaidSchedules.some((s: any) => s.due_date_str === todayStr));
 
           // Due date: use NACH first_collection_date if mandate is accepted, else fall back to schedule/maturity
           let dueDate: string | null = nachCollectionDate;
