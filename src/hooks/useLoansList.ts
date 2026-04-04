@@ -67,6 +67,10 @@ export function useLoansList(searchTerm?: string) {
               amount_paid,
               status,
               due_date
+            ),
+            nupay_mandates (
+              first_collection_date,
+              status
             )
           `)
           .eq("org_id", orgId)
@@ -96,6 +100,11 @@ export function useLoansList(searchTerm?: string) {
           const totalDisbursedAmount = totalDisbursedFromRecords > 0
             ? totalDisbursedFromRecords
             : (sanction?.net_disbursement_amount || sanction?.sanctioned_amount || 0);
+
+          // Get NACH mandate first_collection_date (prefer accepted mandate)
+          const mandates = Array.isArray(app.nupay_mandates) ? app.nupay_mandates : (app.nupay_mandates ? [app.nupay_mandates] : []);
+          const acceptedMandate = mandates.find((m: any) => m.status === 'accepted');
+          const nachCollectionDate = acceptedMandate?.first_collection_date?.substring(0, 10) || null;
 
           // Get repayment schedule data for accurate outstanding calculation
           const schedules = Array.isArray(app.loan_repayment_schedule) ? app.loan_repayment_schedule : (app.loan_repayment_schedule ? [app.loan_repayment_schedule] : []);
@@ -131,23 +140,27 @@ export function useLoansList(searchTerm?: string) {
             .filter((s: any) => s.status !== 'paid' && s.status !== 'settled')
             .map((s: any) => ({ ...s, due_date_str: (s.due_date || '').substring(0, 10) }));
 
-          const hasOverdueEMIs = !isClosed && unpaidSchedules.some((s: any) => s.due_date_str < todayStr);
-          const hasDueToday = !isClosed && unpaidSchedules.some((s: any) => s.due_date_str === todayStr);
+          const nachOverdue = !isClosed && nachCollectionDate && nachCollectionDate < todayStr && outstandingAmount > 0;
+          const nachDueToday = !isClosed && nachCollectionDate && nachCollectionDate === todayStr;
+          const hasOverdueEMIs = nachOverdue || (!isClosed && unpaidSchedules.some((s: any) => s.due_date_str < todayStr));
+          const hasDueToday = nachDueToday || (!isClosed && unpaidSchedules.some((s: any) => s.due_date_str === todayStr));
 
-          // Due date: show earliest overdue EMI date, or next upcoming EMI date, or maturity
-          let dueDate: string | null = null;
-          if (unpaidSchedules.length > 0) {
-            const overdue = unpaidSchedules.filter((s: any) => s.due_date_str < todayStr);
-            if (overdue.length > 0) {
-              dueDate = overdue.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
-            } else {
-              const upcoming = unpaidSchedules.filter((s: any) => s.due_date_str >= todayStr);
-              if (upcoming.length > 0) {
-                dueDate = upcoming.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
+          // Due date: use NACH first_collection_date if mandate is accepted, else fall back to schedule/maturity
+          let dueDate: string | null = nachCollectionDate;
+          if (!dueDate) {
+            if (unpaidSchedules.length > 0) {
+              const overdue = unpaidSchedules.filter((s: any) => s.due_date_str < todayStr);
+              if (overdue.length > 0) {
+                dueDate = overdue.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
+              } else {
+                const upcoming = unpaidSchedules.filter((s: any) => s.due_date_str >= todayStr);
+                if (upcoming.length > 0) {
+                  dueDate = upcoming.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
+                }
               }
             }
+            if (!dueDate) dueDate = maturityDate;
           }
-          if (!dueDate) dueDate = maturityDate;
 
           let daysOverdue = 0;
           if (!isClosed && hasOverdueEMIs && dueDate) {
