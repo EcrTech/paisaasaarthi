@@ -103,8 +103,11 @@ export function useLoansList(searchTerm?: string) {
 
           // Get NACH mandate first_collection_date (prefer accepted mandate)
           const mandates = Array.isArray(app.nupay_mandates) ? app.nupay_mandates : (app.nupay_mandates ? [app.nupay_mandates] : []);
-          const acceptedMandate = mandates.find((m: any) => m.status === 'accepted');
-          const nachCollectionDate = acceptedMandate?.first_collection_date?.substring(0, 10) || null;
+          const acceptedMandates = mandates.filter((m: any) => m.status === 'accepted');
+          const latestMandate = acceptedMandates.length > 0
+            ? acceptedMandates.sort((a: any, b: any) => (b.first_collection_date || '').localeCompare(a.first_collection_date || ''))[0]
+            : null;
+          const nachCollectionDate = latestMandate?.first_collection_date?.substring(0, 10) || null;
 
           // Get repayment schedule data for accurate outstanding calculation
           const schedules = Array.isArray(app.loan_repayment_schedule) ? app.loan_repayment_schedule : (app.loan_repayment_schedule ? [app.loan_repayment_schedule] : []);
