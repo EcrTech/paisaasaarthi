@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
-import { calcMaturityDate, getLatestNachDate, calcLoanDueStatus, calcDaysOverdue } from "@/utils/loanCalculations";
+import { calcMaturityDate, getLatestNachDate, calcLoanDueStatus } from "@/utils/loanCalculations";
 
 export interface LoanApplicationSummary {
   applicationId: string;
@@ -200,18 +200,13 @@ export function useCustomerRelationships(searchTerm?: string) {
             .filter((s: any) => s.status !== 'paid' && s.status !== 'settled')
             .map((s: any) => (s.due_date || '').substring(0, 10));
 
-          // Use NACH date as due date, fall back to maturity
-          const dueDate: string | null = nachCollectionDate || maturityDate;
-
-          const { hasOverdue, daysOverdue: dueDaysOverdue } = calcLoanDueStatus({
+          const { dueDate, daysOverdue, hasOverdue } = calcLoanDueStatus({
             nachCollectionDate,
             unpaidScheduleDates,
             maturityDate,
             isClosed: isClosed || allPaid,
             outstandingAmount: appOutstanding,
           });
-
-          const daysOverdue = hasOverdue && dueDate ? calcDaysOverdue(dueDate) : 0;
 
           if (hasOverdue) {
             overdueLoans++;
