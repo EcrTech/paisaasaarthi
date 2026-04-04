@@ -16,7 +16,7 @@ import { DateRange } from "react-day-picker";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { calculateLoanDetails, formatCurrency } from "@/utils/loanCalculations";
+import { calculateLoanDetails, formatCurrency, getTodayIST, calcMaturityDate } from "@/utils/loanCalculations";
 import { usePagination } from "@/hooks/usePagination";
 import PaginationControls from "@/components/common/PaginationControls";
 import UploadSignedDocumentDialog from "@/components/LOS/Sanction/UploadSignedDocumentDialog";
@@ -122,14 +122,14 @@ export default function Sanctions() {
         .insert({
           loan_application_id: app.id,
           sanction_number: sanctionNumber,
-          sanction_date: new Date().toISOString().split('T')[0],
+          sanction_date: getTodayIST(),
           sanctioned_amount: app.approved_amount,
           sanctioned_tenure_days: app.tenure_days,
           sanctioned_rate: app.interest_rate || 1,
           processing_fee: processingFee,
           gst_amount: Math.round(processingFee * 0.18),
           net_disbursement_amount: netDisbursement,
-          validity_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          validity_date: calcMaturityDate(getTodayIST(), 30),
           status: 'pending'
         })
         .select()

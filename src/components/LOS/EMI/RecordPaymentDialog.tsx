@@ -22,9 +22,10 @@ export default function RecordPaymentDialog({
   applicationId,
 }: RecordPaymentDialogProps) {
   const { recordPayment, isRecording } = useEMIPayments(applicationId);
-  const [paymentDate, setPaymentDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [paymentDate, setPaymentDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [paymentAmount, setPaymentAmount] = useState(
     emiSchedule.total_emi - emiSchedule.amount_paid
   );

@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format, differenceInDays } from "date-fns";
+import { format } from "date-fns";
+import { calcDaysOverdue, getTodayIST } from "@/utils/loanCalculations";
 
 interface OverdueRecord {
   id: string;
@@ -53,7 +54,7 @@ export default function OverdueBucketReport() {
         `)
         .eq("org_id", orgId!)
         .in("status", ["pending", "partially_paid"])
-        .lt("due_date", (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })())
+        .lt("due_date", getTodayIST())
         .order("due_date", { ascending: true });
 
       if (error) throw error;
@@ -63,10 +64,8 @@ export default function OverdueBucketReport() {
   });
 
   const overdueRecords: OverdueRecord[] = useMemo(() => {
-    const today = new Date();
     return rawData.map((item: any) => {
-      const dueDate = new Date(item.due_date);
-      const daysOverdue = differenceInDays(today, dueDate);
+      const daysOverdue = calcDaysOverdue(item.due_date);
       const applicant = item.loan_applications?.loan_applicants?.[0];
 
       let bucket = "1-30 days";

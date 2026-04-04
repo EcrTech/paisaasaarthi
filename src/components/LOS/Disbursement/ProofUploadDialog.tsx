@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Upload, Loader2, FileCheck, X, Sparkles, ArrowLeft, CheckCircle, AlertTriangle, Edit2, Eye } from "lucide-react";
 import { DocumentPreviewDialog } from "@/components/LOS/Verification/DocumentPreviewDialog";
-import { calculateLoanDetails } from "@/utils/loanCalculations";
+import { calculateLoanDetails, getTodayIST, calcMaturityDate } from "@/utils/loanCalculations";
 import { useOrgContext } from "@/hooks/useOrgContext";
 
 interface BankDetails {
@@ -172,7 +172,7 @@ export default function ProofUploadDialog({
       setTargetDisbursementIdState(data.targetDisbursementId);
       setUploadedFilePath(data.filePath);
       setUtrNumber(data.extractedUtr || "");
-      setDisbursementDate(data.extractedDate || new Date().toISOString().split("T")[0]);
+      setDisbursementDate(data.extractedDate || getTodayIST());
       setOcrExtracted(!!data.extractedUtr);
       setStep("confirm");
     },
@@ -236,7 +236,7 @@ export default function ProofUploadDialog({
               const dailyEMI = Math.round(totalRepayment / app.tenure_days);
               const dailyInterest = app.approved_amount * (app.interest_rate / 100);
               let outstandingPrincipal = app.approved_amount;
-              const finalDate = disbursementDate || new Date().toISOString().split("T")[0];
+              const finalDate = disbursementDate || getTodayIST();
               const scheduleItems = [];
 
               for (let i = 1; i <= app.tenure_days; i++) {
@@ -244,15 +244,14 @@ export default function ProofUploadDialog({
                 const principalAmount = Math.round((dailyEMI - interestAmount) * 100) / 100;
                 outstandingPrincipal -= principalAmount;
 
-                const dueDate = new Date(finalDate);
-                dueDate.setDate(dueDate.getDate() + i);
+                const dueDateStr = calcMaturityDate(finalDate, i);
 
                 scheduleItems.push({
                   loan_application_id: applicationId,
                   sanction_id: sanctionId,
                   org_id: orgId,
                   emi_number: i,
-                  due_date: dueDate.toISOString().split("T")[0],
+                  due_date: dueDateStr,
                   principal_amount: principalAmount,
                   interest_amount: interestAmount,
                   total_emi: dailyEMI,

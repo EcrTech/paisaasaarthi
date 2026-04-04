@@ -39,6 +39,7 @@ import { RepeatLoanDialog } from "@/components/LOS/RepeatLoanDialog";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { usePagination } from "@/hooks/usePagination";
 import PaginationControls from "@/components/common/PaginationControls";
+import { getTodayIST, calcDaysBetween, calcProRataInterest } from "@/utils/loanCalculations";
 
 interface CollectionsTableProps {
   collections: CollectionRecord[];
@@ -97,7 +98,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
   };
 
   const getStatusBadge = (status: string, dueDate: string) => {
-    const d = new Date(); const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = getTodayIST();
     const isOverdue = status === "pending" && dueDate.substring(0, 10) < today;
 
     if (status === "paid") {
@@ -120,11 +121,8 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     if (!record.disbursement_date || !record.interest_rate) {
       return record.total_emi;
     }
-    const disbDate = new Date(record.disbursement_date + "T00:00:00");
-    const dueDate = new Date(record.due_date + "T00:00:00");
-    const totalDays = Math.max(1, Math.round((dueDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const totalInterest = Math.round(record.principal * (record.interest_rate / 100) * totalDays);
-    return record.principal + totalInterest;
+    const totalDays = Math.max(1, calcDaysBetween(record.disbursement_date, record.due_date));
+    return record.principal + calcProRataInterest(record.principal, record.interest_rate, totalDays);
   };
 
   // Calculate due as of today (no cap at due date)
@@ -132,11 +130,8 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
     if (!record.disbursement_date || !record.interest_rate) {
       return record.total_emi;
     }
-    const disbDate = new Date(record.disbursement_date + "T00:00:00");
-    const today = new Date();
-    const actualDays = Math.max(1, Math.round((today.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
-    return record.principal + adjustedInterest;
+    const actualDays = Math.max(1, calcDaysBetween(record.disbursement_date, getTodayIST()));
+    return record.principal + calcProRataInterest(record.principal, record.interest_rate, actualDays);
   };
 
   const filteredCollections = useMemo(() => {
@@ -156,7 +151,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
 
     // Status filter
     if (statusFilter !== "all") {
-      const dt = new Date(); const today = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const today = getTodayIST();
       filtered = filtered.filter((c) => {
         const effectiveStatus = getEffectiveStatus(c);
         if (statusFilter === "overdue") {
@@ -197,7 +192,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
 
   // Calculate stats
   const stats = useMemo(() => {
-    const d = new Date(); const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = getTodayIST();
     return {
       total: filteredCollections.length,
       pending: filteredCollections.filter((c) => { const s = getEffectiveStatus(c); return s === "pending" && c.due_date >= today; }).length,
@@ -541,7 +536,7 @@ export function CollectionsTable({ collections, onRecordPayment, onSettleLoan, i
                 onSettleLoan({
                   scheduleId: settleRecord.id,
                   settlementAmount,
-                  settlementDate: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })(),
+                  settlementDate: getTodayIST(),
                   notes: settleNotes || undefined,
                 });
                 setSettleDialogOpen(false);

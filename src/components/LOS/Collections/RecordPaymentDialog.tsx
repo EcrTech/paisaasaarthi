@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { CollectionRecord } from "@/hooks/useCollections";
 import { IndianRupee, History } from "lucide-react";
+import { getTodayIST, calcDaysBetween, calcProRataInterest } from "@/utils/loanCalculations";
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -50,9 +51,7 @@ export function RecordPaymentDialog({
   const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [transactionRef, setTransactionRef] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
-  const [paymentDate, setPaymentDate] = useState<string>(
-    (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })()
-  );
+  const [paymentDate, setPaymentDate] = useState<string>(getTodayIST());
 
   // Recalculate interest pro-rata based on payment date
   const getAdjustedDue = () => {
@@ -60,12 +59,8 @@ export function RecordPaymentDialog({
       return { adjustedInterest: record?.interest || 0, adjustedTotal: record?.total_emi || 0 };
     }
 
-    const disbDate = new Date(record.disbursement_date + "T00:00:00");
-    const pmtDate = new Date(paymentDate + "T00:00:00");
-    const actualDays = Math.max(1, Math.round((pmtDate.getTime() - disbDate.getTime()) / (1000 * 60 * 60 * 24)));
-
-    // Interest = Principal × Rate% × Days / 365
-    const adjustedInterest = Math.round(record.principal * (record.interest_rate / 100) * actualDays);
+    const actualDays = Math.max(1, calcDaysBetween(record.disbursement_date, paymentDate));
+    const adjustedInterest = calcProRataInterest(record.principal, record.interest_rate, actualDays);
     const adjustedTotal = record.principal + adjustedInterest;
 
     return { adjustedInterest, adjustedTotal, actualDays };

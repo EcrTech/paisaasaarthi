@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
+import { getTodayIST, calcMaturityDate, getLatestNachDate, calcLoanDueStatus } from "@/utils/loanCalculations";
 
 export interface LoanListItem {
   id: string;
@@ -85,10 +86,6 @@ export function useLoansList(searchTerm?: string) {
         from += PAGE_SIZE;
       }
 
-      const today = new Date();
-      // Use local date (not UTC) so IST comparisons are correct
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
       let loans: LoanListItem[] = (data || [])
         .map((app: any) => {
           const applicant = Array.isArray(app.loan_applicants) ? app.loan_applicants[0] : app.loan_applicants;
@@ -96,20 +93,13 @@ export function useLoansList(searchTerm?: string) {
           const disbursements = Array.isArray(app.loan_disbursements) ? app.loan_disbursements : (app.loan_disbursements ? [app.loan_disbursements] : []);
           const firstDisbursement = disbursements[0];
           const totalDisbursedFromRecords = disbursements.reduce((sum: number, d: any) => sum + (d.disbursement_amount || 0), 0);
-          // Fall back to sanction net_disbursement_amount when no disbursement records exist
           const totalDisbursedAmount = totalDisbursedFromRecords > 0
             ? totalDisbursedFromRecords
             : (sanction?.net_disbursement_amount || sanction?.sanctioned_amount || 0);
 
-          // Get NACH mandate first_collection_date (prefer accepted mandate)
           const mandates = Array.isArray(app.nupay_mandates) ? app.nupay_mandates : (app.nupay_mandates ? [app.nupay_mandates] : []);
-          const acceptedMandates = mandates.filter((m: any) => m.status === 'accepted');
-          const latestMandate = acceptedMandates.length > 0
-            ? acceptedMandates.sort((a: any, b: any) => (b.first_collection_date || '').localeCompare(a.first_collection_date || ''))[0]
-            : null;
-          const nachCollectionDate = latestMandate?.first_collection_date?.substring(0, 10) || null;
+          const nachCollectionDate = getLatestNachDate(mandates);
 
-          // Get repayment schedule data for accurate outstanding calculation
           const schedules = Array.isArray(app.loan_repayment_schedule) ? app.loan_repayment_schedule : (app.loan_repayment_schedule ? [app.loan_repayment_schedule] : []);
           const totalExpected = schedules.reduce((sum: number, s: any) => sum + (s.total_emi || 0), 0);
           const totalPaid = schedules.reduce((sum: number, s: any) => sum + (s.amount_paid || 0), 0);
@@ -120,66 +110,35 @@ export function useLoansList(searchTerm?: string) {
             applicant?.last_name,
           ].filter(Boolean).join(" ");
 
-          // Maturity date: disbursement_date + tenure_days (fallback for loans without schedule)
-          let maturityDate: string | null = null;
-          if (firstDisbursement?.disbursement_date && app.tenure_days) {
-            const d = new Date(firstDisbursement.disbursement_date);
-            d.setDate(d.getDate() + app.tenure_days);
-            maturityDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-          }
+          const maturityDate = (firstDisbursement?.disbursement_date && app.tenure_days)
+            ? calcMaturityDate(firstDisbursement.disbursement_date, app.tenure_days)
+            : null;
 
           const isClosed = app.current_stage === 'closed';
-
-          // Outstanding = total expected repayment minus what's been paid
-          // Fall back to disbursed amount if no schedule exists yet
           const outstandingAmount = isClosed ? 0
             : schedules.length > 0 ? Math.max(0, totalExpected - totalPaid)
             : totalDisbursedAmount;
 
           const isPendingDisbursement = ['approved', 'disbursement'].includes(app.current_stage);
 
-          // Unpaid EMIs sorted by due date — use date substring for clean comparison
-          const unpaidSchedules = schedules
+          const unpaidScheduleDates = schedules
             .filter((s: any) => s.status !== 'paid' && s.status !== 'settled')
-            .map((s: any) => ({ ...s, due_date_str: (s.due_date || '').substring(0, 10) }));
+            .map((s: any) => (s.due_date || '').substring(0, 10));
 
-          // When NACH mandate exists, use its date exclusively for overdue/due-today checks
-          const hasOverdueEMIs = !isClosed && (nachCollectionDate
-            ? nachCollectionDate < todayStr && outstandingAmount > 0
-            : unpaidSchedules.some((s: any) => s.due_date_str < todayStr));
-          const hasDueToday = !isClosed && (nachCollectionDate
-            ? nachCollectionDate === todayStr
-            : unpaidSchedules.some((s: any) => s.due_date_str === todayStr));
-
-          // Due date: use NACH first_collection_date if mandate is accepted, else fall back to schedule/maturity
-          let dueDate: string | null = nachCollectionDate;
-          if (!dueDate) {
-            if (unpaidSchedules.length > 0) {
-              const overdue = unpaidSchedules.filter((s: any) => s.due_date_str < todayStr);
-              if (overdue.length > 0) {
-                dueDate = overdue.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
-              } else {
-                const upcoming = unpaidSchedules.filter((s: any) => s.due_date_str >= todayStr);
-                if (upcoming.length > 0) {
-                  dueDate = upcoming.sort((a: any, b: any) => a.due_date_str.localeCompare(b.due_date_str))[0].due_date_str;
-                }
-              }
-            }
-            if (!dueDate) dueDate = maturityDate;
-          }
-
-          let daysOverdue = 0;
-          if (!isClosed && hasOverdueEMIs && dueDate) {
-            const diff = Math.floor((today.getTime() - new Date(dueDate + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24));
-            if (diff > 0) daysOverdue = diff;
-          }
+          const { dueDate, daysOverdue, hasOverdue, hasDueToday } = calcLoanDueStatus({
+            nachCollectionDate,
+            unpaidScheduleDates,
+            maturityDate,
+            isClosed,
+            outstandingAmount,
+          });
 
           let paymentStatus: "disbursement_pending" | "due" | "due_today" | "overdue" | "paid" = "due";
           if (isPendingDisbursement) {
             paymentStatus = "disbursement_pending";
           } else if (isClosed || (schedules.length > 0 && schedules.every((s: any) => s.status === 'paid' || s.status === 'settled'))) {
             paymentStatus = "paid";
-          } else if (hasOverdueEMIs) {
+          } else if (hasOverdue) {
             paymentStatus = "overdue";
           } else if (hasDueToday) {
             paymentStatus = "due_today";

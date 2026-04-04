@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "./useOrgContext";
 import { useToast } from "./use-toast";
-import { calculateLoanDetails } from "@/utils/loanCalculations";
+import { calculateLoanDetails, calcMaturityDate, getTodayIST } from "@/utils/loanCalculations";
 
 export interface EMIScheduleItem {
   id: string;
@@ -69,9 +69,7 @@ export function useEMISchedule(applicationId?: string) {
         tenureDays
       );
 
-      const dueDate = new Date(disbursementDate);
-      dueDate.setDate(dueDate.getDate() + tenureDays);
-      const dueDateStr = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+      const dueDateStr = calcMaturityDate(disbursementDate, tenureDays);
 
       const { error } = await supabase
         .from("loan_repayment_schedule")
@@ -107,7 +105,7 @@ export function useEMISchedule(applicationId?: string) {
 
   const updateOverdueStatusMutation = useMutation({
     mutationFn: async () => {
-      const d = new Date(); const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const today = getTodayIST();
       
       const { error } = await supabase
         .from("loan_repayment_schedule")

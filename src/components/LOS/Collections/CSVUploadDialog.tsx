@@ -19,6 +19,7 @@ import {
 import { Upload, FileText, CheckCircle2, AlertTriangle } from "lucide-react";
 import Papa from "papaparse";
 import { CollectionRecord } from "@/hooks/useCollections";
+import { getTodayIST } from "@/utils/loanCalculations";
 
 interface CSVRow {
   loan_id: string;
@@ -144,7 +145,7 @@ export function CSVUploadDialog({
         onRecordPayment({
           scheduleId: row.record.id,
           applicationId: row.record.loan_application_id,
-          paymentDate: new Date().toISOString().split("T")[0],
+          paymentDate: getTodayIST(),
           paymentAmount: amount,
           principalPaid: amount * principalRatio,
           interestPaid: amount * interestRatio,
