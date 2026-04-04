@@ -338,28 +338,31 @@ function DashboardLayout({ children }: DashboardLayoutProps) {
             </nav>
 
             {/* Other Platforms */}
-            <div className="mx-2 mb-2 rounded-lg border border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 p-2">
-              <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-primary/70">
-                Other Platforms
-              </p>
+            <div className="mx-2 mb-2 rounded-xl border-2 border-primary/40 bg-primary/10 p-2.5 shadow-sm">
+              <div className="flex items-center gap-1.5 px-1 pb-2">
+                <Sparkles size={14} className="text-primary" />
+                <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                  Explore Platforms
+                </p>
+              </div>
               <div className="space-y-0.5">
                 {[
-                  { label: "WhatsApp Broadcast", href: "https://wa.in-sync.co.in", icon: MessageCircleMore },
-                  { label: "Email Broadcast", href: "https://email.in-sync.co.in", icon: MailCheck },
-                  { label: "Field Team Tracking", href: "https://sf.in-sync.co.in", icon: MapPinned },
-                  { label: "Vendor Verification", href: "https://civ.in-sync.co.in", icon: ShieldCheck },
-                  { label: "CRM", href: "https://globalcrm.in-sync.co.in", icon: Headset },
+                  { label: "WhatsApp Broadcast", href: "https://wa.in-sync.co.in", icon: MessageCircleMore, color: "text-green-600" },
+                  { label: "Email Broadcast", href: "https://email.in-sync.co.in", icon: MailCheck, color: "text-blue-600" },
+                  { label: "Field Team Tracking", href: "https://sf.in-sync.co.in", icon: MapPinned, color: "text-orange-600" },
+                  { label: "Vendor Verification", href: "https://civ.in-sync.co.in", icon: ShieldCheck, color: "text-purple-600" },
+                  { label: "CRM", href: "https://globalcrm.in-sync.co.in", icon: Headset, color: "text-rose-600" },
                 ].map((item) => (
                   <a
                     key={item.href}
                     href={item.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200 group"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm font-medium text-foreground hover:bg-primary/15 transition-all duration-200 group"
                   >
-                    <item.icon size={15} className="shrink-0" />
+                    <item.icon size={16} className={`shrink-0 ${item.color}`} />
                     <span className="flex-1 truncate">{item.label}</span>
-                    <ExternalLink size={12} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ExternalLink size={13} className="shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
                   </a>
                 ))}
               </div>
