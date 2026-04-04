@@ -32,6 +32,7 @@ import { AssignmentDialog } from "@/components/LOS/AssignmentDialog";
 import { CaseHistoryDialog } from "@/components/LOS/CaseHistoryDialog";
 import { MandateStatusCard } from "@/components/LOS/Mandate/MandateStatusCard";
 import { RepeatLoanDialog } from "@/components/LOS/RepeatLoanDialog";
+import RejectApplicationDialog from "@/components/LOS/RejectApplicationDialog";
 import VerificationDashboard from "@/components/LOS/VerificationDashboard";
 
 import { STAGE_LABELS, STATUS_COLORS } from "@/constants/loanStages";
@@ -49,6 +50,7 @@ export default function ApplicationDetail() {
   const [isEditingReferrals, setIsEditingReferrals] = useState(false);
   const [isEditingApplicant, setIsEditingApplicant] = useState(false);
   const [showRepeatLoanDialog, setShowRepeatLoanDialog] = useState(false);
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [applicantData, setApplicantData] = useState({
     gender: "",
     marital_status: "",
@@ -582,6 +584,13 @@ export default function ApplicationDetail() {
                   <CheckCircle className="h-4 w-4 mr-2" />
                 )}
                 Start Processing
+              </Button>
+            )}
+            {/* Reject Button - visible for all active non-terminal stages */}
+            {!["rejected", "closed", "disbursed"].includes(application.current_stage) && (
+              <Button variant="destructive" size="sm" onClick={() => setShowRejectDialog(true)}>
+                <XCircle className="h-4 w-4 mr-2" />
+                Reject
               </Button>
             )}
             {/* Repeat Loan Button - visible only for disbursed applications */}
@@ -1200,6 +1209,18 @@ export default function ApplicationDetail() {
           onOpenChange={() => setApprovalAction(null)}
           applicationId={id!}
           action={approvalAction}
+          orgId={orgId}
+          userId={user.id}
+        />
+      )}
+
+      {/* Reject Application Dialog - accessible from any active stage */}
+      {showRejectDialog && orgId && user && (
+        <RejectApplicationDialog
+          open={showRejectDialog}
+          onOpenChange={setShowRejectDialog}
+          applicationId={id!}
+          currentStage={application.current_stage}
           orgId={orgId}
           userId={user.id}
         />
