@@ -559,6 +559,11 @@ export default function ApplicationDetail() {
                   </Badge>
                 )}
               </div>
+              {application.current_stage === "rejected" && application.rejection_reason && (
+                <p className="text-sm text-red-600 mt-1 font-medium">
+                  Reason: {application.rejection_reason}
+                </p>
+              )}
               <p className="text-muted-foreground mt-1">
                 {application.loan_id && (
                   <span className="mr-2">Application: {application.application_number} •</span>
