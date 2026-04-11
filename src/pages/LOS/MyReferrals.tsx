@@ -28,12 +28,13 @@ export default function MyReferrals() {
   const { data: referralData, isLoading: referralLoading } = useQuery({
     queryKey: ["my-referral-code", userId, orgId],
     queryFn: async () => {
-      // First try to get existing code
+      // First try to get existing active code
       const { data: existing } = await supabase
         .from("user_referral_codes")
         .select("*")
         .eq("user_id", userId)
         .eq("org_id", orgId)
+        .eq("is_active", true)
         .maybeSingle();
 
       if (existing) return existing;
