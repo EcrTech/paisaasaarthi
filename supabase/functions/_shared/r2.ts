@@ -40,3 +40,25 @@ export async function uploadToR2(
 
   return `${R2_PUBLIC_BASE}/${key}`;
 }
+
+/**
+ * Download a file from R2 (full https:// URL) or Supabase Storage (storage path).
+ * Returns a Blob, compatible with Supabase Storage's .download() return value.
+ */
+export async function downloadFile(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  bucket: string,
+  pathOrUrl: string,
+): Promise<Blob> {
+  if (pathOrUrl.startsWith("https://")) {
+    const res = await fetch(pathOrUrl);
+    if (!res.ok) {
+      throw new Error(`R2 fetch failed [${res.status}]: ${pathOrUrl}`);
+    }
+    return await res.blob();
+  }
+  const { data, error } = await supabase.storage.from(bucket).download(pathOrUrl);
+  if (error || !data) throw new Error(`Storage download failed: ${error?.message}`);
+  return data;
+}

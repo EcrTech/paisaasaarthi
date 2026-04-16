@@ -37,6 +37,7 @@ export default function DisbursementStatus({ applicationId }: DisbursementStatus
   });
 
   const getProofDocumentUrl = async (path: string) => {
+    if (path.startsWith("https://")) return path;
     const { data } = await supabase.storage
       .from("loan-documents")
       .createSignedUrl(path, 3600);

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { downloadFile } from "../_shared/r2.ts";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
@@ -83,16 +84,8 @@ async function getPdfFromStorage(
     throw new Error("Document has no file stored. Please regenerate the document to upload the PDF.");
   }
 
-  // Download the PDF from storage
-  const { data: fileData, error: downloadError } = await supabase.storage
-    .from("loan-documents")
-    .download(docRecord.file_path);
-
-  if (downloadError || !fileData) {
-    console.error("[E-Sign] Failed to download document:", downloadError);
-    throw new Error(`Failed to download document: ${downloadError?.message || "Unknown error"}`);
-  }
-
+  // Download the PDF from R2 or Supabase Storage
+  const fileData = await downloadFile(supabase, "loan-documents", docRecord.file_path);
   console.log(`[E-Sign] PDF downloaded successfully, size: ${fileData.size} bytes`);
 
   // Convert Blob to Uint8Array

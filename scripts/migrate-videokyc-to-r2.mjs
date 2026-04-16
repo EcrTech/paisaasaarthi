@@ -1,13 +1,12 @@
 /**
  * Migrates existing videokyc-recordings from Supabase Storage to Cloudflare R2.
- * For each file:
- *   1. Download from Supabase
- *   2. Upload to R2
- *   3. Update URLs in videokyc_recordings and loan_verifications tables
- *   4. Delete from Supabase storage
  *
+ * Smart retry logic:
+ *   - If file already exists in R2 → just update the DB URL (no re-download)
+ *   - If file not in R2 → full download from Supabase + upload to R2
+ *
+ * Safe to re-run — skips recordings already pointing to R2 in DB.
  * Run: node scripts/migrate-videokyc-to-r2.mjs
- * Safe to re-run — skips files already pointing to R2.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -26,7 +25,7 @@ const R2_BUCKET = 'paisaasaarthi';
 const R2_ENDPOINT = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 const R2_PUBLIC_BASE = 'https://pub-45f68799e99e40dba88b93e0f65da4bc.r2.dev';
 
-const BATCH_SIZE = 5; // concurrent uploads
+const BATCH_SIZE = 5;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -38,32 +37,43 @@ const r2 = new AwsClient({
   service: 's3',
 });
 
-async function uploadToR2(key, body, contentType) {
-  const url = `${R2_ENDPOINT}/${R2_BUCKET}/${key}`;
-  const res = await r2.fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': contentType,
-      'Content-Length': String(body.byteLength),
-    },
-    body,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`R2 upload failed [${res.status}]: ${text}`);
-  }
-  return `${R2_PUBLIC_BASE}/${key}`;
-}
-
 function extractStoragePath(url) {
-  if (url.startsWith(SUPABASE_STORAGE_PREFIX)) {
-    return url.slice(SUPABASE_STORAGE_PREFIX.length);
-  }
+  if (url.startsWith(SUPABASE_STORAGE_PREFIX)) return url.slice(SUPABASE_STORAGE_PREFIX.length);
   const match = url.match(/\/videokyc-recordings\/(.+)/);
   return match ? match[1] : null;
 }
 
-// Fetch all videokyc recordings still pointing to Supabase
+async function existsInR2(r2Key) {
+  const res = await fetch(`${R2_PUBLIC_BASE}/${r2Key}`, { method: 'HEAD' });
+  return res.ok;
+}
+
+async function uploadToR2(key, body, contentType) {
+  const url = `${R2_ENDPOINT}/${R2_BUCKET}/${key}`;
+  const res = await r2.fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType, 'Content-Length': String(body.byteLength) },
+    body,
+  });
+  if (!res.ok) throw new Error(`R2 upload failed [${res.status}]: ${await res.text()}`);
+  return `${R2_PUBLIC_BASE}/${key}`;
+}
+
+async function updateDB(rec, newUrl) {
+  const { error } = await supabase
+    .from('videokyc_recordings')
+    .update({ recording_url: newUrl })
+    .eq('id', rec.id);
+  if (error) throw new Error(`DB update failed: ${error.message}`);
+
+  await supabase.rpc('update_videokyc_recording_url', {
+    p_application_id: rec.application_id,
+    p_old_url: rec.recording_url,
+    p_new_url: newUrl,
+  });
+}
+
+// Fetch all recordings still pointing to Supabase
 console.log('Fetching recordings still on Supabase...');
 const { data: recordings, error } = await supabase
   .from('videokyc_recordings')
@@ -72,9 +82,9 @@ const { data: recordings, error } = await supabase
   .not('recording_url', 'like', `${R2_PUBLIC_BASE}%`);
 
 if (error) { console.error(error); process.exit(1); }
-console.log(`Found ${recordings.length} recordings to migrate\n`);
+console.log(`Found ${recordings.length} recordings to process\n`);
 
-let migrated = 0, failed = 0;
+let dbOnly = 0, fullMigrate = 0, failed = 0;
 
 for (let i = 0; i < recordings.length; i += BATCH_SIZE) {
   const batch = recordings.slice(i, i + BATCH_SIZE);
@@ -86,45 +96,38 @@ for (let i = 0; i < recordings.length; i += BATCH_SIZE) {
       return;
     }
 
+    const r2Key = `videokyc/${storagePath}`;
+    const newUrl = `${R2_PUBLIC_BASE}/${r2Key}`;
+
     try {
-      // 1. Download from Supabase
-      const { data: fileData, error: dlErr } = await supabase.storage
-        .from('videokyc-recordings')
-        .download(storagePath);
-      if (dlErr) throw new Error(`Download failed: ${dlErr.message}`);
+      // Check if already in R2
+      if (await existsInR2(r2Key)) {
+        // Just fix the DB — no re-upload needed
+        await updateDB(rec, newUrl);
+        await supabase.storage.from('videokyc-recordings').remove([storagePath]);
+        console.log(`  [DB-ONLY] ${storagePath}`);
+        dbOnly++;
+      } else {
+        // Full migrate: download → upload → update DB → delete
+        const { data: fileData, error: dlErr } = await supabase.storage
+          .from('videokyc-recordings')
+          .download(storagePath);
+        if (dlErr) throw new Error(`Download failed: ${dlErr.message}`);
 
-      const arrayBuffer = await fileData.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-
-      // 2. Upload to R2 (preserve path under videokyc/ prefix)
-      const r2Key = `videokyc/${storagePath}`;
-      const newUrl = await uploadToR2(r2Key, uint8Array, 'video/webm');
-
-      // 3. Update videokyc_recordings
-      await supabase
-        .from('videokyc_recordings')
-        .update({ recording_url: newUrl })
-        .eq('id', rec.id);
-
-      // 4. Update loan_verifications (JSONB field)
-      await supabase.rpc('update_videokyc_recording_url', {
-        p_application_id: rec.application_id,
-        p_old_url: rec.recording_url,
-        p_new_url: newUrl,
-      });
-
-      // 5. Delete from Supabase storage
-      await supabase.storage.from('videokyc-recordings').remove([storagePath]);
-
-      console.log(`  [OK] ${storagePath} → ${newUrl}`);
-      migrated++;
+        const uint8Array = new Uint8Array(await fileData.arrayBuffer());
+        const uploadedUrl = await uploadToR2(r2Key, uint8Array, 'video/webm');
+        await updateDB(rec, uploadedUrl);
+        await supabase.storage.from('videokyc-recordings').remove([storagePath]);
+        console.log(`  [MIGRATED] ${storagePath}`);
+        fullMigrate++;
+      }
     } catch (err) {
       console.error(`  [FAIL] ${storagePath}: ${err.message}`);
       failed++;
     }
   }));
 
-  console.log(`Progress: ${Math.min(i + BATCH_SIZE, recordings.length)}/${recordings.length}`);
+  console.log(`Progress: ${Math.min(i + BATCH_SIZE, recordings.length)}/${recordings.length} | DB-only: ${dbOnly} | Migrated: ${fullMigrate} | Failed: ${failed}`);
 }
 
-console.log(`\nDone. Migrated: ${migrated}, Failed: ${failed}`);
+console.log(`\nDone. DB-only updates: ${dbOnly}, Fresh migrations: ${fullMigrate}, Failed: ${failed}`);

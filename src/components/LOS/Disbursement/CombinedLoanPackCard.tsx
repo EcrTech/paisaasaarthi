@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Package, FileText, Download, Printer, Loader2, FileCheck, Eye, Upload } from "lucide-react";
 import html2pdf from "html2pdf.js";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadFileToR2 } from "@/lib/uploadToR2";
 import CombinedLoanDocuments from "../Sanction/templates/CombinedLoanDocuments";
 import ESignDocumentButton from "../Sanction/ESignDocumentButton";
 
@@ -169,22 +170,14 @@ export default function CombinedLoanPackCard({
       const pdfBlob = await worker.outputPdf('blob');
 
       const docNumber = `COMBINEDLOANPACK-${Date.now().toString(36).toUpperCase()}`;
-      const fileName = `${application.org_id}/${applicationId}/combined_loan_pack/${docNumber}.pdf`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(fileName, pdfBlob, { contentType: 'application/pdf', upsert: true });
-
-      if (uploadError) {
-        console.error("PDF upload error:", uploadError);
-        throw new Error(`Failed to upload PDF: ${uploadError.message}`);
-      }
+      const pdfFile = new File([pdfBlob], `${docNumber}.pdf`, { type: 'application/pdf' });
+      const fileUrl = await uploadFileToR2(pdfFile, application.org_id, applicationId, "combined_loan_pack");
 
       if (combinedDoc) {
         const { error: updateError } = await supabase
           .from("loan_generated_documents")
           .update({
-            file_path: fileName,
+            file_path: fileUrl,
             document_number: docNumber,
             status: "generated",
           })
@@ -200,7 +193,7 @@ export default function CombinedLoanPackCard({
             org_id: application.org_id,
             document_type: "combined_loan_pack",
             document_number: docNumber,
-            file_path: fileName,
+            file_path: fileUrl,
             status: "generated",
           });
 
@@ -273,9 +266,14 @@ export default function CombinedLoanPackCard({
 
   const handleViewSignedDocument = async () => {
     if (combinedDoc?.signed_document_path) {
+      const path = combinedDoc.signed_document_path;
+      if (path.startsWith("https://")) {
+        window.open(path, "_blank");
+        return;
+      }
       const { data } = await supabase.storage
         .from("loan-documents")
-        .createSignedUrl(combinedDoc.signed_document_path, 60);
+        .createSignedUrl(path, 60);
       if (data?.signedUrl) {
         window.open(data.signedUrl, "_blank");
       } else {

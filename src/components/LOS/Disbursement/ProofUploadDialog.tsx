@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadFileToR2 } from "@/lib/uploadToR2";
 import {
   Dialog,
   DialogContent,
@@ -99,16 +100,8 @@ export default function ProofUploadDialog({
         targetDisbursementId = newDisbursement.id;
       }
 
-      // Upload file to storage
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${targetDisbursementId}_proof_${Date.now()}.${fileExt}`;
-      const filePath = `disbursement-proofs/${applicationId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
+      // Upload file to R2
+      const filePath = await uploadFileToR2(file, orgId, applicationId, "disbursement-proofs");
 
       // Update proof path immediately
       await supabase

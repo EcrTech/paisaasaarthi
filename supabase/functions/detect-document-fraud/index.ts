@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.58.0";
+import { downloadFile } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -299,12 +300,11 @@ serve(async (req) => {
 async function analyzeDocument(supabase: any, doc: any, apiKey: string): Promise<any> {
   const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
 
-  // Download from storage
-  const { data: fileData, error: dlError } = await supabase.storage
-    .from("loan-documents")
-    .download(doc.file_path);
-
-  if (dlError || !fileData) {
+  // Download from R2 or Supabase Storage
+  let fileData: Blob;
+  try {
+    fileData = await downloadFile(supabase, "loan-documents", doc.file_path);
+  } catch (_dlErr) {
     return {
       document_type: doc.document_type,
       risk_level: "unknown",

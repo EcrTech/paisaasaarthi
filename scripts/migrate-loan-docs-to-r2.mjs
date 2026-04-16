@@ -118,8 +118,20 @@ for (let i = 0; i < loanDocs.length; i += BATCH_SIZE) {
   process.stdout.write(`\r${processed}/${loanDocs.length}`);
 }
 
-// ── 2. loan_generated_documents.signed_document_path ─────────────────────────
-console.log('\n\n=== loan_generated_documents ===');
+// ── 2a. loan_generated_documents.file_path ───────────────────────────────────
+console.log('\n\n=== loan_generated_documents (file_path) ===');
+const genDocsFilePath = await fetchAllRows('loan_generated_documents', 'id, file_path', [['not', 'file_path', 'is', null]]);
+console.log(`${genDocsFilePath.length} rows`);
+for (let i = 0; i < genDocsFilePath.length; i += BATCH_SIZE) {
+  await processBatch(genDocsFilePath.slice(i, i + BATCH_SIZE),
+    r => r.file_path,
+    async (r, url) => supabase.from('loan_generated_documents').update({ file_path: url }).eq('id', r.id)
+  );
+  process.stdout.write(`\r${Math.min(i + BATCH_SIZE, genDocsFilePath.length)}/${genDocsFilePath.length}`);
+}
+
+// ── 2b. loan_generated_documents.signed_document_path ────────────────────────
+console.log('\n\n=== loan_generated_documents (signed_document_path) ===');
 const genDocs = await fetchAllRows('loan_generated_documents', 'id, signed_document_path', [['not', 'signed_document_path', 'is', null]]);
 console.log(`${genDocs.length} rows`);
 for (let i = 0; i < genDocs.length; i += BATCH_SIZE) {
@@ -130,7 +142,19 @@ for (let i = 0; i < genDocs.length; i += BATCH_SIZE) {
   process.stdout.write(`\r${Math.min(i + BATCH_SIZE, genDocs.length)}/${genDocs.length}`);
 }
 
-// ── 3. document_esign_requests.signed_document_path ──────────────────────────
+// ── 3. loan_disbursements.proof_document_path ────────────────────────────────
+console.log('\n\n=== loan_disbursements (proof_document_path) ===');
+const disbursements = await fetchAllRows('loan_disbursements', 'id, proof_document_path', [['not', 'proof_document_path', 'is', null]]);
+console.log(`${disbursements.length} rows`);
+for (let i = 0; i < disbursements.length; i += BATCH_SIZE) {
+  await processBatch(disbursements.slice(i, i + BATCH_SIZE),
+    r => r.proof_document_path,
+    async (r, url) => supabase.from('loan_disbursements').update({ proof_document_path: url }).eq('id', r.id)
+  );
+  process.stdout.write(`\r${Math.min(i + BATCH_SIZE, disbursements.length)}/${disbursements.length}`);
+}
+
+// ── 5. document_esign_requests.signed_document_path ──────────────────────────
 console.log('\n\n=== document_esign_requests ===');
 const esignDocs = await fetchAllRows('document_esign_requests', 'id, signed_document_path', [['not', 'signed_document_path', 'is', null]]);
 console.log(`${esignDocs.length} rows`);
@@ -142,7 +166,7 @@ for (let i = 0; i < esignDocs.length; i += BATCH_SIZE) {
   process.stdout.write(`\r${Math.min(i + BATCH_SIZE, esignDocs.length)}/${esignDocs.length}`);
 }
 
-// ── 4. loan_verifications.response_data->>'report_file_path' ─────────────────
+// ── 6. loan_verifications.response_data->>'report_file_path' ─────────────────
 console.log('\n\n=== loan_verifications (credit reports) ===');
 const verifs = await fetchAllRows('loan_verifications', 'id, response_data', [
   ['in', 'verification_type', ['credit_bureau']],

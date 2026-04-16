@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadFileToR2 } from "@/lib/uploadToR2";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -168,19 +169,9 @@ export function BankDetailsSection({ applicationId, orgId, applicantId }: BankDe
       if (!manualUtr.trim()) throw new Error("Please enter the UTR number");
       if (!applicantId) throw new Error("No applicant record found");
 
-      // 1. Upload file
-      const timestamp = Date.now();
-      const filePath = `${orgId}/${applicationId}/bank-verification-proof/${timestamp}-${manualProofFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(filePath, manualProofFile);
-      if (uploadError) throw new Error("Failed to upload proof: " + uploadError.message);
-
-      // 2. Get public URL
-      const { data: urlData } = supabase.storage
-        .from("loan-documents")
-        .getPublicUrl(filePath);
-      const fileUrl = urlData.publicUrl;
+      // 1. Upload file to R2
+      const fileUrl = await uploadFileToR2(manualProofFile, orgId, applicationId, "bank-verification-proof");
+      const filePath = fileUrl;
 
       // 3. Insert verification record
       const { error: verifyError } = await supabase

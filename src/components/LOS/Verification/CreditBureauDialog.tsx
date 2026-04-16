@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadFileToR2 } from "@/lib/uploadToR2";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -279,26 +280,16 @@ export default function CreditBureauDialog({
 
     setIsUploading(true);
     try {
-      const fileExt = uploadedFile.name.split('.').pop();
-      const fileName = `${orgId}/${applicationId}/cibil_report_${Date.now()}.${fileExt}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(fileName, uploadedFile, {
-          cacheControl: "3600",
-          upsert: true,
-        });
+      const fileUrl = await uploadFileToR2(uploadedFile, orgId, applicationId, "cibil-reports");
 
-      if (uploadError) throw uploadError;
-      
       setIsUploading(false);
       setIsParsing(true);
 
       const { data: parseResult, error: parseError } = await supabase.functions
         .invoke("parse-cibil-report", {
-          body: { 
-            filePath: uploadData.path,
-            applicationId 
+          body: {
+            filePath: fileUrl,
+            applicationId
           }
         });
 
@@ -326,10 +317,10 @@ export default function CreditBureauDialog({
             ...prev,
             bureau_type: parsed.bureau_type || prev.bureau_type,
             credit_score: parsed.credit_score?.toString() || prev.credit_score,
-            report_file_path: uploadData.path,
+            report_file_path: fileUrl,
           }));
         }
-        return uploadData.path;
+        return fileUrl;
       }
 
       setFormData(prev => ({
@@ -343,7 +334,7 @@ export default function CreditBureauDialog({
         enquiry_count_90d: parsed.enquiry_count_90d?.toString() || prev.enquiry_count_90d,
         dpd_history: parsed.dpd_history || prev.dpd_history,
         remarks: parsed.remarks || prev.remarks,
-        report_file_path: uploadData.path,
+        report_file_path: fileUrl,
         name_on_report: parsed.name_on_report || prev.name_on_report,
         pan_on_report: parsed.pan_on_report || prev.pan_on_report,
         status: "success",
@@ -355,7 +346,7 @@ export default function CreditBureauDialog({
         description: `Credit score: ${parsed.credit_score || "Not found"}`,
       });
 
-      return uploadData.path;
+      return fileUrl;
     } catch (error: any) {
       toast({
         title: "Error processing report",
@@ -374,26 +365,16 @@ export default function CreditBureauDialog({
 
     setIsUploading(true);
     try {
-      const fileExt = uploadedFile.name.split('.').pop();
-      const fileName = `${orgId}/${applicationId}/cibil_report_${Date.now()}.${fileExt}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(fileName, uploadedFile, {
-          cacheControl: "3600",
-          upsert: true,
-        });
+      const fileUrl = await uploadFileToR2(uploadedFile, orgId, applicationId, "cibil-reports");
 
-      if (uploadError) throw uploadError;
-      
       setIsUploading(false);
       setIsQuickAnalyzing(true);
 
       const { data: analysisResult, error: analysisError } = await supabase.functions
         .invoke("quick-credit-analysis", {
-          body: { 
-            filePath: uploadData.path,
-            applicationId 
+          body: {
+            filePath: fileUrl,
+            applicationId
           }
         });
 
@@ -419,7 +400,7 @@ export default function CreditBureauDialog({
         total_overdue: analysis.summary_stats?.total_overdue?.toString() || prev.total_overdue,
         enquiry_count_30d: analysis.summary_stats?.enquiries_30d?.toString() || prev.enquiry_count_30d,
         enquiry_count_90d: analysis.summary_stats?.enquiries_90d?.toString() || prev.enquiry_count_90d,
-        report_file_path: uploadData.path,
+        report_file_path: fileUrl,
         name_on_report: analysis.applicant_name || prev.name_on_report,
         pan_on_report: analysis.pan || prev.pan_on_report,
         status: "success",
@@ -739,12 +720,12 @@ export default function CreditBureauDialog({
                         variant="outline"
                         size="sm"
                         onClick={async () => {
+                          const path = liveReportData.report_file_path;
+                          if (path.startsWith("https://")) { window.open(path, "_blank"); return; }
                           const { data } = await supabase.storage
                             .from("loan-documents")
-                            .createSignedUrl(liveReportData.report_file_path, 300);
-                          if (data?.signedUrl) {
-                            window.open(data.signedUrl, "_blank");
-                          }
+                            .createSignedUrl(path, 300);
+                          if (data?.signedUrl) window.open(data.signedUrl, "_blank");
                         }}
                       >
                         <Eye className="h-4 w-4 mr-2" />
@@ -759,12 +740,12 @@ export default function CreditBureauDialog({
                         variant="outline"
                         size="sm"
                         onClick={async () => {
+                          const path = liveReportData.report_file_path;
+                          if (path.startsWith("https://")) { window.open(path, "_blank"); return; }
                           const { data } = await supabase.storage
                             .from("loan-documents")
-                            .createSignedUrl(liveReportData.report_file_path, 300);
-                          if (data?.signedUrl) {
-                            window.open(data.signedUrl, "_blank");
-                          }
+                            .createSignedUrl(path, 300);
+                          if (data?.signedUrl) window.open(data.signedUrl, "_blank");
                         }}
                       >
                         <Eye className="h-4 w-4 mr-2" />
@@ -829,12 +810,12 @@ export default function CreditBureauDialog({
                           variant="ghost"
                           size="sm"
                           onClick={async () => {
+                            const path = formData.report_file_path;
+                            if (path.startsWith("https://")) { window.open(path, "_blank"); return; }
                             const { data } = await supabase.storage
                               .from("loan-documents")
-                              .createSignedUrl(formData.report_file_path, 300);
-                            if (data?.signedUrl) {
-                              window.open(data.signedUrl, "_blank");
-                            }
+                              .createSignedUrl(path, 300);
+                            if (data?.signedUrl) window.open(data.signedUrl, "_blank");
                           }}
                         >
                           <Eye className="h-4 w-4" />

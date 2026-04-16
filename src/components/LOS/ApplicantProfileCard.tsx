@@ -80,14 +80,17 @@ const DocumentCard = ({
       }
 
       try {
-        const { data, error } = await supabase.storage
-          .from('loan-documents')
-          .createSignedUrl(document.file_path, 3600);
-        
-        if (error || !data) {
-          setError(true);
+        if (document.file_path.startsWith("https://")) {
+          setImageUrl(document.file_path);
         } else {
-          setImageUrl(data.signedUrl);
+          const { data, error } = await supabase.storage
+            .from('loan-documents')
+            .createSignedUrl(document.file_path, 3600);
+          if (error || !data) {
+            setError(true);
+          } else {
+            setImageUrl(data.signedUrl);
+          }
         }
       } catch {
         setError(true);
@@ -299,11 +302,15 @@ export function ApplicantProfileCard({
         );
         
         if (photoDoc?.file_path) {
-          const { data: signedData } = await supabase.storage
-            .from('loan-documents')
-            .createSignedUrl(photoDoc.file_path, 3600);
-          if (signedData) {
-            setPhotoUrl(signedData.signedUrl);
+          if (photoDoc.file_path.startsWith("https://")) {
+            setPhotoUrl(photoDoc.file_path);
+          } else {
+            const { data: signedData } = await supabase.storage
+              .from('loan-documents')
+              .createSignedUrl(photoDoc.file_path, 3600);
+            if (signedData) {
+              setPhotoUrl(signedData.signedUrl);
+            }
           }
         }
       }

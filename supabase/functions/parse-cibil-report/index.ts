@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { downloadFile } from "../_shared/r2.ts";
 import {
   safeBase64Encode,
   getPdfPageCount,
@@ -84,16 +85,8 @@ serve(async (req) => {
     const isFirstChunk = currentPage === 1 && totalPages === 0;
     console.log(`[ParseCIBIL] Parsing report: ${filePath}, Page: ${currentPage}/${totalPages || 'unknown'}`);
 
-    // Download the file from storage
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from("loan-documents")
-      .download(filePath);
-
-    if (downloadError) {
-      console.error("[ParseCIBIL] Download error:", downloadError);
-      throw new Error(`Failed to download file: ${downloadError.message}`);
-    }
-
+    // Download the file from R2 or Supabase Storage
+    const fileData = await downloadFile(supabase, "loan-documents", filePath);
     const arrayBuffer = await fileData.arrayBuffer();
     const fileBytes = new Uint8Array(arrayBuffer);
 

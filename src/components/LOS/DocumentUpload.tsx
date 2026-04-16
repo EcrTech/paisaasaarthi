@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadFileToR2 } from "@/lib/uploadToR2";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -129,11 +130,15 @@ export default function DocumentUpload({ applicationId, orgId, applicant }: Docu
         
         if (isImage && doc.file_path) {
           try {
-            const { data } = await supabase.storage
-              .from("loan-documents")
-              .createSignedUrl(doc.file_path, 3600);
-            if (data?.signedUrl) {
-              urls[doc.document_type] = data.signedUrl;
+            if (doc.file_path.startsWith("https://")) {
+              urls[doc.document_type] = doc.file_path;
+            } else {
+              const { data } = await supabase.storage
+                .from("loan-documents")
+                .createSignedUrl(doc.file_path, 3600);
+              if (data?.signedUrl) {
+                urls[doc.document_type] = data.signedUrl;
+              }
             }
           } catch (err) {
             console.error("Failed to get thumbnail URL:", err);
@@ -165,22 +170,13 @@ export default function DocumentUpload({ applicationId, orgId, applicant }: Docu
         throw new Error("Failed to read file content. The file may be corrupted or inaccessible.");
       }
 
-      const fileExt = file.name.split(".").pop();
-      const filePath = `${orgId}/${applicationId}/${docType}_${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(filePath, arrayBuffer, {
-          contentType: file.type || 'application/octet-stream',
-        });
-
-      if (uploadError) throw uploadError;
+      const fileUrl = await uploadFileToR2(file, orgId, applicationId, docType);
 
       const { error: insertError } = await supabase.from("loan_documents").insert({
         loan_application_id: applicationId,
         document_type: docType,
         document_category: REQUIRED_DOCUMENTS.find((d) => d.type === docType)?.category || "other",
-        file_path: filePath,
+        file_path: fileUrl,
         file_name: file.name,
         file_size: arrayBuffer.byteLength,
         mime_type: file.type,
@@ -317,12 +313,17 @@ export default function DocumentUpload({ applicationId, orgId, applicant }: Docu
   };
   const handleViewDocument = async (filePath: string, fileName: string) => {
     try {
-      const { data, error } = await supabase.storage
-        .from("loan-documents")
-        .createSignedUrl(filePath, 3600);
-
-      if (error) throw error;
-      setPreviewDialog({ open: true, url: data.signedUrl, name: fileName });
+      let url: string;
+      if (filePath.startsWith("https://")) {
+        url = filePath;
+      } else {
+        const { data, error } = await supabase.storage
+          .from("loan-documents")
+          .createSignedUrl(filePath, 3600);
+        if (error) throw error;
+        url = data.signedUrl;
+      }
+      setPreviewDialog({ open: true, url, name: fileName });
     } catch (error: any) {
       toast({ title: "Failed to load document", description: error.message, variant: "destructive" });
     }

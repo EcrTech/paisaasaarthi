@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.58.0";
+import { downloadFile } from "../_shared/r2.ts";
 import {
   safeBase64Encode,
   getPdfPageCount,
@@ -257,32 +258,26 @@ serve(async (req) => {
     }
     const loanApplicationId = docRecord?.loan_application_id;
 
-    // Download the document from storage
+    // Download the document from R2 or Supabase Storage
     console.log(`[ParseDocument] Downloading file: ${filePath}`);
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from("loan-documents")
-      .download(filePath);
-
-    if (downloadError) {
-      console.error(`[ParseDocument] Download error:`, downloadError);
-      throw new Error(`Failed to download document: ${downloadError.message}`);
+    let fileDataToUse: Blob;
+    try {
+      fileDataToUse = await downloadFile(supabase, "loan-documents", filePath);
+    } catch (dlErr) {
+      console.error(`[ParseDocument] Download error:`, dlErr);
+      throw new Error(`Failed to download document: ${dlErr instanceof Error ? dlErr.message : dlErr}`);
     }
 
-    if (!fileData || fileData.size === 0) {
+    if (!fileDataToUse || fileDataToUse.size === 0) {
       console.warn(`[ParseDocument] First download returned empty. Retrying...`);
       await new Promise(r => setTimeout(r, 1500));
-      const { data: retryData, error: retryError } = await supabase.storage
-        .from("loan-documents")
-        .download(filePath);
-
-      if (retryError || !retryData || retryData.size === 0) {
-        console.error(`[ParseDocument] Retry also failed. Blob size: ${retryData?.size}`);
+      try {
+        fileDataToUse = await downloadFile(supabase, "loan-documents", filePath);
+      } catch (_) { /* fall through to size check */ }
+      if (!fileDataToUse || fileDataToUse.size === 0) {
+        console.error(`[ParseDocument] Retry also failed. Blob size: ${fileDataToUse?.size}`);
         throw new Error("Downloaded file is empty (0 bytes). Please re-upload the document.");
       }
-      Object.defineProperty(fileData, 'size', { value: retryData.size });
-      var fileDataToUse = retryData;
-    } else {
-      var fileDataToUse = fileData;
     }
 
     const arrayBuffer = await fileDataToUse.arrayBuffer();

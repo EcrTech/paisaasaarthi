@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { uploadFileToR2 } from "@/lib/uploadToR2";
 import {
   Dialog,
   DialogContent,
@@ -47,16 +48,8 @@ export function IdentityDocumentUploadDialog({
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${documentType}_${Date.now()}.${fileExt}`;
-      const filePath = `${orgId}/${applicationId}/${fileName}`;
-
-      // Upload file to storage
-      const { error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
+      // Upload file to R2
+      const filePath = await uploadFileToR2(file, orgId, applicationId, documentType);
 
       // Delete ALL old records of this document type to prevent stale data
       await supabase

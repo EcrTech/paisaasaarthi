@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
+import { downloadFile } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,15 +67,8 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Download file from storage
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from("loan-documents")
-      .download(filePath);
-
-    if (downloadError || !fileData) {
-      throw new Error(`Failed to download file: ${downloadError?.message}`);
-    }
-
+    // Download file from R2 or Supabase Storage
+    const fileData = await downloadFile(supabase, "loan-documents", filePath);
     let arrayBuffer = await fileData.arrayBuffer();
     const isPdf = filePath.endsWith(".pdf");
 
