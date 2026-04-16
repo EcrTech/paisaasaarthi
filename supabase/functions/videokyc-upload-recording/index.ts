@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { uploadToR2 } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,39 +75,27 @@ serve(async (req) => {
       .update({ status: "recording" })
       .eq("id", recording.id);
 
-    // Upload to storage
-    const fileName = `${recording.application_id}/${recording.id}_${Date.now()}.webm`;
+    // Upload to R2
+    const fileName = `videokyc/${recording.application_id}/${recording.id}_${Date.now()}.webm`;
     const arrayBuffer = await videoFile.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("videokyc-recordings")
-      .upload(fileName, uint8Array, {
-        contentType: "video/webm",
-        upsert: true,
-      });
+    let recordingUrl: string;
+    try {
+      recordingUrl = await uploadToR2(fileName, uint8Array, "video/webm");
+    } catch (uploadErr) {
+      console.error("Error uploading video to R2:", uploadErr);
 
-    if (uploadError) {
-      console.error("Error uploading video:", uploadError);
-      
-      // Mark as failed
       await supabase
         .from("videokyc_recordings")
         .update({ status: "failed" })
         .eq("id", recording.id);
 
       return new Response(
-        JSON.stringify({ error: "Failed to upload video", details: uploadError.message }),
+        JSON.stringify({ error: "Failed to upload video", details: String(uploadErr) }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from("videokyc-recordings")
-      .getPublicUrl(fileName);
-
-    const recordingUrl = urlData.publicUrl;
 
     // Update the recording record
     const { error: updateError } = await supabase
