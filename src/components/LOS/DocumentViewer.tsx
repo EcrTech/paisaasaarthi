@@ -50,35 +50,34 @@ export default function DocumentViewer({ applicationId }: DocumentViewerProps) {
     enabled: !!applicationId,
   });
 
+  const resolveUrl = async (filePath: string, expiry: number): Promise<string | null> => {
+    if (filePath.startsWith("https://")) return filePath;
+    const { data } = await supabase.storage.from("loan-documents").createSignedUrl(filePath, expiry);
+    return data?.signedUrl ?? null;
+  };
+
   const handleView = async (doc: any) => {
     try {
-      const { data } = await supabase.storage
-        .from("loan-documents")
-        .createSignedUrl(doc.file_path, 3600); // 1 hour expiry
-
-      if (data?.signedUrl) {
-        // For PDFs, open in new tab since Chrome blocks cross-origin iframe PDFs
+      const url = await resolveUrl(doc.file_path, 3600);
+      if (url) {
         if (isPdfFile(doc.file_name)) {
-          window.open(data.signedUrl, "_blank");
+          window.open(url, "_blank");
         } else {
-          setPreviewUrl(data.signedUrl);
+          setPreviewUrl(url);
           setSelectedDoc(doc);
         }
       }
     } catch (err) {
-      console.error("Error getting signed URL:", err);
+      console.error("Error getting document URL:", err);
     }
   };
 
   const handleDownload = async (doc: any) => {
     try {
-      const { data } = await supabase.storage
-        .from("loan-documents")
-        .createSignedUrl(doc.file_path, 300); // 5 min expiry
-
-      if (data?.signedUrl) {
+      const url = await resolveUrl(doc.file_path, 300);
+      if (url) {
         const link = document.createElement("a");
-        link.href = data.signedUrl;
+        link.href = url;
         link.download = doc.file_name;
         link.click();
       }

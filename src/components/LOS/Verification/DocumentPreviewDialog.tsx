@@ -44,15 +44,18 @@ export function DocumentPreviewDialog({
       setLoading(true);
       setSignedUrl(null);
 
-      supabase.storage
-        .from("loan-documents")
-        .createSignedUrl(filePath, 3600)
-        .then(({ data, error }) => {
-          if (data && !error) {
-            setSignedUrl(data.signedUrl);
-          }
-          setLoading(false);
-        });
+      if (filePath.startsWith("https://")) {
+        setSignedUrl(filePath);
+        setLoading(false);
+      } else {
+        supabase.storage
+          .from("loan-documents")
+          .createSignedUrl(filePath, 3600)
+          .then(({ data, error }) => {
+            if (data && !error) setSignedUrl(data.signedUrl);
+            setLoading(false);
+          });
+      }
     } else {
       setSignedUrl(null);
       setLoading(false);

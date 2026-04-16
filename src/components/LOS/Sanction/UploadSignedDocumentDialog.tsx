@@ -64,51 +64,29 @@ export default function UploadSignedDocumentDialog({
 
     setUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${orgId}/${applicationId}/signed/${documentType}_${Date.now()}.${fileExt}`;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { data: { session } } = await supabase.auth.getSession();
 
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from("loan-documents")
-        .upload(fileName, file);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("application_id", applicationId);
+      formData.append("org_id", orgId);
+      formData.append("sanction_id", sanctionId);
+      formData.append("document_type", documentType);
 
-      if (uploadError) throw uploadError;
+      const response = await fetch(`${supabaseUrl}/functions/v1/upload-signed-document`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session?.access_token}`,
+          "apikey": supabaseAnonKey,
+        },
+        body: formData,
+      });
 
-      // Update the document record - match by application_id and document_type
-      // since sanction_id might be null on some records
-      const { error: updateError } = await supabase
-        .from("loan_generated_documents")
-        .update({
-          signed_document_path: fileName,
-          customer_signed: true,
-          signed_at: new Date().toISOString(),
-          status: 'signed',
-          sanction_id: sanctionId // Also set sanction_id if it was missing
-        })
-        .eq("loan_application_id", applicationId)
-        .eq("document_type", documentType);
-
-      if (updateError) {
-        console.error('Update error:', updateError);
-        throw updateError;
-      }
-
-      // Update sanction status if all documents are signed
-      const { data: docs } = await supabase
-        .from("loan_generated_documents")
-        .select("customer_signed, document_type")
-        .eq("loan_application_id", applicationId);
-
-      const allSigned = docs?.every(d => d.customer_signed);
-      if (allSigned) {
-        await supabase
-          .from("loan_sanctions")
-          .update({ 
-            status: 'signed',
-            customer_accepted: true,
-            accepted_at: new Date().toISOString()
-          })
-          .eq("id", sanctionId);
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Upload failed");
       }
 
       toast.success("Signed document uploaded successfully");

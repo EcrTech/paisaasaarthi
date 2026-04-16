@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../_shared/supabaseClient.ts';
+import { uploadToR2 } from '../_shared/r2.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -94,23 +95,16 @@ Deno.serve(async (req) => {
           const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
           console.log(`[experian-credit-report] PDF downloaded: ${pdfBytes.length} bytes`);
 
-          storagePath = orgId && applicationId
-            ? `${orgId}/${applicationId}/experian_report_${Date.now()}.pdf`
-            : `reports/experian_report_${pan.toUpperCase()}_${Date.now()}.pdf`;
+          const r2Key = orgId && applicationId
+            ? `loan-docs/${orgId}/${applicationId}/experian_report_${Date.now()}.pdf`
+            : `loan-docs/reports/experian_report_${pan.toUpperCase()}_${Date.now()}.pdf`;
 
-          const { error: uploadError } = await supabase.storage
-            .from('loan-documents')
-            .upload(storagePath, pdfBytes, {
-              contentType: 'application/pdf',
-              cacheControl: '3600',
-              upsert: true,
-            });
-
-          if (uploadError) {
-            console.error(`[experian-credit-report] Storage upload error:`, uploadError);
+          try {
+            storagePath = await uploadToR2(r2Key, pdfBytes, 'application/pdf');
+            console.log(`[experian-credit-report] PDF stored at R2: ${r2Key}`);
+          } catch (uploadErr) {
+            console.error(`[experian-credit-report] R2 upload error:`, uploadErr);
             storagePath = null;
-          } else {
-            console.log(`[experian-credit-report] PDF stored at: ${storagePath}`);
           }
         } else {
           console.error(`[experian-credit-report] PDF download failed: ${pdfResponse.status}`);

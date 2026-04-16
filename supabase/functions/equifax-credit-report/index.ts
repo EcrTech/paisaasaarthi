@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { uploadToR2 } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -744,20 +745,12 @@ serve(async (req) => {
             pdfBytes = Uint8Array.from(atob(encodedPdf), c => c.charCodeAt(0));
           }
 
-          const pdfPath = `${orgId}/${applicationId}/equifax_report_${Date.now()}.pdf`;
-          const { error: pdfUploadError } = await supabase.storage
-            .from("loan-documents")
-            .upload(pdfPath, pdfBytes, {
-              contentType: "application/pdf",
-              cacheControl: "3600",
-              upsert: true,
-            });
-
-          if (pdfUploadError) {
-            console.error("[EQUIFAX] PDF upload error:", pdfUploadError);
-          } else {
-            reportData.report_file_path = pdfPath;
-            console.log("[EQUIFAX] PDF saved to:", pdfPath);
+          try {
+            const r2Key = `loan-docs/${orgId}/${applicationId}/equifax_report_${Date.now()}.pdf`;
+            reportData.report_file_path = await uploadToR2(r2Key, pdfBytes, "application/pdf");
+            console.log("[EQUIFAX] PDF saved to R2:", r2Key);
+          } catch (r2Err) {
+            console.error("[EQUIFAX] R2 upload error:", r2Err);
           }
         } catch (pdfErr: any) {
           console.error("[EQUIFAX] PDF extraction error:", pdfErr.message);

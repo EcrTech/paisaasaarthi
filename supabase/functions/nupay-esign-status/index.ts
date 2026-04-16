@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { uploadToR2 } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -275,22 +276,14 @@ serve(async (req) => {
             throw new Error("No signed document data available");
           }
 
-          // Upload to Supabase Storage with org_id prefix for RLS compliance
-          const fileName = `${org_id}/${esignRecord.application_id}/signed/${esignRecord.document_type}_signed_${Date.now()}.pdf`;
-          console.log("[E-Sign-Status] Uploading signed PDF to storage:", fileName);
-
-          const { error: uploadError } = await supabase.storage
-            .from("loan-documents")
-            .upload(fileName, pdfBuffer, {
-              contentType: "application/pdf",
-              upsert: true,
-            });
-
-          if (uploadError) {
-            console.error("[E-Sign-Status] Storage upload failed:", uploadError);
-          } else {
-            signedDocumentPath = fileName;
-            console.log("[E-Sign-Status] Signed document stored at:", signedDocumentPath);
+          // Upload to R2
+          const r2Key1 = `loan-docs/${org_id}/${esignRecord.application_id}/signed/${esignRecord.document_type}_signed_${Date.now()}.pdf`;
+          console.log("[E-Sign-Status] Uploading signed PDF to R2:", r2Key1);
+          try {
+            signedDocumentPath = await uploadToR2(r2Key1, pdfBuffer, "application/pdf");
+            console.log("[E-Sign-Status] Signed document stored at R2:", r2Key1);
+          } catch (r2Err) {
+            console.error("[E-Sign-Status] R2 upload failed:", r2Err);
           }
         } catch (docError) {
           console.error("[E-Sign-Status] Failed to fetch/store signed document:", docError);
@@ -367,22 +360,13 @@ serve(async (req) => {
             }
 
             if (pdfBuffer && pdfBuffer.length > 0) {
-              // Upload to Supabase Storage with org_id prefix for RLS compliance
-              const fileName = `${org_id}/${esignRecord.application_id}/signed/${esignRecord.document_type}_signed_${Date.now()}.pdf`;
-              console.log("[E-Sign-Status] Uploading signed PDF to storage:", fileName);
-
-              const { error: uploadError } = await supabase.storage
-                .from("loan-documents")
-                .upload(fileName, pdfBuffer, {
-                  contentType: "application/pdf",
-                  upsert: true,
-                });
-
-              if (uploadError) {
-                console.error("[E-Sign-Status] Storage upload failed:", uploadError);
-              } else {
-                signedDocumentPath = fileName;
-                console.log("[E-Sign-Status] Signed document stored via download API:", signedDocumentPath);
+              const r2Key2 = `loan-docs/${org_id}/${esignRecord.application_id}/signed/${esignRecord.document_type}_signed_${Date.now()}.pdf`;
+              console.log("[E-Sign-Status] Uploading signed PDF to R2:", r2Key2);
+              try {
+                signedDocumentPath = await uploadToR2(r2Key2, pdfBuffer, "application/pdf");
+                console.log("[E-Sign-Status] Signed document stored via download API at R2:", r2Key2);
+              } catch (r2Err) {
+                console.error("[E-Sign-Status] R2 upload failed:", r2Err);
               }
             }
           } else {

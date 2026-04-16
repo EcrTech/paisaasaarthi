@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../_shared/supabaseClient.ts';
+import { uploadToR2 } from '../_shared/r2.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,21 +111,16 @@ Deno.serve(async (req) => {
 
     const { loan_application_id, org_id } = validToken;
 
-    // Upload file to storage
+    // Upload file to R2
     const fileExt = file.name.split('.').pop() || 'pdf';
-    const storagePath = `${org_id}/${loan_application_id}/${documentType}_${Date.now()}.${fileExt}`;
+    const r2Key = `loan-docs/${org_id}/${loan_application_id}/${documentType}_${Date.now()}.${fileExt}`;
 
     const fileBuffer = await file.arrayBuffer();
-    const { error: uploadError } = await supabase.storage
-      .from('loan-documents')
-      .upload(storagePath, fileBuffer, {
-        contentType: file.type,
-        cacheControl: '3600',
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error('[public-document-upload] Storage error:', uploadError);
+    let storagePath: string;
+    try {
+      storagePath = await uploadToR2(r2Key, new Uint8Array(fileBuffer), file.type);
+    } catch (uploadErr) {
+      console.error('[public-document-upload] R2 upload error:', uploadErr);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to upload file' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

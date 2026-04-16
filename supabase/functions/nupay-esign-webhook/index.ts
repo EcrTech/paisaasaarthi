@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { uploadToR2 } from "../_shared/r2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,20 +91,12 @@ serve(async (req) => {
             bytes[i] = binaryStr.charCodeAt(i);
           }
 
-          const fileName = `esign/${esignRecord.org_id}/${esignRecord.application_id}/${esignRecord.document_type}-signed-${Date.now()}.pdf`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from("loan-documents")
-            .upload(fileName, bytes, {
-              contentType: "application/pdf",
-              upsert: true,
-            });
-
-          if (uploadError) {
-            console.error("[E-Sign-Webhook] Failed to upload signed document:", uploadError);
-          } else {
-            signedDocumentPath = fileName;
-            console.log(`[E-Sign-Webhook] Signed document saved: ${fileName}`);
+          const r2Key = `loan-docs/esign/${esignRecord.org_id}/${esignRecord.application_id}/${esignRecord.document_type}-signed-${Date.now()}.pdf`;
+          try {
+            signedDocumentPath = await uploadToR2(r2Key, bytes, "application/pdf");
+            console.log(`[E-Sign-Webhook] Signed document saved to R2: ${r2Key}`);
+          } catch (r2Err) {
+            console.error("[E-Sign-Webhook] R2 upload failed:", r2Err);
           }
         } catch (uploadErr) {
           console.error("[E-Sign-Webhook] Error processing signed document:", uploadErr);

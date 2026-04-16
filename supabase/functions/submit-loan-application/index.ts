@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
+import { uploadToR2 } from '../_shared/r2.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -758,24 +759,14 @@ Deno.serve(async (req) => {
             
             // Generate unique filename
             const ext = doc.name.split('.').pop() || 'pdf';
-            const fileName = `${formConfig.org_id}/${applicationNumber}/${doc.type}_${Date.now()}.${ext}`;
-            
-            const { error: uploadError } = await supabase.storage
-              .from('loan-documents')
-              .upload(fileName, binaryData, {
-                contentType: doc.mimeType || 'application/octet-stream',
-                upsert: false
-              });
+            const r2Key = `loan-docs/${formConfig.org_id}/${applicationNumber}/${doc.type}_${Date.now()}.${ext}`;
 
-            if (uploadError) {
-              console.error(`[submit-loan-application] Upload error for ${doc.type}:`, uploadError);
-            } else {
-              uploadedDocuments.push({
-                type: doc.type,
-                path: fileName,
-                name: doc.name
-              });
-              console.log(`[submit-loan-application] Uploaded document: ${fileName}`);
+            try {
+              const r2Url = await uploadToR2(r2Key, binaryData, doc.mimeType || 'application/octet-stream');
+              uploadedDocuments.push({ type: doc.type, path: r2Url, name: doc.name });
+              console.log(`[submit-loan-application] Uploaded document to R2: ${r2Key}`);
+            } catch (r2Err) {
+              console.error(`[submit-loan-application] R2 upload error for ${doc.type}:`, r2Err);
             }
           } catch (uploadErr) {
             console.error(`[submit-loan-application] Document upload failed:`, uploadErr);
