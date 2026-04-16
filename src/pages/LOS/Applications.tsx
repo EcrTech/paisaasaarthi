@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
+import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/Layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +28,8 @@ export default function Applications() {
   const navigate = useNavigate();
   const { orgId } = useOrgContext();
   const { permissions } = useLOSPermissions();
+  const { user } = useAuth();
+  const canSeeReferrals = user?.email === "a@in-sync.co.in";
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -286,12 +289,14 @@ const { data: applications = [], isLoading } = useQuery({
                 <p className="text-muted-foreground mb-4">
                   {searchQuery || statusFilter !== "all" || stageFilter !== "all"
                     ? "Try adjusting your filters"
-                    : "Share your referral link to receive applications"}
+                    : "No applications yet"}
                 </p>
-                <Button onClick={() => navigate("/los/my-referrals")}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Get Referral Link
-                </Button>
+                {canSeeReferrals && (
+                  <Button onClick={() => navigate("/los/my-referrals")}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Get Referral Link
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="space-y-4">

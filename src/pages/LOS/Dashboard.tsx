@@ -26,6 +26,7 @@ import { format, subDays, startOfMonth } from "date-fns";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useLOSPermissions } from "@/hooks/useLOSPermissions";
+import { useAuth } from "@/contexts/AuthContext";
 
 import { STAGE_LABELS, STAGE_CHART_COLORS, SOURCE_LABELS } from "@/constants/loanStages";
 
@@ -45,6 +46,8 @@ export default function LOSDashboard() {
   const { orgId } = useOrgContext();
   const navigate = useNavigate();
   const { permissions } = useLOSPermissions();
+  const { user } = useAuth();
+  const canSeeReferrals = user?.email === "a@in-sync.co.in";
   const [fromDate, setFromDate] = useState<Date>(subDays(new Date(), 30));
   const [toDate, setToDate] = useState<Date>(new Date());
   const [chartView, setChartView] = useState<"daily" | "weekly" | "monthly">("weekly");
@@ -669,15 +672,17 @@ export default function LOSDashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-auto py-2.5 flex-col gap-1"
-                onClick={() => navigate("/los/my-referrals")}
-              >
-                <FileText className="h-4 w-4" />
-                <span className="text-xs">My Referrals</span>
-              </Button>
+              {canSeeReferrals && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-2.5 flex-col gap-1"
+                  onClick={() => navigate("/los/my-referrals")}
+                >
+                  <FileText className="h-4 w-4" />
+                  <span className="text-xs">My Referrals</span>
+                </Button>
+              )}
               {permissions.canApproveLoans && (
                 <Button
                   variant="outline"
