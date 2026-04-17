@@ -42,6 +42,18 @@ export async function uploadToR2(
 }
 
 /**
+ * Delete a file from R2 by its key (path within the bucket).
+ */
+export async function deleteFromR2(key: string): Promise<void> {
+  const url = `${endpoint}/${bucket}/${key}`;
+  const response = await client.fetch(url, { method: "DELETE" });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`R2 delete failed [${response.status}]: ${text}`);
+  }
+}
+
+/**
  * Download a file from R2 (full https:// URL) or Supabase Storage (storage path).
  * Returns a Blob, compatible with Supabase Storage's .download() return value.
  */

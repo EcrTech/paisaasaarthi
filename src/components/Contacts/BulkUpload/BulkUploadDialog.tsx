@@ -150,18 +150,26 @@ export function BulkUploadDialog({ open, onOpenChange, orgId, onUploadStarted }:
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
-      // Upload file to storage
-      const fileName = `${Date.now()}-${file.name}`;
-      const filePath = `${orgId}/bulk-imports/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('import-files')
-        .upload(filePath, file);
-
-      if (uploadError) {
-        console.error('Storage upload error:', uploadError);
-        throw new Error(`Failed to upload file: ${uploadError.message}`);
+      // Get presigned R2 upload URL
+      const r2Key = `bulk-imports/${orgId}/${Date.now()}-${file.name}`;
+      const { data: urlData, error: urlError } = await supabase.functions.invoke('generate-upload-url', {
+        body: { key: r2Key, contentType: 'text/csv' },
+      });
+      if (urlError || !urlData?.uploadUrl) {
+        throw new Error(`Failed to get upload URL: ${urlError?.message}`);
       }
+
+      // Upload directly to R2 via presigned URL
+      const uploadResp = await fetch(urlData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/csv' },
+        body: file,
+      });
+      if (!uploadResp.ok) {
+        throw new Error(`Failed to upload file: ${uploadResp.status} ${uploadResp.statusText}`);
+      }
+
+      const filePath = urlData.publicUrl;
 
       // Verify user profile has org_id
       console.log('[PROFILE-VERIFY-START]', { userId: user.id });

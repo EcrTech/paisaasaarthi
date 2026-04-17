@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { getSupabaseClient } from '../_shared/supabaseClient.ts';
 import { logEdgeError, logStep, logBatchProgress, logValidationError } from '../_shared/errorLogger.ts';
+import { downloadFile, deleteFromR2, R2_PUBLIC_BASE } from '../_shared/r2.ts';
 
 const OPERATION_TIMEOUT = 20 * 60 * 1000; // 20 minutes
 const MAX_RETRIES = 3;
@@ -111,19 +112,12 @@ serve(async (req) => {
 
     console.log('[JOB] Found:', importJob.file_name, 'Type:', importJob.import_type);
 
-    // Download file from storage
+    // Download file from R2
     await updateJobStage(supabase, importJobId, 'downloading', {
       message: 'Downloading file...'
     });
 
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('import-files')
-      .download(importJob.file_path);
-
-    if (downloadError || !fileData) {
-      throw new Error(`Failed to download file: ${downloadError?.message}`);
-    }
-
+    const fileData = await downloadFile(supabase, 'import-files', importJob.file_path);
     const fileSizeKB = Math.round(fileData.size / 1024);
     console.log('[STORAGE] File downloaded:', fileSizeKB, 'KB');
 
@@ -418,15 +412,19 @@ serve(async (req) => {
       total_errors: errorCount
     });
 
-    // Cleanup file
-    const { error: deleteError } = await supabase.storage
-      .from('bulk-imports')
-      .remove([importJob.file_path]);
-
-    if (deleteError) {
-      console.error('[CLEANUP] Failed to delete file:', deleteError);
-    } else {
-      console.log('[CLEANUP] File deleted successfully');
+    // Cleanup file from R2
+    let deleteError = null;
+    try {
+      const r2Key = importJob.file_path.startsWith(R2_PUBLIC_BASE)
+        ? importJob.file_path.slice(R2_PUBLIC_BASE.length + 1)
+        : null;
+      if (r2Key) {
+        await deleteFromR2(r2Key);
+        console.log('[CLEANUP] File deleted from R2 successfully');
+      }
+    } catch (err) {
+      deleteError = err;
+      console.error('[CLEANUP] Failed to delete file from R2:', err);
     }
 
     // Update final status
