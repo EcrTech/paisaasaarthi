@@ -177,23 +177,21 @@ export default function TemplateBuilder() {
 
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${orgId}/${Date.now()}.${fileExt}`;
-      const filePath = `template-media/${fileName}`;
+      const r2Key = `whatsapp-templates/template-media/${orgId}/${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('whatsapp-templates')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
+      const { data: urlData, error: urlError } = await supabase.functions.invoke('generate-upload-url', {
+        body: { key: r2Key, contentType: file.type },
+      });
+      if (urlError || !urlData?.uploadUrl) throw new Error(urlError?.message || 'Failed to get upload URL');
 
-      if (uploadError) throw uploadError;
+      const uploadResp = await fetch(urlData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!uploadResp.ok) throw new Error(`Upload failed: ${uploadResp.status}`);
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('whatsapp-templates')
-        .getPublicUrl(filePath);
-
-      setMediaUrl(publicUrl);
+      setMediaUrl(urlData.publicUrl);
 
       notify.success("Upload Successful", "File uploaded successfully");
     } catch (error: any) {

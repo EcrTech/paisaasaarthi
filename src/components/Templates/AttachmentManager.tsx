@@ -47,17 +47,21 @@ export const AttachmentManager = ({ attachments, onChange, orgId }: AttachmentMa
 
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${orgId}/${crypto.randomUUID()}.${fileExt}`;
+      const r2Key = `email-attachments/${orgId}/${crypto.randomUUID()}.${fileExt}`;
 
-      const { error: uploadError, data } = await supabase.storage
-        .from('email-attachments')
-        .upload(fileName, file);
+      const { data: urlData, error: urlError } = await supabase.functions.invoke('generate-upload-url', {
+        body: { key: r2Key, contentType: file.type },
+      });
+      if (urlError || !urlData?.uploadUrl) throw new Error(urlError?.message || 'Failed to get upload URL');
 
-      if (uploadError) throw uploadError;
+      const uploadResp = await fetch(urlData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!uploadResp.ok) throw new Error(`Upload failed: ${uploadResp.status}`);
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('email-attachments')
-        .getPublicUrl(fileName);
+      const publicUrl = urlData.publicUrl;
 
       const fileType = file.type.startsWith('video/') ? 'video' : 'image';
 
@@ -81,18 +85,9 @@ export const AttachmentManager = ({ attachments, onChange, orgId }: AttachmentMa
     }
   };
 
-  const removeAttachment = async (attachment: Attachment) => {
-    try {
-      const path = attachment.url.split('/email-attachments/')[1];
-      if (path) {
-        await supabase.storage.from('email-attachments').remove([path]);
-      }
-      onChange(attachments.filter(att => att.id !== attachment.id));
-      notify.success("Attachment removed", `${attachment.name} has been removed`);
-    } catch (error) {
-      console.error('Remove error:', error);
-      notify.error("Error", new Error("Failed to remove attachment"));
-    }
+  const removeAttachment = (attachment: Attachment) => {
+    onChange(attachments.filter(att => att.id !== attachment.id));
+    notify.success("Attachment removed", `${attachment.name} has been removed`);
   };
 
   const formatFileSize = (bytes?: number) => {

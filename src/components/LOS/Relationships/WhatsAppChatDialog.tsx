@@ -268,23 +268,29 @@ export function WhatsAppChatDialog({
     setSending(true);
 
     try {
-      // 1. Upload file to Supabase Storage
+      // 1. Upload file to R2
       const fileExt = selectedFile.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${contactId}/${fileName}`;
+      const r2Key = `whatsapp-media/${contactId}/${fileName}`;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('whatsapp-media')
-        .upload(filePath, selectedFile);
-
-      if (uploadError) {
-        throw new Error(`Upload failed: ${uploadError.message}`);
+      const { data: urlData, error: urlError } = await supabase.functions.invoke('generate-upload-url', {
+        body: { key: r2Key, contentType: selectedFile.type },
+      });
+      if (urlError || !urlData?.uploadUrl) {
+        throw new Error(`Failed to get upload URL: ${urlError?.message}`);
       }
 
-      // 2. Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('whatsapp-media')
-        .getPublicUrl(filePath);
+      const uploadResp = await fetch(urlData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': selectedFile.type },
+        body: selectedFile,
+      });
+      if (!uploadResp.ok) {
+        throw new Error(`Upload failed: ${uploadResp.status}`);
+      }
+
+      // 2. Use R2 public URL
+      const publicUrl = urlData.publicUrl;
 
       // 3. Send via edge function
       const mediaType = getMediaType(selectedFile.type);
