@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, CalendarIcon, Phone, Target, TrendingUp, AlertTriangle, Users, IndianRupee, CreditCard } from "lucide-react";
+import { Download, CalendarIcon, Phone, Target, TrendingUp, AlertTriangle, Users, IndianRupee, CreditCard, Building2 } from "lucide-react";
 import { useNotification } from "@/hooks/useNotification";
 import { useNavigate } from "react-router-dom";
 import { useOrgContext } from "@/hooks/useOrgContext";
@@ -17,6 +17,7 @@ import OverdueBucketReport from "@/components/LOS/Reports/OverdueBucketReport";
 import StaffPerformanceDashboard from "@/components/LOS/Reports/StaffPerformanceDashboard";
 import CollectionReport from "@/components/LOS/Reports/CollectionReport";
 import DisbursalReport from "@/components/LOS/Reports/DisbursalReport";
+import CICReport from "@/components/LOS/Reports/CICReport";
 import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -176,7 +177,7 @@ export default function Reports() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="sales">
               <Target className="h-4 w-4 mr-2" />
               Sales
@@ -204,6 +205,10 @@ export default function Reports() {
             <TabsTrigger value="disbursals">
               <CreditCard className="h-4 w-4 mr-2" />
               Disbursals
+            </TabsTrigger>
+            <TabsTrigger value="cic">
+              <Building2 className="h-4 w-4 mr-2" />
+              CIC
             </TabsTrigger>
           </TabsList>
 
@@ -453,6 +458,16 @@ export default function Reports() {
               <p className="text-muted-foreground">Digi disbursal report — loan-wise disbursement details with Excel export</p>
             </div>
             <DisbursalReport fromDate={fromDate} toDate={toDate} />
+          </TabsContent>
+
+          <TabsContent value="cic" className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold">CIC Report</h2>
+              <p className="text-muted-foreground">
+                Credit Information Company report — all 72 fields in the prescribed format, ready for submission
+              </p>
+            </div>
+            <CICReport fromDate={fromDate} toDate={toDate} />
           </TabsContent>
         </Tabs>
       </div>
